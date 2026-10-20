@@ -49,6 +49,11 @@ import {
   renderCompanySimulationsChart
 } from './charts.js';
 
+import {
+  findCatalogExercise,
+  ensureExerciseDatalist
+} from './exercise-catalog.js';
+
 // Estado global de la aplicación
 const AppState = {
   user: null,
@@ -2057,11 +2062,13 @@ function renderEditExercises(item) {
  * Agrega una fila de ejercicio al contenedor de edición
  */
 function addEditExerciseRowToContainer(container, ex = {}) {
+  ensureExerciseDatalist();
   const currentCount = container.querySelectorAll('.edit-eval-exercise-row').length;
   const num = ex.numero != null ? ex.numero : (currentCount + 2);
   const name = ex.nombre || '';
   const score = ex.calificacion != null ? ex.calificacion : '';
-  const desc = ex.descripcion || '';
+  // Si la evaluación antigua no trae descripción, se completa desde el catálogo
+  const desc = ex.descripcion || findCatalogExercise(name)?.descripcion || '';
 
   const row = document.createElement('div');
   row.className = 'edit-eval-exercise-row';
@@ -2070,10 +2077,10 @@ function addEditExerciseRowToContainer(container, ex = {}) {
       <input type="number" class="custom-input edit-ex-num" value="${num}" style="width: 100%; height: 32px; font-weight: 700; text-align: center; color: #38bdf8;" title="N° de Simulación" />
     </div>
     <div>
-      <input type="text" class="custom-input edit-ex-name" value="${(name || '').replace(/"/g, '&quot;')}" placeholder="Nombre (Ej: Montaña)..." style="width: 100%; height: 32px;" />
+      <input type="text" class="custom-input edit-ex-name" list="exerciseCatalogList" value="${(name || '').replace(/"/g, '&quot;')}" placeholder="Nombre (Ej: Montaña)..." style="width: 100%; height: 32px;" />
     </div>
     <div>
-      <input type="number" step="0.1" min="0" max="10" class="custom-input edit-ex-score" value="${score}" placeholder="Nota / 10" style="width: 100%; height: 32px; font-weight: 700; text-align: right;" />
+      <input type="number" step="any" min="0" max="10" class="custom-input edit-ex-score" value="${score}" placeholder="Nota / 10" style="width: 100%; height: 32px; font-weight: 700; text-align: right;" />
     </div>
     <div>
       <input type="text" class="custom-input edit-ex-desc" value="${(desc || '').replace(/"/g, '&quot;')}" placeholder="Descripción breve..." style="width: 100%; height: 32px;" />
@@ -2084,6 +2091,16 @@ function addEditExerciseRowToContainer(container, ex = {}) {
       </button>
     </div>
   `;
+
+  // Autocompletar descripción al escribir/seleccionar un ejercicio del catálogo
+  const nameInput = row.querySelector('.edit-ex-name');
+  const descInput = row.querySelector('.edit-ex-desc');
+  const autofill = () => {
+    const match = findCatalogExercise(nameInput.value);
+    if (match) descInput.value = match.descripcion;
+  };
+  nameInput.addEventListener('input', autofill);
+  nameInput.addEventListener('change', autofill);
 
   row.querySelector('button').addEventListener('click', () => row.remove());
   container.appendChild(row);
