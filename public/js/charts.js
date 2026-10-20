@@ -102,7 +102,7 @@ export function renderEvolutionChart(canvasId, evaluations) {
           padding: 12,
           boxPadding: 6,
           callbacks: {
-            afterBody: function(context) {
+            afterBody: function (context) {
               const idx = context[0].dataIndex;
               const ev = sorted[idx];
               return `\nColisiones: ${ev.colisiones || 0}\nFatalidades: ${ev.fatalidades || 0}\nEstado: ${ev.estado || 'N/A'}`;
@@ -341,6 +341,27 @@ export function renderCompanyRankingChart(canvasId, conductores) {
 /**
  * Gráfico de Barras Vertical: Rendimiento por Simulación en la Empresa
  */
+/**
+ * Paleta de colores armoniosa y dinámica para los ejercicios de simulador
+ */
+const EXERCISE_CHART_PALETTE = [
+  { bg: 'rgba(56, 189, 248, 0.25)', border: '#38bdf8' },   // Sky blue
+  { bg: 'rgba(249, 115, 22, 0.25)', border: '#f97316' },   // Orange
+  { bg: 'rgba(168, 85, 247, 0.25)', border: '#a855f7' },   // Purple
+  { bg: 'rgba(34, 197, 94, 0.25)', border: '#22c55e' },   // Emerald green
+  { bg: 'rgba(234, 179, 8, 0.25)', border: '#eab308' },   // Amber
+  { bg: 'rgba(244, 63, 94, 0.25)', border: '#f43f5e' },   // Rose
+  { bg: 'rgba(20, 184, 166, 0.25)', border: '#14b8a6' },   // Teal
+  { bg: 'rgba(99, 102, 241, 0.25)', border: '#6366f1' },   // Indigo
+  { bg: 'rgba(236, 72, 153, 0.25)', border: '#ec4899' },   // Pink
+  { bg: 'rgba(148, 163, 184, 0.25)', border: '#94a3b8' }   // Slate
+];
+
+/**
+ * Gráfico de Barras: Rendimiento por Ejercicio / Simulación en la Empresa
+ * Considera todos los ejercicios realizados en la flota y promedia cuando un conductor
+ * ha realizado el mismo ejercicio múltiples veces.
+ */
 export function renderCompanySimulationsChart(canvasId, company) {
   const ctx = document.getElementById(canvasId);
   if (!ctx || !window.Chart) return;
@@ -349,21 +370,53 @@ export function renderCompanySimulationsChart(canvasId, company) {
 
   if (!company) return;
 
-  const name2 = company.nombresSimulaciones?.[2] || 'Montaña';
-  const name3 = company.nombresSimulaciones?.[3] || 'Sierra';
-  const name4 = company.nombresSimulaciones?.[4] || 'Simulación 4';
-  const labels = [`S2: ${name2}`, `S3: ${name3}`, `S4: ${name4}`];
+  let exerciseList = [];
 
-  const subtitleEl = document.getElementById('companySimChartSubtitle');
-  if (subtitleEl) {
-    subtitleEl.textContent = `Promedio en ${name2} (S2), ${name3} (S3) y ${name4} (S4)`;
+  if (Array.isArray(company.ejerciciosPromedio) && company.ejerciciosPromedio.length > 0) {
+    exerciseList = company.ejerciciosPromedio;
+  } else {
+    // Respaldo retrospectivo para empresas sin ejerciciosPromedio
+    const name2 = company.nombresSimulaciones?.[2] || 'Montaña';
+    const name3 = company.nombresSimulaciones?.[3] || 'Sierra';
+    const name4 = company.nombresSimulaciones?.[4] || 'Simulación 4';
+    exerciseList = [
+      { nombre: name2, numero: 2, promedio: parseFloat((company.promedioSim2 || 0).toFixed(2)), totalConductores: company.totalConductores || 0 },
+      { nombre: name3, numero: 3, promedio: parseFloat((company.promedioSim3 || 0).toFixed(2)), totalConductores: company.totalConductores || 0 },
+      { nombre: name4, numero: 4, promedio: parseFloat((company.promedioSim4 || 0).toFixed(2)), totalConductores: company.totalConductores || 0 }
+    ].filter(ex => ex.promedio > 0);
   }
 
-  const scores = [
-    parseFloat((company.promedioSim2 || 0).toFixed(2)),
-    parseFloat((company.promedioSim3 || 0).toFixed(2)),
-    parseFloat((company.promedioSim4 || 0).toFixed(2))
-  ];
+  // Generar etiquetas formateadas
+  const labels = exerciseList.map(ex => {
+    if (ex.numero != null) {
+      return `${ex.nombre}`;
+    }
+    return ex.nombre;
+  });
+
+  const scores = exerciseList.map(ex => ex.promedio);
+  const bgColors = exerciseList.map((_, i) => EXERCISE_CHART_PALETTE[i % EXERCISE_CHART_PALETTE.length].bg);
+  const borderColors = exerciseList.map((_, i) => EXERCISE_CHART_PALETTE[i % EXERCISE_CHART_PALETTE.length].border);
+
+  // Actualizar subtítulo con la cantidad y tipo de ejercicios
+  const subtitleEl = document.getElementById('companySimChartSubtitle');
+  if (subtitleEl) {
+    if (exerciseList.length === 0) {
+      subtitleEl.textContent = 'No se registran calificaciones de ejercicios en esta flota.';
+    } else {
+      subtitleEl.textContent = `Promedio ponderado de ${exerciseList.length} ejercicio${exerciseList.length > 1 ? 's evaluados' : ' evaluado'} (promediando repeticiones por conductor)`;
+    }
+  }
+
+  // Ajustar altura del contenedor si hay muchos ejercicios para que se vean cómodos
+  const container = ctx.parentElement;
+  if (container) {
+    if (exerciseList.length > 5) {
+      container.style.height = '380px';
+    } else {
+      container.style.height = '320px';
+    }
+  }
 
   chartInstances[canvasId] = new window.Chart(ctx, {
     type: 'bar',
@@ -373,10 +426,11 @@ export function renderCompanySimulationsChart(canvasId, company) {
         {
           label: 'Promedio Flota',
           data: scores,
-          backgroundColor: ['rgba(148, 163, 184, 0.25)', 'rgba(249, 115, 22, 0.25)', 'rgba(59, 130, 246, 0.25)'],
-          borderColor: ['#94a3b8', '#f97316', '#3b82f6'],
+          backgroundColor: bgColors,
+          borderColor: borderColors,
           borderWidth: 2,
-          borderRadius: 8
+          borderRadius: 8,
+          maxBarThickness: 56
         }
       ]
     },
@@ -389,8 +443,19 @@ export function renderCompanySimulationsChart(canvasId, company) {
           backgroundColor: 'rgba(15, 23, 42, 0.95)',
           titleColor: '#f8fafc',
           bodyColor: '#cbd5e1',
+          padding: 12,
           callbacks: {
-            label: (ctx) => `Promedio Flota: ${ctx.raw} / 10`
+            label: (item) => {
+              const ex = exerciseList[item.dataIndex];
+              const info = [`Promedio Flota: ${item.raw} / 10`];
+              if (ex && ex.totalConductores) {
+                info.push(`Conductores evaluados: ${ex.totalConductores}`);
+              }
+              if (ex && ex.totalRealizaciones && ex.totalRealizaciones > ex.totalConductores) {
+                info.push(`Total de repeticiones: ${ex.totalRealizaciones}`);
+              }
+              return info;
+            }
           }
         }
       },
@@ -403,7 +468,12 @@ export function renderCompanySimulationsChart(canvasId, company) {
         },
         x: {
           grid: { display: false },
-          ticks: { color: '#cbd5e1', font: { family: "'Plus Jakarta Sans', sans-serif" } }
+          ticks: {
+            color: '#cbd5e1',
+            font: { family: "'Plus Jakarta Sans', sans-serif" },
+            maxRotation: exerciseList.length > 4 ? 25 : 0,
+            autoSkip: false
+          }
         }
       }
     }

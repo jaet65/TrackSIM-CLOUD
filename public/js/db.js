@@ -13,6 +13,7 @@ import {
   query,
   orderBy
 } from './firebase-config.js';
+import { normalizeExerciseName } from './exercise-catalog.js';
 
 const LOCAL_STORAGE_KEY = 'tracksim_cloud_evaluaciones';
 const COLLECTION_NAME = 'evaluaciones';
@@ -466,6 +467,51 @@ export function processCompanySummaries(evaluations) {
       const avgScore = evals.reduce((acc, e) => acc + (e.evaluacionFinalPuntos || e.calificacionExacta || 0), 0) / evals.length;
       const latestScore = latest.evaluacionFinalPuntos || latest.calificacionExacta || 0;
 
+      // Calcular promedio de cada ejercicio para ESTE conductor (si hizo el mismo ejercicio varias veces)
+      const driverExMap = new Map(); // key: normalizedName -> { nombreDisplay, scores: [], numeroMin }
+
+      evals.forEach(ev => {
+        if (Array.isArray(ev.ejercicios) && ev.ejercicios.length > 0) {
+          ev.ejercicios.forEach(ex => {
+            if (!ex) return;
+            const rawName = (ex.nombre || (ex.numero ? (nombresSimulaciones[ex.numero] || `Ejercicio ${ex.numero}`) : '')).trim();
+            if (!rawName) return;
+            const normKey = normalizeExerciseName(rawName) || rawName.toLowerCase();
+            const score = typeof ex.calificacion === 'number' ? ex.calificacion : parseFloat(ex.calificacion);
+            if (!isNaN(score)) {
+              if (!driverExMap.has(normKey)) {
+                driverExMap.set(normKey, { nombreDisplay: rawName, scores: [], numero: ex.numero });
+              }
+              driverExMap.get(normKey).scores.push(score);
+            }
+          });
+        } else if (ev.simulacionesDetalle && typeof ev.simulacionesDetalle === 'object') {
+          Object.keys(ev.simulacionesDetalle).forEach(k => {
+            const score = ev.simulacionesDetalle[k];
+            if (typeof score !== 'number' || isNaN(score)) return;
+            const num = parseInt(k.replace('simulacion_', ''), 10);
+            const rawName = (ev.nombresSimulaciones?.[num] || nombresSimulaciones[num] || `Simulación ${num}`).trim();
+            const normKey = normalizeExerciseName(rawName) || rawName.toLowerCase();
+            if (!driverExMap.has(normKey)) {
+              driverExMap.set(normKey, { nombreDisplay: rawName, scores: [], numero: num });
+            }
+            driverExMap.get(normKey).scores.push(score);
+          });
+        }
+      });
+
+      const promediosEjerciciosConductor = {};
+      driverExMap.forEach((val, normKey) => {
+        const sum = val.scores.reduce((a, b) => a + b, 0);
+        const avg = sum / val.scores.length;
+        promediosEjerciciosConductor[normKey] = {
+          nombre: val.nombreDisplay,
+          numero: val.numero,
+          promedio: parseFloat(avg.toFixed(2)),
+          totalVeces: val.scores.length
+        };
+      });
+
       conductores.push({
         nombre: condName,
         totalEvaluaciones: evals.length,
@@ -476,6 +522,7 @@ export function processCompanySummaries(evaluations) {
         simulaciones: latest.simulacionesDetalle || {},
         simulacionesNombres: latest.nombresSimulaciones || nombresSimulaciones,
         ejercicios: latest.ejercicios || [],
+        promediosEjercicios: promediosEjerciciosConductor,
         colisiones: evals.reduce((a, b) => a + (b.colisiones || 0), 0),
         fatalidades: evals.reduce((a, b) => a + (b.fatalidades || 0), 0),
         estado: latest.estado || 'Procesado',
@@ -486,6 +533,52 @@ export function processCompanySummaries(evaluations) {
 
     // Ordenar conductores por puntaje promedio descendente (ranking)
     conductores.sort((a, b) => b.promedioScore - a.promedioScore);
+
+    // Calcular el promedio general de la flota para CADA ejercicio
+    // Metodología: si un conductor hizo el mismo ejercicio varias veces, se toma primero su promedio personal,
+    // y luego se promedian los conductores que hayan realizado dicho ejercicio.
+    const fleetExerciseMap = new Map(); // normKey -> { nombreDisplay, numero, sumDriverAvg: 0, driverCount: 0 }
+
+    conductores.forEach(c => {
+      if (!c.promediosEjercicios) return;
+      Object.entries(c.promediosEjercicios).forEach(([normKey, exData]) => {
+        if (!fleetExerciseMap.has(normKey)) {
+          fleetExerciseMap.set(normKey, {
+            key: normKey,
+            nombre: exData.nombre,
+            numero: exData.numero || null,
+            sumDriverAvg: 0,
+            driverCount: 0,
+            totalRealizaciones: 0
+          });
+        }
+        const fleetEx = fleetExerciseMap.get(normKey);
+        fleetEx.sumDriverAvg += exData.promedio;
+        fleetEx.driverCount += 1;
+        fleetEx.totalRealizaciones += (exData.totalVeces || 1);
+      });
+    });
+
+    const ejerciciosPromedio = [];
+    fleetExerciseMap.forEach(fEx => {
+      const avg = fEx.driverCount > 0 ? (fEx.sumDriverAvg / fEx.driverCount) : 0;
+      ejerciciosPromedio.push({
+        key: fEx.key,
+        nombre: fEx.nombre,
+        numero: fEx.numero,
+        promedio: parseFloat(avg.toFixed(2)),
+        totalConductores: fEx.driverCount,
+        totalRealizaciones: fEx.totalRealizaciones
+      });
+    });
+
+    // Ordenar ejercicios por número de simulación si existe, o por realizaciones / nombre
+    ejerciciosPromedio.sort((a, b) => {
+      if (a.numero && b.numero) return a.numero - b.numero;
+      if (a.numero) return -1;
+      if (b.numero) return 1;
+      return a.nombre.localeCompare(b.nombre);
+    });
 
     summaries.push({
       nombre: name,
@@ -504,6 +597,7 @@ export function processCompanySummaries(evaluations) {
       promedioSim3: countSim3 > 0 ? (sumSim3 / countSim3) : 0,
       promedioSim4: countSim4 > 0 ? (sumSim4 / countSim4) : 0,
       nombresSimulaciones: nombresSimulaciones,
+      ejerciciosPromedio: ejerciciosPromedio,
       conductores: conductores
     });
   }

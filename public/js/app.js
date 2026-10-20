@@ -1182,6 +1182,16 @@ function initCompanyView() {
     });
   }
 
+  // Listener para re-renderizar el gráfico de simulaciones cuando se abre el colapsable
+  const simDetails = document.getElementById('companySimulationsDetails');
+  if (simDetails) {
+    simDetails.addEventListener('toggle', () => {
+      if (simDetails.open && AppState.selectedCompany) {
+        renderCompanySimulationsChart('companySimulationsChartCanvas', AppState.selectedCompany);
+      }
+    });
+  }
+
   // Inicializar ordenamiento interactivo de la tabla de operadores de la flota
   initCompanyDriversTableSorting();
 
@@ -1534,10 +1544,24 @@ function renderCompanyDriversTable(filterSearch = '') {
           <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.15rem;">Último: ${c.ultimoScore.toFixed(2)}</div>
         </td>
         <td>
-          <div style="font-size: 0.76rem; display: flex; gap: 0.35rem; align-items: center; white-space: nowrap;">
-            <span style="color: #94a3b8;" title="S2: ${n2}">S2: <strong>${s2}</strong></span> ·
-            <span style="color: #f97316;" title="S3: ${n3}">S3: <strong>${s3}</strong></span> ·
-            <span style="color: #38bdf8;" title="S4: ${n4}">S4: <strong>${s4}</strong></span>
+          <div style="font-size: 0.76rem; display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap; max-width: 250px;">
+            ${(() => {
+              if (c.promediosEjercicios && Object.keys(c.promediosEjercicios).length > 0) {
+                const exKeys = Object.keys(c.promediosEjercicios);
+                return exKeys.map((k, i) => {
+                  const ex = c.promediosEjercicios[k];
+                  const prefix = ex.numero != null ? `S${ex.numero}:` : `${ex.nombre.substring(0, 7)}:`;
+                  const repText = ex.totalVeces > 1 ? ` (${ex.totalVeces}x prom)` : '';
+                  const color = ['#38bdf8', '#f97316', '#a855f7', '#22c55e', '#eab308'][i % 5];
+                  return `<span style="color: ${color};" title="${ex.nombre}${repText}">${prefix} <strong>${ex.promedio}</strong></span>`;
+                }).join(' · ');
+              }
+              return `
+                <span style="color: #94a3b8;" title="S2: ${n2}">S2: <strong>${s2}</strong></span> ·
+                <span style="color: #f97316;" title="S3: ${n3}">S3: <strong>${s3}</strong></span> ·
+                <span style="color: #38bdf8;" title="S4: ${n4}">S4: <strong>${s4}</strong></span>
+              `;
+            })()}
           </div>
         </td>
         <td>

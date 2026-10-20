@@ -33,7 +33,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <!-- Estilos del Sistema de Diseño -->
-  <script type="module" crossorigin src="/assets/index-DD7zfeM9.js"></script>
+  <script type="module" crossorigin src="/assets/index-DzsPY3AP.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-Cnm3MBgv.css">
 </head>
 
@@ -798,23 +798,19 @@
             </div>
           </details>
 
-          <!-- Cuadrícula de Gráficos de la Empresa -->
-          <div class="charts-grid" style="margin-bottom: 1.5rem; grid-template-columns: 1fr;">
-
-            <!-- Desglose de Simulaciones de la Flota -->
-            <div class="glass-card">
-              <div class="chart-header">
-                <div>
-                  <h3 class="chart-title">🎮 Rendimiento Promedio en Simulaciones</h3>
-                  <p id="companySimChartSubtitle" style="font-size: 0.8rem; color: var(--text-muted);">Promedio en
-                    Montaña (S2), Sierra (S3) y Maniobras (S4)</p>
-                </div>
+          <!-- Desglose de Simulaciones de la Flota (colapsable) -->
+          <details id="companySimulationsDetails" class="glass-card" style="margin-bottom: 1.5rem;" open>
+            <summary class="chart-header" style="cursor: pointer; list-style: none; user-select: none;">
+              <div>
+                <h3 class="chart-title">🎮 Rendimiento Promedio en Simulaciones</h3>
+                <p id="companySimChartSubtitle" style="font-size: 0.8rem; color: var(--text-muted);">Promedio por ejercicio realizado en simulador</p>
               </div>
-              <div class="chart-container" style="height: 320px;">
-                <canvas id="companySimulationsChartCanvas"></canvas>
-              </div>
+              <span class="badge badge-info">▼ Mostrar / ocultar</span>
+            </summary>
+            <div class="chart-container" style="height: 320px; width: 100%; margin-top: 1rem;">
+              <canvas id="companySimulationsChartCanvas"></canvas>
             </div>
-          </div>
+          </details>
 
           <!-- Tabla / Roster de Operadores de la Empresa -->
           <div class="glass-card">
