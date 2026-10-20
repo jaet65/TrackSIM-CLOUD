@@ -783,20 +783,22 @@
             </div>
           </div>
 
-          <!-- Cuadrícula de Gráficos de la Empresa -->
-          <div class="charts-grid" style="margin-bottom: 1.5rem;">
-            <!-- Ranking de Operadores de la Empresa -->
-            <div class="glass-card">
-              <div class="chart-header">
-                <div>
-                  <h3 class="chart-title">🏆 Ranking de Operadores de la Flota</h3>
-                  <p style="font-size: 0.8rem; color: var(--text-muted);">Calificación promedio de mayor a menor</p>
-                </div>
+          <!-- Ranking de Operadores de la Empresa (ancho completo, colapsable) -->
+          <details id="companyRankingDetails" class="glass-card" style="margin-bottom: 1.5rem;">
+            <summary class="chart-header" style="cursor: pointer; list-style: none; user-select: none;">
+              <div>
+                <h3 class="chart-title">🏆 Ranking de Operadores de la Flota</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted);">Evaluación final (promedio si tiene más de 1 sesión), de mayor a menor</p>
               </div>
-              <div class="chart-container" style="height: 320px;">
-                <canvas id="companyRankingChartCanvas"></canvas>
-              </div>
+              <span class="badge badge-info">▼ Mostrar / ocultar</span>
+            </summary>
+            <div class="chart-container" style="height: 320px; width: 100%; margin-top: 1rem;">
+              <canvas id="companyRankingChartCanvas"></canvas>
             </div>
+          </details>
+
+          <!-- Cuadrícula de Gráficos de la Empresa -->
+          <div class="charts-grid" style="margin-bottom: 1.5rem; grid-template-columns: 1fr;">
 
             <!-- Desglose de Simulaciones de la Flota -->
             <div class="glass-card">

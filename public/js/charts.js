@@ -275,8 +275,13 @@ export function renderCompanyRankingChart(canvasId, conductores) {
 
   if (!conductores || conductores.length === 0) return;
 
-  const sorted = conductores.slice(0, 15);
-  const labels = sorted.map(c => c.nombre);
+  // Mostrar todos los operadores (puntaje = evaluación final; promedio si tiene varias sesiones)
+  const sorted = [...conductores].sort((a, b) => b.promedioScore - a.promedioScore);
+  if (ctx.parentElement) {
+    ctx.parentElement.style.height = Math.max(200, sorted.length * 20 + 30) + 'px';
+  }
+  const medals = ['🥇', '🥈', '🥉'];
+  const labels = sorted.map((c, i) => `${medals[i] || '#' + (i + 1)} ${i < 3 ? (i + 1) + '. ' : ''}${c.nombre}`);
   const scores = sorted.map(c => parseFloat(c.promedioScore.toFixed(2)));
   const colors = sorted.map(c => {
     if (c.promedioScore >= 8.0) return '#10b981';
@@ -296,7 +301,9 @@ export function renderCompanyRankingChart(canvasId, conductores) {
           backgroundColor: colors.map(c => c + '33'),
           borderColor: colors,
           borderWidth: 1.5,
-          borderRadius: 6
+          borderRadius: 4,
+          barPercentage: 0.8,
+          categoryPercentage: 0.9
         }
       ]
     },
@@ -324,7 +331,7 @@ export function renderCompanyRankingChart(canvasId, conductores) {
         },
         y: {
           grid: { display: false },
-          ticks: { color: '#f1f5f9', font: { family: "'Plus Jakarta Sans', sans-serif", weight: '500' } }
+          ticks: { color: '#f1f5f9', autoSkip: false, font: { family: "'Plus Jakarta Sans', sans-serif", weight: '500', size: 10 } }
         }
       }
     }

@@ -1172,6 +1172,16 @@ function initCompanyView() {
     });
   }
 
+  // Listener para re-renderizar o ajustar el gráfico de ranking cuando se abre el colapsable
+  const rankingDetails = document.getElementById('companyRankingDetails');
+  if (rankingDetails) {
+    rankingDetails.addEventListener('toggle', () => {
+      if (rankingDetails.open && AppState.selectedCompany) {
+        renderCompanyRankingChart('companyRankingChartCanvas', AppState.selectedCompany.conductores);
+      }
+    });
+  }
+
   // Inicializar ordenamiento interactivo de la tabla de operadores de la flota
   initCompanyDriversTableSorting();
 
