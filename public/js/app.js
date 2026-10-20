@@ -134,6 +134,19 @@ function initNavigation() {
     const confirmed = window.confirm(`⚠️ ADVERTENCIA: ¿Estás seguro de que deseas eliminar TODAS las evaluaciones (${count} registros)?\n\nSe borrarán permanentemente de Cloud Firestore y de la memoria local. Esta acción NO se puede deshacer.`);
     if (!confirmed) return;
 
+    const btn = document.getElementById('clearAllEvalsBtn');
+    const originalHTML = btn ? btn.innerHTML : '';
+    if (btn) {
+      if (!document.getElementById('spinnerKeyframes')) {
+        const st = document.createElement('style');
+        st.id = 'spinnerKeyframes';
+        st.textContent = '@keyframes btnSpin { to { transform: rotate(360deg); } }';
+        document.head.appendChild(st);
+      }
+      btn.disabled = true;
+      btn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;margin-right:0.5rem;vertical-align:-2px;border:2px solid rgba(239,68,68,0.3);border-top-color:#ef4444;border-radius:50%;animation:btnSpin 0.7s linear infinite;"></span>Eliminando evaluaciones...';
+    }
+
     try {
       await clearAllEvaluations();
       await loadAndRefreshData();
@@ -141,6 +154,11 @@ function initNavigation() {
     } catch (err) {
       console.error('Error vaciando evaluaciones:', err);
       showToast('Error al vaciar evaluaciones.', 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+      }
     }
   };
 
@@ -665,7 +683,6 @@ function initDropzone() {
 
         // Recargar datos y actualizar vistas
         await loadAndRefreshData();
-        switchTab('evolucion');
       } catch (err) {
         console.error('Error al guardar en lote:', err);
         showToast('Error al guardar en la base de datos.', 'error');
@@ -1585,6 +1602,17 @@ function initDirectoryFilters() {
 
   if (exportBtn) {
     exportBtn.addEventListener('click', () => exportToCSV());
+  }
+
+  const importBtn = document.getElementById('importCsvBtn');
+  const importInput = document.getElementById('importCsvInput');
+  if (importBtn && importInput) {
+    importBtn.addEventListener('click', () => importInput.click());
+    importInput.addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (file) await importEvaluationsFromCSV(file);
+    });
   }
 
   // Selección de todas las evaluaciones visibles en el directorio
@@ -2507,8 +2535,32 @@ function renderDirectoryTable() {
   updateDirectorySelectionUI();
 }
 
+/** Escapa un valor para CSV (comillas dobles, comas y saltos de línea) */
+function csvCell(v) {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** Obtiene los ejercicios de una evaluación como mapa numero -> ejercicio */
+function getEvaluationExerciseMap(e) {
+  const map = {};
+  if (Array.isArray(e.ejercicios) && e.ejercicios.length > 0) {
+    e.ejercicios.forEach(ex => { if (ex && ex.numero != null) map[ex.numero] = ex; });
+  } else {
+    Object.keys(e.simulacionesDetalle || {}).forEach(k => {
+      const n = parseInt(k.replace('simulacion_', ''), 10);
+      if (!isNaN(n)) {
+        map[n] = { numero: n, nombre: e.nombresSimulaciones?.[n] || '', calificacion: e.simulacionesDetalle[k], descripcion: '' };
+      }
+    });
+  }
+  return map;
+}
+
 /**
- * Exporta las evaluaciones filtradas a un archivo CSV
+ * Exporta las evaluaciones filtradas a un archivo CSV.
+ * El mismo archivo puede reimportarse para edición masiva (columna ID).
  */
 function exportToCSV() {
   const evals = getFilteredDirectoryEvaluations();
@@ -2517,40 +2569,45 @@ function exportToCSV() {
     return;
   }
 
+  const exMaps = evals.map(getEvaluationExerciseMap);
+  let maxSim = 4;
+  exMaps.forEach(m => Object.keys(m).forEach(k => { if (+k > maxSim) maxSim = +k; }));
+
   const headers = [
-    'Conductor', 'Empresa', 'Sede', 'Fecha', 'Curso', 'Instructor',
+    'ID', 'Conductor', 'Empresa', 'Sede', 'Fecha', 'Curso', 'Nombre Curso', 'Instructor', 'Folio Grupo',
     'Habilidades Manejo (Puntos)', 'Habilidades Manejo (%)',
-    'Simulador (Puntos)', 'Simulador (%)',
-    'Simulacion 2', 'Simulacion 3', 'Simulacion 4',
-    'Evaluacion Final', 'Calificacion Exacta',
-    'Colisiones', 'Fatalidades', 'Fuera de Via',
-    'Estado', 'Firma Digital'
+    'Simulador (Puntos)', 'Simulador (%)'
   ];
+  for (let n = 2; n <= maxSim; n++) {
+    headers.push(`Sim ${n} Titulo`, `Sim ${n} Nota`);
+  }
+  headers.push(
+    'Evaluacion Final',
+    'Colisiones', 'Fatalidades', 'Fuera de Via',
+    'Estado'
+  );
 
-  const rows = evals.map(e => [
-    `"${e.conductor || ''}"`,
-    `"${e.empresa || ''}"`,
-    `"${e.sede || ''}"`,
-    `"${e.fechaCapacitacionFormato || e.fechaCapacitacion || ''}"`,
-    `"${e.cursoCodigo || ''}"`,
-    `"${e.instructor || ''}"`,
-    e.habilidadesManejoPuntos || 0,
-    e.habilidadesManejoPct || 0,
-    e.practicaSimuladorPuntos || 0,
-    e.practicaSimuladorPct || 0,
-    e.simulacionesDetalle?.simulacion_2 ?? '',
-    e.simulacionesDetalle?.simulacion_3 ?? '',
-    e.simulacionesDetalle?.simulacion_4 ?? '',
-    e.evaluacionFinalPuntos || 0,
-    e.calificacionExacta || 0,
-    e.colisiones || 0,
-    e.fatalidades || 0,
-    e.vehiculoFueraVia || 0,
-    `"${e.estado || ''}"`,
-    `"${e.firmaDigital || ''}"`
-  ]);
+  const rows = evals.map((e, idx) => {
+    const row = [
+      e.id, e.conductor || '', e.empresa || '', e.sede || '',
+      e.fechaCapacitacionFormato || e.fechaCapacitacion || '',
+      e.cursoCodigo || '', e.cursoNombre || '', e.instructor || '', e.folioGrupo || '',
+      e.habilidadesManejoPuntos || 0, e.habilidadesManejoPct || 0,
+      e.practicaSimuladorPuntos || 0, e.practicaSimuladorPct || 0
+    ];
+    for (let n = 2; n <= maxSim; n++) {
+      const ex = exMaps[idx][n];
+      row.push(ex?.nombre ?? '', ex?.calificacion ?? '');
+    }
+    row.push(
+      e.evaluacionFinalPuntos || 0,
+      e.colisiones || 0, e.fatalidades || 0, e.vehiculoFueraVia || 0,
+      e.estado || ''
+    );
+    return row.map(csvCell);
+  });
 
-  const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const csvContent = '\uFEFF' + [headers.map(csvCell).join(','), ...rows.map(r => r.join(','))].join('\r\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -2561,6 +2618,181 @@ function exportToCSV() {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
   showToast('Archivo CSV generado y descargado correctamente.', 'success');
+}
+
+/** Parser CSV (soporta comillas, saltos de línea en celdas y delimitador , o ;) */
+function parseCSV(text) {
+  text = text.replace(/^\uFEFF/, '');
+  const firstLine = text.split(/\r?\n/)[0] || '';
+  const delim = (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length ? ';' : ',';
+  const rows = [];
+  let row = [], cell = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { cell += '"'; i++; } else inQ = false;
+      } else cell += c;
+    } else if (c === '"') inQ = true;
+    else if (c === delim) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell); cell = '';
+      if (row.some(x => x !== '')) rows.push(row);
+      row = [];
+    } else cell += c;
+  }
+  row.push(cell);
+  if (row.some(x => x !== '')) rows.push(row);
+  return rows;
+}
+
+/**
+ * Importa un CSV (generado con Exportar CSV) y actualiza masivamente las evaluaciones por ID
+ */
+async function importEvaluationsFromCSV(file) {
+  try {
+    const rows = parseCSV(await file.text());
+    if (rows.length < 2) {
+      showToast('El archivo CSV está vacío.', 'warning');
+      return;
+    }
+    const headers = rows[0].map(h => h.trim());
+    const col = (name) => headers.indexOf(name);
+    const idCol = col('ID');
+    if (idCol < 0) {
+      showToast('El CSV no tiene la columna "ID". Usa un archivo generado con Exportar CSV.', 'error');
+      return;
+    }
+
+    const simNums = [];
+    headers.forEach(h => {
+      const m = h.match(/^Sim (\d+) Titulo$/);
+      if (m) simNums.push(parseInt(m[1], 10));
+    });
+
+    const num = (v, fallback) => {
+      const n = parseFloat(String(v ?? '').replace(',', '.'));
+      return isNaN(n) ? fallback : n;
+    };
+
+    const updates = [];
+    let skipped = 0;
+    rows.slice(1).forEach(r => {
+      const id = (r[idCol] || '').trim();
+      const item = AppState.evaluations.find(e => e.id === id);
+      if (!item) { skipped++; return; }
+      const get = (name) => { const i = col(name); return i >= 0 ? (r[i] ?? '').trim() : undefined; };
+      const f = {};
+      const setStr = (field, header) => { const v = get(header); if (v !== undefined) f[field] = v; };
+      setStr('conductor', 'Conductor'); setStr('empresa', 'Empresa'); setStr('sede', 'Sede');
+      setStr('cursoCodigo', 'Curso'); setStr('cursoNombre', 'Nombre Curso');
+      setStr('instructor', 'Instructor'); setStr('folioGrupo', 'Folio Grupo');
+
+      const fecha = get('Fecha');
+      if (fecha) {
+        let iso = '', fmt = '';
+        if (/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+          const [y, m, d] = fecha.split('-'); iso = fecha; fmt = `${d}/${m}/${y}`;
+        } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(fecha)) {
+          const [d, m, y] = fecha.split('/');
+          fmt = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`; iso = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        }
+        if (iso) {
+          f.fechaCapacitacion = iso; f.fechaCapacitacionFormato = fmt; f.fechaReporte = fmt;
+        }
+      }
+
+      // Ejercicios: se fusionan con los existentes por número
+      if (simNums.length > 0) {
+        const map = getEvaluationExerciseMap(item);
+        // Si el usuario eliminó columnas "Sim N" del CSV, esos ejercicios se eliminan de la evaluación
+        Object.keys(map).forEach(k => {
+          if (+k >= 2 && !simNums.includes(+k)) delete map[k];
+        });
+        simNums.forEach(n => {
+          const titulo = get(`Sim ${n} Titulo`) || '';
+          const notaStr = get(`Sim ${n} Nota`) ?? '';
+          if (!titulo && notaStr === '') { delete map[n]; return; }
+          // La descripción se obtiene del catálogo según el título; si no hay coincidencia se conserva la existente
+          const desc = findCatalogExercise(titulo)?.descripcion || map[n]?.descripcion || '';
+          map[n] = {
+            numero: n,
+            nombre: titulo,
+            calificacion: notaStr === '' ? null : num(notaStr, null),
+            descripcion: desc
+          };
+        });
+        const ejercicios = Object.values(map).sort((a, b) => a.numero - b.numero);
+        f.ejercicios = ejercicios;
+        f.simulacionesDetalle = {};
+        f.nombresSimulaciones = {};
+        ejercicios.forEach(ex => {
+          f.simulacionesDetalle[`simulacion_${ex.numero}`] = ex.calificacion;
+          f.nombresSimulaciones[ex.numero] = ex.nombre;
+        });
+      }
+
+      // Calificaciones y dictamen
+      const hab = num(get('Habilidades Manejo (Puntos)'), item.habilidadesManejoPuntos || 0);
+      const sim = num(get('Simulador (Puntos)'), item.practicaSimuladorPuntos || 0);
+      let finalPts = num(get('Evaluacion Final'), NaN);
+      if (isNaN(finalPts)) finalPts = Number((hab + sim).toFixed(2));
+      f.habilidadesManejoPuntos = hab;
+      f.habilidadesManejoPct = Math.round((hab / 3.0) * 10000) / 100;
+      f.practicaSimuladorPuntos = sim;
+      f.practicaSimuladorPct = Math.round((sim / 7.0) * 10000) / 100;
+      f.evaluacionFinalPuntos = finalPts;
+      f.evaluacionFinalPct = Math.round((finalPts / 10.0) * 10000) / 100;
+      f.calificacionExacta = Number(finalPts.toFixed(4));
+      f.estado = finalPts >= 8 ? 'Sobresaliente' : finalPts >= 6 ? 'Aprobado' : finalPts >= 5 ? 'Requiere Refuerzo' : 'No Aprobado';
+      f.badgeColor = getBadgeColorForEstado(f.estado);
+      f.colisiones = parseInt(get('Colisiones'), 10) || 0;
+      f.fatalidades = parseInt(get('Fatalidades'), 10) || 0;
+      f.vehiculoFueraVia = parseInt(get('Fuera de Via'), 10) || 0;
+
+      updates.push({ id, fields: f });
+    });
+
+    if (updates.length === 0) {
+      showToast('Ninguna fila del CSV coincide con evaluaciones existentes (revisa la columna ID).', 'warning');
+      return;
+    }
+    if (!confirm(`Se actualizarán ${updates.length} evaluaciones en Firestore${skipped ? ` (${skipped} filas ignoradas por ID desconocido)` : ''}.\n\n¿Continuar?`)) return;
+
+    const btn = document.getElementById('importCsvBtn');
+    const originalHTML = btn ? btn.innerHTML : '';
+    if (!document.getElementById('spinnerKeyframes')) {
+      const st = document.createElement('style');
+      st.id = 'spinnerKeyframes';
+      st.textContent = '@keyframes btnSpin { to { transform: rotate(360deg); } }';
+      document.head.appendChild(st);
+    }
+    const setProgress = (done) => {
+      if (!btn) return;
+      btn.innerHTML = `<span style="display:inline-block;width:14px;height:14px;margin-right:0.5rem;vertical-align:-2px;border:2px solid rgba(56,189,248,0.3);border-top-color:#38bdf8;border-radius:50%;animation:btnSpin 0.7s linear infinite;"></span>Importando ${done}/${updates.length}...`;
+    };
+    if (btn) btn.disabled = true;
+    try {
+      setProgress(0);
+      let done = 0;
+      for (const u of updates) {
+        await updateSingleEvaluation(u.id, u.fields);
+        setProgress(++done);
+      }
+      if (btn) btn.innerHTML = originalHTML.replace('Importar CSV', 'Actualizando vista...');
+      await loadAndRefreshData();
+      showToast(`¡${updates.length} evaluaciones actualizadas desde CSV!`, 'success');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+      }
+    }
+  } catch (err) {
+    console.error('Error al importar CSV:', err);
+    showToast('Error al importar el CSV.', 'error');
+  }
 }
 
 // ==========================================
