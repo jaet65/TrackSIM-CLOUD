@@ -726,7 +726,7 @@
               <label for="companySelect" style="font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 0.4rem;">
                 🏢 Seleccionar Empresa:
               </label>
-              <select id="companySelect" class="custom-select" style="min-width: 280px;">
+              <select id="companySelect" class="custom-select" style="min-width: 220px; max-width: 100%;">
                 <!-- Opciones dinámicas -->
               </select>
             </div>
@@ -805,16 +805,30 @@
               <span id="companyDriversCountBadge" class="badge badge-info">0 operadores</span>
             </div>
             <div class="table-responsive">
-              <table class="custom-table">
+              <table class="custom-table" id="companyDriversTable">
                 <thead>
-                  <tr>
-                    <th>Operador / Conductor</th>
-                    <th>Evaluaciones</th>
-                    <th>Última Capacitación</th>
-                    <th>Calificación Promedio</th>
-                    <th>Desglose Simulaciones</th>
-                    <th>Incidentes</th>
-                    <th>Estado</th>
+                  <tr id="companyDriversTableHeadRow">
+                    <th class="sortable-th" data-sort-key="nombre" title="Haz clic para ordenar por Operador">
+                      Operador / Conductor <span class="sort-indicator">↕</span>
+                    </th>
+                    <th class="sortable-th" data-sort-key="totalEvaluaciones" title="Haz clic para ordenar por Evaluaciones">
+                      Evaluaciones <span class="sort-indicator">↕</span>
+                    </th>
+                    <th class="sortable-th" data-sort-key="ultimaFecha" title="Haz clic para ordenar por Fecha de Capacitación">
+                      Última Capacitación <span class="sort-indicator">↕</span>
+                    </th>
+                    <th class="sortable-th sorted-desc" data-sort-key="promedioScore" title="Haz clic para ordenar por Calificación Promedio">
+                      Calificación Promedio <span class="sort-indicator">▼</span>
+                    </th>
+                    <th class="sortable-th" data-sort-key="simulaciones" title="Haz clic para ordenar por Rendimiento en Simulaciones">
+                      Desglose Simulaciones <span class="sort-indicator">↕</span>
+                    </th>
+                    <th class="sortable-th" data-sort-key="incidentes" title="Haz clic para ordenar por Total de Incidentes">
+                      Incidentes <span class="sort-indicator">↕</span>
+                    </th>
+                    <th class="sortable-th" data-sort-key="estado" title="Haz clic para ordenar por Estado">
+                      Estado <span class="sort-indicator">↕</span>
+                    </th>
                     <th class="actions-col">Acciones</th>
                   </tr>
                 </thead>
@@ -860,15 +874,15 @@
               placeholder="Buscar por conductor, empresa, curso...">
           </div>
 
-          <select id="filterCompany" class="custom-select" style="min-width: 190px;">
+          <select id="filterCompany" class="custom-select">
             <option value="all">Todas las Empresas</option>
           </select>
 
-          <select id="filterSede" class="custom-select" style="min-width: 190px;">
+          <select id="filterSede" class="custom-select">
             <option value="all">Todas las Sedes</option>
           </select>
 
-          <select id="filterStatus" class="custom-select" style="min-width: 170px;">
+          <select id="filterStatus" class="custom-select">
             <option value="all">Todos los Estatus</option>
             <option value="Sobresaliente">Sobresaliente</option>
             <option value="Aprobado">Aprobado</option>
@@ -907,19 +921,36 @@
             </button>
           </div>
           <div class="table-responsive">
-            <table class="custom-table">
+            <table class="custom-table" id="directoryTable">
               <thead>
-                <tr>
+                <tr id="directoryTableHeadRow">
                   <th style="width: 40px; text-align: center;">
                     <input type="checkbox" id="selectAllDirCheckbox" title="Seleccionar todas las evaluaciones visibles" style="cursor: pointer; width: 16px; height: 16px; accent-color: #38bdf8;">
                   </th>
-                  <th>Conductor</th>
-                  <th>Empresa</th>
-                  <th>Fecha</th>
-                  <th>Habilidades Manejo</th>
-                  <th>Práctica Simulador</th>
-                  <th>Evaluación Final</th>
-                  <th>Estado</th>
+                  <th class="sortable-th" data-sort-key="conductor" title="Haz clic para ordenar por Conductor">
+                    Conductor <span class="sort-indicator">↕</span>
+                  </th>
+                  <th class="sortable-th" data-sort-key="empresa" title="Haz clic para ordenar por Empresa">
+                    Empresa <span class="sort-indicator">↕</span>
+                  </th>
+                  <th class="sortable-th sorted-desc" data-sort-key="fecha" title="Haz clic para ordenar por Fecha">
+                    Fecha <span class="sort-indicator">▼</span>
+                  </th>
+                  <th class="sortable-th" data-sort-key="habilidades" title="Haz clic para ordenar por Habilidades de Manejo">
+                    Habilidades Manejo <span class="sort-indicator">↕</span>
+                  </th>
+                  <th class="sortable-th" data-sort-key="simulador" title="Haz clic para ordenar por Práctica en Simulador">
+                    Práctica Simulador <span class="sort-indicator">↕</span>
+                  </th>
+                  <th class="sortable-th" data-sort-key="simulaciones" title="Haz clic para ordenar por Desglose de Simulaciones">
+                    Desglose Simulaciones <span class="sort-indicator">↕</span>
+                  </th>
+                  <th class="sortable-th" data-sort-key="evaluacionFinal" title="Haz clic para ordenar por Evaluación Final">
+                    Evaluación Final <span class="sort-indicator">↕</span>
+                  </th>
+                  <th class="sortable-th" data-sort-key="estado" title="Haz clic para ordenar por Estado">
+                    Estado <span class="sort-indicator">↕</span>
+                  </th>
                   <th class="actions-col">Acciones</th>
                 </tr>
               </thead>

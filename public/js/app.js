@@ -61,6 +61,14 @@ const AppState = {
   stagingEditing: false,
   selectedDirectoryIds: new Set(),
   currentTab: 'dashboard',
+  companyTableSort: {
+    column: 'promedioScore',
+    direction: 'desc'
+  },
+  directoryTableSort: {
+    column: 'fecha',
+    direction: 'desc'
+  },
   filters: {
     search: '',
     empresa: 'all',
@@ -1145,6 +1153,9 @@ function initCompanyView() {
     });
   }
 
+  // Inicializar ordenamiento interactivo de la tabla de operadores de la flota
+  initCompanyDriversTableSorting();
+
   // Permite saltar directamente a la trazabilidad del conductor desde la empresa
   window.inspectDriverEvolucion = (driverName) => {
     const driver = AppState.drivers.find(d => d.nombre === driverName);
@@ -1160,6 +1171,138 @@ function initCompanyView() {
     if (driverSelect) driverSelect.value = driver.slug;
     switchTab('evolucion');
   };
+}
+
+function initCompanyDriversTableSorting() {
+  const table = document.getElementById('companyDriversTable');
+  if (!table) return;
+
+  const thead = table.querySelector('thead');
+  if (!thead) return;
+
+  thead.addEventListener('click', (e) => {
+    const th = e.target.closest('th.sortable-th');
+    if (!th) return;
+    const key = th.dataset.sortKey;
+    if (!key) return;
+
+    if (AppState.companyTableSort.column === key) {
+      AppState.companyTableSort.direction = AppState.companyTableSort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+      AppState.companyTableSort.column = key;
+      // Dirección inicial según columna
+      if (key === 'nombre') {
+        AppState.companyTableSort.direction = 'asc';
+      } else {
+        AppState.companyTableSort.direction = 'desc';
+      }
+    }
+
+    const searchInput = document.getElementById('companyDriverSearch');
+    const currentSearch = searchInput ? searchInput.value.toLowerCase().trim() : '';
+    renderCompanyDriversTable(currentSearch);
+  });
+}
+
+function parseDateToTimestamp(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') return 0;
+  const s = dateStr.trim();
+  const dmMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (dmMatch) {
+    return new Date(parseInt(dmMatch[3], 10), parseInt(dmMatch[2], 10) - 1, parseInt(dmMatch[1], 10)).getTime() || 0;
+  }
+  const ymMatch = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (ymMatch) {
+    return new Date(parseInt(ymMatch[1], 10), parseInt(ymMatch[2], 10) - 1, parseInt(ymMatch[3], 10)).getTime() || 0;
+  }
+  const t = Date.parse(s);
+  return isNaN(t) ? 0 : t;
+}
+
+function getConductorSimScore(c) {
+  if (!c || !c.simulaciones) return -1;
+  const s2 = c.simulaciones.simulacion_2;
+  const s3 = c.simulaciones.simulacion_3;
+  const s4 = c.simulaciones.simulacion_4;
+  let sum = 0, count = 0;
+  if (typeof s2 === 'number' && !isNaN(s2)) { sum += s2; count++; }
+  if (typeof s3 === 'number' && !isNaN(s3)) { sum += s3; count++; }
+  if (typeof s4 === 'number' && !isNaN(s4)) { sum += s4; count++; }
+  return count > 0 ? (sum / count) : -1;
+}
+
+function updateCompanyTableSortHeaders(activeCol, activeDir) {
+  const ths = document.querySelectorAll('#companyDriversTable thead th.sortable-th');
+  ths.forEach(th => {
+    const key = th.dataset.sortKey;
+    const indicator = th.querySelector('.sort-indicator');
+    th.classList.remove('sorted-asc', 'sorted-desc');
+    if (key === activeCol) {
+      th.classList.add(activeDir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+      th.setAttribute('aria-sort', activeDir === 'asc' ? 'ascending' : 'descending');
+      if (indicator) indicator.textContent = activeDir === 'asc' ? '▲' : '▼';
+    } else {
+      th.setAttribute('aria-sort', 'none');
+      if (indicator) indicator.textContent = '↕';
+    }
+  });
+}
+
+function initDirectoryTableSorting() {
+  const table = document.getElementById('directoryTable');
+  if (!table) return;
+
+  const thead = table.querySelector('thead');
+  if (!thead) return;
+
+  thead.addEventListener('click', (e) => {
+    const th = e.target.closest('th.sortable-th');
+    if (!th) return;
+    const key = th.dataset.sortKey;
+    if (!key) return;
+
+    if (AppState.directoryTableSort.column === key) {
+      AppState.directoryTableSort.direction = AppState.directoryTableSort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+      AppState.directoryTableSort.column = key;
+      if (key === 'conductor' || key === 'empresa') {
+        AppState.directoryTableSort.direction = 'asc';
+      } else {
+        AppState.directoryTableSort.direction = 'desc';
+      }
+    }
+
+    renderDirectoryTable();
+  });
+}
+
+function updateDirectoryTableSortHeaders(activeCol, activeDir) {
+  const ths = document.querySelectorAll('#directoryTable thead th.sortable-th');
+  ths.forEach(th => {
+    const key = th.dataset.sortKey;
+    const indicator = th.querySelector('.sort-indicator');
+    th.classList.remove('sorted-asc', 'sorted-desc');
+    if (key === activeCol) {
+      th.classList.add(activeDir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+      th.setAttribute('aria-sort', activeDir === 'asc' ? 'ascending' : 'descending');
+      if (indicator) indicator.textContent = activeDir === 'asc' ? '▲' : '▼';
+    } else {
+      th.setAttribute('aria-sort', 'none');
+      if (indicator) indicator.textContent = '↕';
+    }
+  });
+}
+
+function getEvaluationSimScore(e) {
+  if (!e || !e.simulacionesDetalle) return -1;
+  const s2 = e.simulacionesDetalle.simulacion_2;
+  const s3 = e.simulacionesDetalle.simulacion_3;
+  const s4 = e.simulacionesDetalle.simulacion_4;
+  let sum = 0, count = 0;
+  if (typeof s2 === 'number' && !isNaN(s2)) { sum += s2; count++; }
+  if (typeof s3 === 'number' && !isNaN(s3)) { sum += s3; count++; }
+  if (typeof s4 === 'number' && !isNaN(s4)) { sum += s4; count++; }
+  return count > 0 ? (sum / count) : -1;
 }
 
 function renderCompanyView() {
@@ -1239,10 +1382,72 @@ function renderCompanyDriversTable(filterSearch = '') {
   const countBadge = document.getElementById('companyDriversCountBadge');
   if (!comp || !tbody) return;
 
-  let list = comp.conductores || [];
+  let list = comp.conductores ? [...comp.conductores] : [];
   if (filterSearch) {
     list = list.filter(c => c.nombre.toLowerCase().includes(filterSearch));
   }
+
+  // Ordenamiento interactivo por encabezados
+  const sortCol = AppState.companyTableSort?.column || 'promedioScore';
+  const sortDir = AppState.companyTableSort?.direction || 'desc';
+
+  list.sort((a, b) => {
+    let cmp = 0;
+    switch (sortCol) {
+      case 'nombre':
+        cmp = (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base', numeric: true });
+        break;
+      case 'totalEvaluaciones':
+        cmp = (a.totalEvaluaciones || 0) - (b.totalEvaluaciones || 0);
+        break;
+      case 'ultimaFecha': {
+        const ta = parseDateToTimestamp(a.ultimaFecha);
+        const tb = parseDateToTimestamp(b.ultimaFecha);
+        cmp = ta - tb;
+        break;
+      }
+      case 'promedioScore':
+        cmp = (a.promedioScore || 0) - (b.promedioScore || 0);
+        break;
+      case 'simulaciones': {
+        const sa = getConductorSimScore(a);
+        const sb = getConductorSimScore(b);
+        cmp = sa - sb;
+        break;
+      }
+      case 'incidentes': {
+        const totalA = (a.colisiones || 0) + (a.fatalidades || 0);
+        const totalB = (b.colisiones || 0) + (b.fatalidades || 0);
+        if (totalA !== totalB) {
+          cmp = totalA - totalB;
+        } else {
+          cmp = (a.fatalidades || 0) - (b.fatalidades || 0);
+        }
+        break;
+      }
+      case 'estado': {
+        const rank = {
+          'Sobresaliente': 4,
+          'Aprobado': 3,
+          'Requiere Refuerzo': 2,
+          'No Aprobado': 1
+        };
+        const ra = rank[a.estado] || 0;
+        const rb = rank[b.estado] || 0;
+        if (ra !== rb) {
+          cmp = ra - rb;
+        } else {
+          cmp = (a.promedioScore || 0) - (b.promedioScore || 0);
+        }
+        break;
+      }
+      default:
+        cmp = (a.promedioScore || 0) - (b.promedioScore || 0);
+    }
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  updateCompanyTableSortHeaders(sortCol, sortDir);
 
   if (countBadge) countBadge.textContent = `${list.length} operador${list.length === 1 ? '' : 'es'}`;
 
@@ -1268,13 +1473,13 @@ function renderCompanyDriversTable(filterSearch = '') {
     return `
       <tr>
         <td>
-          <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <div style="width: 28px; height: 28px; border-radius: 50%; background: rgba(56, 189, 248, 0.15); color: #38bdf8; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700;">
+          <div style="display: flex; align-items: center; gap: 0.75rem; min-width: 0;">
+            <div style="width: 28px; height: 28px; min-width: 28px; border-radius: 50%; background: rgba(56, 189, 248, 0.15); color: #38bdf8; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700;">
               ${idx + 1}
             </div>
-            <div>
-              <div style="font-weight: 600; color: #ffffff;">${c.nombre}</div>
-              <div style="font-size: 0.72rem; color: var(--text-muted);">ID: ${c.latestEvalId ? c.latestEvalId.substring(0, 16) : 'N/A'}</div>
+            <div style="min-width: 0;">
+              <div style="font-weight: 600; color: #ffffff; max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${c.nombre}">${c.nombre}</div>
+              <div style="font-size: 0.72rem; color: var(--text-muted); max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">ID: ${c.latestEvalId ? c.latestEvalId.substring(0, 16) : 'N/A'}</div>
             </div>
           </div>
         </td>
@@ -1412,6 +1617,9 @@ function initDirectoryFilters() {
       await handleDirectoryBatchUpdate();
     });
   }
+
+  // Inicializar ordenamiento interactivo de la tabla del directorio
+  initDirectoryTableSorting();
 }
 
 /**
@@ -1446,6 +1654,70 @@ function getFilteredDirectoryEvaluations() {
   if (estado !== 'all') {
     list = list.filter(e => e.estado === estado);
   }
+
+  // Ordenamiento interactivo por columnas en directorio
+  const sortCol = AppState.directoryTableSort?.column || 'fecha';
+  const sortDir = AppState.directoryTableSort?.direction || 'desc';
+
+  list.sort((a, b) => {
+    let cmp = 0;
+    switch (sortCol) {
+      case 'conductor':
+        cmp = (a.conductor || '').localeCompare(b.conductor || '', 'es', { sensitivity: 'base', numeric: true });
+        break;
+      case 'empresa':
+        cmp = (a.empresa || '').localeCompare(b.empresa || '', 'es', { sensitivity: 'base', numeric: true });
+        break;
+      case 'fecha': {
+        const da = a.fechaCapacitacion || a.fechaCapacitacionFormato || a.fechaReporte || '';
+        const db = b.fechaCapacitacion || b.fechaCapacitacionFormato || b.fechaReporte || '';
+        cmp = parseDateToTimestamp(da) - parseDateToTimestamp(db);
+        break;
+      }
+      case 'habilidades':
+        cmp = (a.habilidadesManejoPuntos || 0) - (b.habilidadesManejoPuntos || 0);
+        break;
+      case 'simulador':
+        cmp = (a.practicaSimuladorPuntos || 0) - (b.practicaSimuladorPuntos || 0);
+        break;
+      case 'simulaciones': {
+        const sa = getEvaluationSimScore(a);
+        const sb = getEvaluationSimScore(b);
+        cmp = sa - sb;
+        break;
+      }
+      case 'evaluacionFinal': {
+        const fa = a.evaluacionFinalPuntos || a.calificacionExacta || 0;
+        const fb = b.evaluacionFinalPuntos || b.calificacionExacta || 0;
+        cmp = fa - fb;
+        break;
+      }
+      case 'estado': {
+        const rank = {
+          'Sobresaliente': 4,
+          'Aprobado': 3,
+          'Requiere Refuerzo': 2,
+          'No Aprobado': 1
+        };
+        const ra = rank[a.estado] || 0;
+        const rb = rank[b.estado] || 0;
+        if (ra !== rb) {
+          cmp = ra - rb;
+        } else {
+          const fa = a.evaluacionFinalPuntos || a.calificacionExacta || 0;
+          const fb = b.evaluacionFinalPuntos || b.calificacionExacta || 0;
+          cmp = fa - fb;
+        }
+        break;
+      }
+      default: {
+        const da = a.fechaCapacitacion || a.fechaCapacitacionFormato || a.fechaReporte || '';
+        const db = b.fechaCapacitacion || b.fechaCapacitacionFormato || b.fechaReporte || '';
+        cmp = parseDateToTimestamp(da) - parseDateToTimestamp(db);
+      }
+    }
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
 
   return list;
 }
@@ -1679,6 +1951,11 @@ function renderDirectoryTable() {
 
   const list = getFilteredDirectoryEvaluations();
 
+  // Actualizar indicadores visuales de los encabezados del directorio
+  const sortCol = AppState.directoryTableSort?.column || 'fecha';
+  const sortDir = AppState.directoryTableSort?.direction || 'desc';
+  updateDirectoryTableSortHeaders(sortCol, sortDir);
+
   document.getElementById('directoryCountBadge').textContent = `${list.length} registros`;
 
   if (list.length === 0) {
@@ -1688,7 +1965,7 @@ function renderDirectoryTable() {
       : 'No hay evaluaciones registradas aún en el sistema.';
     tbody.innerHTML = `
       <tr>
-        <td colspan="9" style="text-align: center; padding: 3rem 1.5rem; color: var(--text-muted);">
+        <td colspan="10" style="text-align: center; padding: 3rem 1.5rem; color: var(--text-muted);">
           <div style="font-size: 2rem; margin-bottom: 0.5rem;">📋</div>
           ${isFiltered ? 'No se encontraron evaluaciones con los filtros seleccionados.' : noEvalsMsg}
         </td>
@@ -1698,7 +1975,15 @@ function renderDirectoryTable() {
     return;
   }
 
-  tbody.innerHTML = list.map(e => `
+  tbody.innerHTML = list.map(e => {
+    const n2 = (e.nombresSimulaciones && e.nombresSimulaciones[2]) || 'Montaña';
+    const n3 = (e.nombresSimulaciones && e.nombresSimulaciones[3]) || 'Sierra';
+    const n4 = (e.nombresSimulaciones && e.nombresSimulaciones[4]) || 'S4';
+    const s2 = e.simulacionesDetalle?.simulacion_2 != null ? e.simulacionesDetalle.simulacion_2 : '-';
+    const s3 = e.simulacionesDetalle?.simulacion_3 != null ? e.simulacionesDetalle.simulacion_3 : '-';
+    const s4 = e.simulacionesDetalle?.simulacion_4 != null ? e.simulacionesDetalle.simulacion_4 : '-';
+
+    return `
     <tr>
       <td style="text-align: center;">
         <input 
@@ -1711,12 +1996,12 @@ function renderDirectoryTable() {
         >
       </td>
       <td>
-        <div style="font-weight: 600; color: #ffffff;">${e.conductor}</div>
-        <div style="font-size: 0.74rem; color: var(--text-muted);">${e.cursoCodigo}</div>
+        <div style="font-weight: 600; color: #ffffff; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${e.conductor}">${e.conductor}</div>
+        <div style="font-size: 0.74rem; color: var(--text-muted); max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${e.cursoCodigo}">${e.cursoCodigo}</div>
       </td>
       <td>
-        <div style="font-weight: 600; color: #ffffff;">${e.empresa || 'N/A'}</div>
-        ${e.sede ? `<div style="font-size: 0.72rem; color: #38bdf8; display: flex; align-items: center; gap: 0.2rem; margin-top: 0.15rem;">📍 ${e.sede}</div>` : ''}
+        <div style="font-weight: 600; color: #ffffff; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${e.empresa || 'N/A'}">${e.empresa || 'N/A'}</div>
+        ${e.sede ? `<div style="font-size: 0.72rem; color: #38bdf8; display: flex; align-items: center; gap: 0.2rem; margin-top: 0.15rem; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="📍 ${e.sede}">📍 ${e.sede}</div>` : ''}
       </td>
       <td>${e.fechaCapacitacionFormato || e.fechaCapacitacion || e.fechaReporte}</td>
       <td>
@@ -1726,6 +2011,13 @@ function renderDirectoryTable() {
       <td>
         <span style="font-weight: 600; color: #a855f7;">${(e.practicaSimuladorPuntos || 0).toFixed(2)}</span>
         <small style="color: var(--text-muted);">/ 7</small>
+      </td>
+      <td>
+        <div style="font-size: 0.76rem; display: flex; gap: 0.35rem; align-items: center; white-space: nowrap;">
+          <span style="color: #94a3b8;" title="S2: ${n2}">S2: <strong>${s2}</strong></span> ·
+          <span style="color: #f97316;" title="S3: ${n3}">S3: <strong>${s3}</strong></span> ·
+          <span style="color: #38bdf8;" title="S4: ${n4}">S4: <strong>${s4}</strong></span>
+        </div>
       </td>
       <td>
         <span class="score-pill" style="color: #38bdf8;">
@@ -1750,7 +2042,8 @@ function renderDirectoryTable() {
         </div>
       </td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 
   updateDirectorySelectionUI();
 }
@@ -1769,6 +2062,7 @@ function exportToCSV() {
     'Conductor', 'Empresa', 'Sede', 'Fecha', 'Curso', 'Instructor',
     'Habilidades Manejo (Puntos)', 'Habilidades Manejo (%)',
     'Simulador (Puntos)', 'Simulador (%)',
+    'Simulacion 2', 'Simulacion 3', 'Simulacion 4',
     'Evaluacion Final', 'Calificacion Exacta',
     'Colisiones', 'Fatalidades', 'Fuera de Via',
     'Estado', 'Firma Digital'
@@ -1785,6 +2079,9 @@ function exportToCSV() {
     e.habilidadesManejoPct || 0,
     e.practicaSimuladorPuntos || 0,
     e.practicaSimuladorPct || 0,
+    e.simulacionesDetalle?.simulacion_2 ?? '',
+    e.simulacionesDetalle?.simulacion_3 ?? '',
+    e.simulacionesDetalle?.simulacion_4 ?? '',
     e.evaluacionFinalPuntos || 0,
     e.calificacionExacta || 0,
     e.colisiones || 0,
