@@ -91,6 +91,8 @@ export const ESTADOS_MEXICO = [
   { regex: /(?:Zacatecas)(?![a-záéíóúñ])/i, name: 'Zacatecas' }
 ];
 
+export const NOMBRES_ESTADOS_MEXICO = ESTADOS_MEXICO.map(e => e.name);
+
 /**
  * Separa de forma inteligente el nombre de la empresa y la sede (Estado de la República)
  */

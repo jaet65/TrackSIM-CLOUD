@@ -423,12 +423,77 @@
                 Datos Extraídos con Éxito
                 <span id="stagingCountBadge" class="badge badge-info">0 pendientes</span>
               </h3>
-              <p style="font-size: 0.85rem; color: var(--text-secondary);">Revisa la información detectada antes de
-                confirmarla en Cloud Firestore.</p>
+              <p style="font-size: 0.85rem; color: var(--text-secondary);">Verifica o edita la empresa y sede antes de confirmar el guardado en Cloud Firestore.</p>
             </div>
-            <button id="saveBatchBtn" class="btn btn-success">
-              💾 Confirmar y Guardar en Firestore
-            </button>
+            <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+              <button id="toggleEditBatchBtn" class="btn btn-secondary" style="border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">
+                ✏️ Editar Empresa / Sede
+              </button>
+              <button id="discardBatchBtn" class="btn btn-secondary" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35);">
+                ✕ Descartar Lote
+              </button>
+              <button id="saveBatchBtn" class="btn btn-success">
+                💾 Confirmar y Guardar en Firestore
+              </button>
+            </div>
+          </div>
+
+          <!-- Banner Informativo de Detección Automática -->
+          <div id="detectedConfigBanner" style="background: linear-gradient(135deg, rgba(56, 189, 248, 0.1), rgba(168, 85, 247, 0.08)); border: 1px solid rgba(56, 189, 248, 0.28); border-radius: var(--radius-sm); padding: 0.85rem 1.2rem; margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(56, 189, 248, 0.15); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0;">
+                🏢
+              </div>
+              <div>
+                <div id="detectedSummaryContent" style="font-size: 0.88rem; font-weight: 600; color: #f8fafc; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                  <!-- Se puebla dinámicamente con las empresas y sedes detectadas en cada PDF -->
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">
+                  Cada reporte conserva su empresa y sede detectadas de forma independiente. Usa el botón "✏️ Editar Empresa / Sede" solo si necesitas corregir alguna.
+                </div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <span class="badge badge-success" style="font-size: 0.72rem; padding: 0.25rem 0.6rem;">
+                ✓ Detección Automática
+              </span>
+            </div>
+          </div>
+
+          <!-- Panel de Edición Manual por Lote (Oculto por defecto hasta pulsar Editar) -->
+          <div id="batchEditPanel" class="batch-edit-card" style="display: none;">
+            <div class="batch-edit-header">
+              <span class="batch-edit-title">
+                ⚡ Asignar Empresa y Sede por Lote (Opcional)
+              </span>
+              <span class="batch-edit-subtitle">
+                Aplica a todos los reportes del lote o edita filas específicas directamente en la tabla
+              </span>
+            </div>
+            <div class="batch-edit-fields">
+              <div class="batch-edit-group">
+                <label for="batchEmpresaInput" class="batch-edit-label">
+                  <span>🏢</span> Empresa para todo el lote:
+                </label>
+                <input type="text" id="batchEmpresaInput" class="batch-edit-input" placeholder="Ej: La Corona, Jarritos...">
+              </div>
+              <div class="batch-edit-group">
+                <label for="batchSedeSelect" class="batch-edit-label">
+                  <span>📍</span> Sede para todo el lote:
+                </label>
+                <select id="batchSedeSelect" class="batch-edit-select">
+                  <option value="">-- Seleccionar Estado --</option>
+                </select>
+              </div>
+              <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <button type="button" id="applyBatchEmpresaSedeBtn" class="btn btn-primary" style="height: 40px; font-size: 0.85rem;">
+                  ⚡ Asignar a Todo el Lote
+                </button>
+                <button type="button" id="resetToDetectedBtn" class="btn btn-secondary" style="height: 40px; font-size: 0.85rem;" title="Restaurar a las empresas y sedes detectadas en cada PDF">
+                  🔄 Restaurar Detecciones
+                </button>
+              </div>
+            </div>
           </div>
 
           <div class="table-responsive">
@@ -436,7 +501,7 @@
               <thead>
                 <tr>
                   <th>Conductor / Archivo</th>
-                  <th>Empresa</th>
+                  <th id="stagingEmpresaHeader" style="min-width: 190px;">Empresa y Sede</th>
                   <th>Fecha</th>
                   <th>Habilidades Manejo (3 pts)</th>
                   <th>Práctica Simulador (7 pts)</th>

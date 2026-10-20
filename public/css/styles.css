@@ -666,20 +666,232 @@ input, select, textarea {
   flex-wrap: wrap;
 }
 
+.custom-input,
 .custom-select {
-  background: rgba(14, 20, 34, 0.8);
-  border: 1px solid var(--border-subtle);
+  background: rgba(14, 20, 34, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: var(--text-main);
-  padding: 0.65rem 1.2rem;
+  padding: 0.65rem 1.1rem;
   border-radius: var(--radius-sm);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
+  font-family: inherit;
   outline: none;
+  transition: var(--transition);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.custom-input::placeholder {
+  color: var(--text-muted);
+}
+
+.custom-input:focus,
+.custom-select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 12px var(--primary-glow);
+  background: rgba(20, 30, 50, 0.95);
+}
+
+.custom-select option {
+  background: #0e1422;
+  color: #f8fafc;
+}
+
+.driver-selector-bar .custom-select {
   min-width: 280px;
 }
 
-.custom-select:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 10px var(--primary-glow);
+/* ========================================================
+   ESTILOS PULIDOS PARA EDICIÓN DE EMPRESA Y SEDE (STAGING)
+   ======================================================== */
+.batch-edit-card {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(26, 36, 56, 0.8));
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: var(--radius-md);
+  padding: 1.15rem 1.4rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.batch-edit-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.85rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.batch-edit-title {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: #38bdf8;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  letter-spacing: -0.01em;
+}
+
+.batch-edit-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.batch-edit-fields {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.batch-edit-group {
+  flex: 1;
+  min-width: 220px;
+}
+
+.batch-edit-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.batch-edit-input {
+  width: 100%;
+  height: 40px;
+  background: rgba(8, 12, 20, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-sm);
+  padding: 0 0.85rem;
+  color: #f8fafc;
+  font-size: 0.88rem;
+  font-family: inherit;
+  outline: none;
+  transition: var(--transition);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.batch-edit-input:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.22);
+  background: rgba(14, 20, 34, 0.95);
+}
+
+.batch-edit-select {
+  width: 100%;
+  height: 40px;
+  background: rgba(8, 12, 20, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-sm);
+  padding: 0 0.85rem;
+  color: #38bdf8;
+  font-size: 0.88rem;
+  font-weight: 500;
+  font-family: inherit;
+  outline: none;
+  transition: var(--transition);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.batch-edit-select:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.22);
+  background: rgba(14, 20, 34, 0.95);
+}
+
+.batch-edit-select option {
+  background: #0b1120;
+  color: #f8fafc;
+}
+
+/* Edición Inline en la Tabla de Staging */
+.staging-edit-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 220px;
+  max-width: 270px;
+  padding: 0.45rem 0.55rem;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  transition: var(--transition);
+}
+
+.staging-edit-card:hover {
+  border-color: rgba(56, 189, 248, 0.5);
+  background: rgba(15, 23, 42, 0.95);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), 0 0 10px rgba(56, 189, 248, 0.15);
+}
+
+.staging-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.staging-input-icon {
+  position: absolute;
+  left: 0.6rem;
+  font-size: 0.85rem;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.staging-table-input {
+  width: 100%;
+  height: 34px;
+  padding-left: 2rem;
+  padding-right: 0.65rem;
+  background: rgba(8, 12, 20, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: #f8fafc;
+  font-size: 0.83rem;
+  font-weight: 500;
+  font-family: inherit;
+  outline: none;
+  transition: var(--transition);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.staging-table-input:focus {
+  border-color: #38bdf8;
+  background: rgba(10, 16, 28, 0.98);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+}
+
+.staging-table-select {
+  width: 100%;
+  height: 34px;
+  padding-left: 2rem;
+  padding-right: 0.65rem;
+  background: rgba(8, 12, 20, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: #c084fc;
+  font-size: 0.81rem;
+  font-weight: 500;
+  font-family: inherit;
+  outline: none;
+  transition: var(--transition);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.staging-table-select:focus {
+  border-color: #c084fc;
+  background: rgba(10, 16, 28, 0.98);
+  box-shadow: 0 0 0 2px rgba(192, 132, 252, 0.25);
+}
+
+.staging-table-select option {
+  background: #0b1120;
+  color: #f8fafc;
 }
 
 .driver-hero-card {
