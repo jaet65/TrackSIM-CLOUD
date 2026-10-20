@@ -8,10 +8,16 @@
 export async function extractTextFromPDF(pdfDoc) {
   const pagesText = [];
   const numPages = pdfDoc.numPages;
+  let page1Items = [];
 
   for (let pageNum = 1; pageNum <= numPages; pageNum++) {
     const page = await pdfDoc.getPage(pageNum);
     const content = await page.getTextContent();
+
+    // Guardar items originales de la Página 1 para análisis posicional de encabezados
+    if (pageNum === 1) {
+      page1Items = content.items || [];
+    }
 
     // Agrupar items por línea basándose en la posición Y
     let lastY = null;
@@ -38,16 +44,120 @@ export async function extractTextFromPDF(pdfDoc) {
     pagesText.push(pageString);
   }
 
+  // Adjuntar items crudos de la página 1 para el parser
+  pagesText.page1Items = page1Items;
   return pagesText;
+}
+
+/**
+ * Extrae con alta precisión los datos del encabezado tabular (Página 1)
+ * analizando la posición cartesiana X,Y de cada celda del reporte de simulación.
+ */
+export function extractHeaderFromCoordinates(items) {
+  if (!items || !items.length) return null;
+
+  const cleanItems = items
+    .filter(i => i.str && i.str.trim().length > 0)
+    .map(i => ({
+      text: i.str.trim(),
+      raw: i.str,
+      x: i.transform[4],
+      y: i.transform[5]
+    }));
+
+  const empHdr = cleanItems.find(i => /^empresa$/i.test(i.text));
+  const cursoHdr = cleanItems.find(i => /^curso$/i.test(i.text));
+  const evalHdr = cleanItems.find(i => /evaluaci/i.test(i.text));
+  const fechaHdr = cleanItems.find(i => /^fecha$/i.test(i.text));
+  const condHdr = cleanItems.find(i => /^conductor$/i.test(i.text));
+  const instHdr = cleanItems.find(i => /^instructor$/i.test(i.text));
+  const grupoHdr = cleanItems.find(i => /^grupo$/i.test(i.text));
+
+  const result = {};
+
+  // 1. Empresa: elementos situados verticalmente entre Fecha y Empresa, en la columna izquierda (antes de Curso)
+  if (empHdr && fechaHdr) {
+    const maxX = cursoHdr ? cursoHdr.x - 2 : 130;
+    const empItems = cleanItems.filter(i => i.y > fechaHdr.y && i.y < empHdr.y && i.x < maxX);
+    empItems.sort((a, b) => b.y - a.y);
+    const empName = empItems.map(i => i.text).join(' ').trim();
+    if (empName) {
+      result.empresa = empName;
+    }
+  }
+
+  // 2. Curso Código: entre Fecha.Y y Curso.Y, en la columna central
+  if (cursoHdr && fechaHdr) {
+    const minX = cursoHdr.x - 5;
+    const maxX = evalHdr ? evalHdr.x - 5 : 320;
+    const cursoItems = cleanItems.filter(i => i.y > fechaHdr.y && i.y < cursoHdr.y && i.x >= minX && i.x < maxX);
+    cursoItems.sort((a, b) => b.y - a.y);
+    const cursoVal = cursoItems.map(i => i.text).join(' ').trim();
+    if (cursoVal) {
+      result.cursoCodigo = cursoVal;
+    }
+  }
+
+  // 3. Curso Nombre / Evaluación: entre Fecha.Y y Evaluacion.Y, en la columna derecha
+  if (evalHdr && fechaHdr) {
+    const minX = evalHdr.x - 5;
+    const evalItems = cleanItems.filter(i => i.y > fechaHdr.y && i.y < evalHdr.y && i.x >= minX);
+    evalItems.sort((a, b) => b.y - a.y);
+    const evalVal = evalItems.map(i => i.text).join(' ').trim();
+    if (evalVal) {
+      result.cursoNombre = evalVal;
+    }
+  }
+
+  // 4. Fecha: debajo de Fecha.Y, en la columna izquierda
+  if (fechaHdr) {
+    const maxX = condHdr ? condHdr.x - 2 : 130;
+    const fechaItems = cleanItems.filter(i => i.y < fechaHdr.y && i.y > (fechaHdr.y - 25) && i.x < maxX);
+    fechaItems.sort((a, b) => b.y - a.y);
+    const fechaVal = fechaItems.map(i => i.text).join(' ').trim();
+    if (fechaVal) {
+      result.fecha = fechaVal;
+    }
+  }
+
+  // 5. Conductor: debajo de Fecha.Y, entre columna Conductor e Instructor
+  if (condHdr && fechaHdr) {
+    const minX = condHdr.x - 5;
+    const maxX = instHdr ? instHdr.x - 5 : 320;
+    const condItems = cleanItems.filter(i => i.y < fechaHdr.y && i.y > (fechaHdr.y - 25) && i.x >= minX && i.x < maxX);
+    condItems.sort((a, b) => b.y - a.y);
+    const condVal = condItems.map(i => i.text).join(' ').trim();
+    if (condVal) {
+      result.conductor = condVal;
+    }
+  }
+
+  // 6. Instructor: debajo de Fecha.Y, entre Instructor y Grupo
+  if (instHdr && fechaHdr) {
+    const minX = instHdr.x - 5;
+    const maxX = grupoHdr ? grupoHdr.x - 5 : 500;
+    const instItems = cleanItems.filter(i => i.y < fechaHdr.y && i.y > (fechaHdr.y - 25) && i.x >= minX && i.x < maxX);
+    instItems.sort((a, b) => b.y - a.y);
+    const instVal = instItems.map(i => i.text).join(' ').trim();
+    if (instVal) {
+      result.instructor = instVal;
+    }
+  }
+
+  return result;
 }
 
 /**
  * Parsea el texto extraído de las páginas del PDF y genera el objeto de evaluación
  */
-export function parseEvaluationData(pagesText, filename = '') {
+export function parseEvaluationData(pagesText, filename = '', rawPage1Items = null) {
   const p1 = pagesText[0] || '';
   const p5 = pagesText[pagesText.length - 1] || ''; // Última página (usualmente página 5)
   const fullText = pagesText.join('\n=== PAGINA ===\n');
+
+  // Intentar extracción de encabezado con coordenadas espaciales
+  const page1Items = rawPage1Items || pagesText.page1Items || null;
+  const headerMeta = page1Items ? extractHeaderFromCoordinates(page1Items) : null;
 
   const data = {
     id: '',
@@ -86,10 +196,12 @@ export function parseEvaluationData(pagesText, filename = '') {
     createdAt: new Date().toISOString()
   };
 
-  // 1. Conductor (Página 5 tiene "Conductor: Nombre Apellido")
+  // 1. Conductor (Página 5 tiene "Conductor: Nombre Apellido", o encabezado P1)
   const mConductorP5 = p5.match(/Conductor:\s*([^\n\r]+)/i);
   if (mConductorP5 && mConductorP5[1].trim()) {
     data.conductor = mConductorP5[1].trim();
+  } else if (headerMeta && headerMeta.conductor) {
+    data.conductor = headerMeta.conductor;
   } else {
     // Buscar en el nombre de archivo ej: "Adrián Godínez Franco - ..."
     const mFilename = filename.match(/^([^-]+)\s*-\s*/);
@@ -98,18 +210,54 @@ export function parseEvaluationData(pagesText, filename = '') {
     }
   }
 
-  // 2. Empresa
-  const mEmpresa = fullText.match(/Empresa\s+Curso\s*\n(.*?)(?=\s+[A-Z0-9\-]+\s*\nFecha)/s);
-  if (mEmpresa && mEmpresa[1].trim()) {
-    data.empresa = mEmpresa[1].replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
-  } else if (/Autolineas/i.test(fullText)) {
-    data.empresa = '';
+  // 2. Empresa (Extracción de alta fidelidad desde encabezado P1)
+  if (headerMeta && headerMeta.empresa) {
+    data.empresa = headerMeta.empresa;
   }
 
-  // 3. Curso
-  const mCursoCod = p5.match(/Curso:\s*([A-Z0-9\-]+)/i) || p1.match(/(CUR-[A-Z0-9\-]+)/i);
-  if (mCursoCod) {
-    data.cursoCodigo = mCursoCod[1].trim();
+  if (!data.empresa) {
+    // Fallback 1: Buscar texto entre "Empresa" y "Fecha" en la página 1
+    const fechaIdx = p1.search(/\bFecha\b/i);
+    const p1Head = fechaIdx !== -1 ? p1.substring(0, fechaIdx) : p1.substring(0, 450);
+    const mEmp = p1Head.match(/Empresa[^\n]*\n+([\s\S]*?)(?=\n\s*(?:CUR-|Fecha|Curso))/i);
+    if (mEmp && mEmp[1].trim()) {
+      let candidate = mEmp[1].replace(/CUR-[A-Z0-9\-]+/gi, '').replace(/Curso avanzado[^\n]*/gi, '').trim();
+      candidate = candidate.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+      if (candidate.length > 2) {
+        data.empresa = candidate;
+      }
+    }
+  }
+
+  if (!data.empresa) {
+    // Fallback 2: Buscar en el nombre del archivo (ej. "... - Jarritos-EDOMEX - CUR-RIG-3C .pdf")
+    const mFileEmp = filename.match(/^[^-]+-\s*(.*?)\s*-\s*CUR/i) || filename.match(/-\s*([^-]+?)\s*-\s*CUR/i);
+    if (mFileEmp && mFileEmp[1].trim()) {
+      let rawName = mFileEmp[1].trim();
+      if (/jarritos/i.test(rawName)) {
+        data.empresa = 'Jarritos Estado de México';
+      } else if (/corona/i.test(rawName)) {
+        data.empresa = 'La Corona Estado de México';
+      } else {
+        data.empresa = rawName.replace(/-EDOMEX/i, ' Estado de México').trim();
+      }
+    }
+  }
+
+  // 3. Curso Código y Nombre
+  if (headerMeta && headerMeta.cursoCodigo) {
+    data.cursoCodigo = headerMeta.cursoCodigo;
+  } else {
+    const mCursoCod = p5.match(/Curso:\s*([A-Z0-9\-]+)/i) || p1.match(/(CUR-[A-Z0-9\-]+)/i);
+    if (mCursoCod) {
+      data.cursoCodigo = mCursoCod[1].trim();
+    }
+  }
+
+  if (headerMeta && headerMeta.cursoNombre) {
+    data.cursoNombre = headerMeta.cursoNombre;
+  } else {
+    data.cursoNombre = 'Curso avanzado para operadores(as) de unidades rígidas y articuladas';
   }
 
   // 4. Fechas
@@ -119,24 +267,33 @@ export function parseEvaluationData(pagesText, filename = '') {
     data.fechaReporte = mFechaRep[1];
   }
 
-  // Fecha Capacitación (Página 1 encabezado)
-  const mFechaCap = p1.match(/Fecha\s+Conductor[^\n]*\n(\d{2}\/\d{2}\/\d{4})/i) ||
-    p1.match(/(\d{2}\/\d{2}\/\d{4})/);
-  if (mFechaCap) {
-    data.fechaCapacitacionFormato = mFechaCap[1];
-    // Convertir DD/MM/YYYY a YYYY-MM-DD para ordenamiento nativo
-    const parts = mFechaCap[1].split('/');
+  // Fecha Capacitación (Encabezado Página 1)
+  if (headerMeta && headerMeta.fecha) {
+    data.fechaCapacitacionFormato = headerMeta.fecha;
+    const parts = headerMeta.fecha.split('/');
     if (parts.length === 3) {
       data.fechaCapacitacion = `${parts[2]}-${parts[1]}-${parts[0]}`;
     }
-  } else if (data.fechaReporte) {
-    data.fechaCapacitacionFormato = data.fechaReporte;
-    const parts = data.fechaReporte.split('/');
-    data.fechaCapacitacion = `${parts[2]}-${parts[1]}-${parts[0]}`;
+  } else {
+    const mFechaCap = p1.match(/Fecha\s+Conductor[^\n]*\n(\d{2}\/\d{2}\/\d{4})/i) ||
+      p1.match(/(\d{2}\/\d{2}\/\d{4})/);
+    if (mFechaCap) {
+      data.fechaCapacitacionFormato = mFechaCap[1];
+      const parts = mFechaCap[1].split('/');
+      if (parts.length === 3) {
+        data.fechaCapacitacion = `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
+    } else if (data.fechaReporte) {
+      data.fechaCapacitacionFormato = data.fechaReporte;
+      const parts = data.fechaReporte.split('/');
+      data.fechaCapacitacion = `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
   }
 
   // 5. Instructor y Folio
-  if (/Mario\s+Agraz/i.test(fullText)) {
+  if (headerMeta && headerMeta.instructor) {
+    data.instructor = headerMeta.instructor;
+  } else if (/Mario\s+Agraz/i.test(fullText)) {
     data.instructor = 'Mario Agraz';
   }
   const mFolio = p1.match(/AUTOTRANSPORTE DE CARGA\s*\n(\d+)/i) || p5.match(/AUTOTRANSPORTE DE CARGA\s*\n(\d+)/i);
@@ -198,12 +355,17 @@ export function parseEvaluationData(pagesText, filename = '') {
   const mCol = p5.match(/COLISIONES DURANTE LA CONDUCCIÓN:\s*(\d+)/i);
   if (mCol) data.colisiones = parseInt(mCol[1], 10);
 
-  // 9. Desglose de Simulaciones (2, 3, 4)
-  const simMatches = p5.matchAll(/Simulación\s*(\d+)\.,?\s*([0-9.]+)/gi);
+  // 9. Desglose de Calificaciones de Simulaciones (Simulación 2, 3, 4...)
+  // Ubicadas en la gráfica horizontal 'Calificaciones de simulaciones' (Página 5)
+  const simRegex = /Simulaci[oó\u00f3\ufffd]n\s*(\d+)[.:,\s]+([0-9]+(?:\.[0-9]+)?)/gi;
+  const searchSource = p5 && /Simulaci/i.test(p5) ? p5 : fullText;
+  const simMatches = searchSource.matchAll(simRegex);
   for (const match of simMatches) {
     const num = match[1];
     const score = parseFloat(match[2]);
-    data.simulacionesDetalle[`simulacion_${num}`] = score;
+    if (!isNaN(score)) {
+      data.simulacionesDetalle[`simulacion_${num}`] = score;
+    }
   }
 
   // 10. Estado y Observaciones
@@ -257,6 +419,7 @@ export async function parsePDFFile(fileOrBuffer, filename = '') {
   const pagesText = await extractTextFromPDF(pdfDoc);
 
   // Parsear campos
-  const parsedData = parseEvaluationData(pagesText, name);
+  const parsedData = parseEvaluationData(pagesText, name, pagesText.page1Items);
   return parsedData;
 }
+

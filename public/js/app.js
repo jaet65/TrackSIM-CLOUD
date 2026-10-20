@@ -77,6 +77,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // NAVEGACIÓN ENTRE SECCIONES
 // ==========================================
 function initNavigation() {
+  window.switchTab = switchTab;
   const navItems = document.querySelectorAll('.nav-item[data-tab]');
   navItems.forEach(item => {
     item.addEventListener('click', () => {
@@ -87,6 +88,16 @@ function initNavigation() {
 }
 
 export function switchTab(tabId) {
+  // Protección de acceso estricta para usuarios limitados
+  if (tabId === 'ingesta' && AppState.userRole !== 'admin') {
+    showToast('Acceso denegado: La sección de Ingesta de reportes está reservada para Administradores.', 'warning');
+    if (AppState.currentTab === 'ingesta' || !AppState.currentTab) {
+      tabId = 'dashboard';
+    } else {
+      return;
+    }
+  }
+
   AppState.currentTab = tabId;
 
   // Actualizar botones de navegación
@@ -259,8 +270,17 @@ function applyRolePermissions(user, role) {
   const emailSubEl = document.getElementById('userEmailSubtitle');
   const roleBadgeEl = document.getElementById('userRoleBadge');
   const openMgmtBtn = document.getElementById('openUserMgmtBtn');
+  const navTabIngesta = document.getElementById('navTabIngesta');
+  const dashboardNewEvalBtn = document.getElementById('dashboardNewEvalBtn');
+  const dashboardGoIngestaBtn = document.getElementById('dashboardGoIngestaBtn');
+  const driverEmptyUploadBtn = document.getElementById('driverEmptyUploadBtn');
+  const compareEmptyUploadBtn = document.getElementById('compareEmptyUploadBtn');
   const ingestaLockedAlert = document.getElementById('ingestaLockedAlert');
   const uploadZoneWrapper = document.getElementById('uploadZoneWrapper');
+
+  // Asignar clases de rol al body para activar reglas CSS de visibilidad
+  document.body.classList.remove('role-admin', 'role-viewer');
+  document.body.classList.add(`role-${role}`);
 
   if (avatarEl) {
     avatarEl.src = user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || user.email)}&background=0284c7&color=fff`;
@@ -278,17 +298,33 @@ function applyRolePermissions(user, role) {
       roleBadgeEl.textContent = '👑 Admin';
     }
     if (openMgmtBtn) openMgmtBtn.style.display = 'inline-flex';
+    if (navTabIngesta) navTabIngesta.style.display = 'flex';
+    if (dashboardNewEvalBtn) dashboardNewEvalBtn.style.display = 'inline-flex';
+    if (dashboardGoIngestaBtn) dashboardGoIngestaBtn.style.display = 'inline-flex';
+    if (driverEmptyUploadBtn) driverEmptyUploadBtn.style.display = 'inline-flex';
+    if (compareEmptyUploadBtn) compareEmptyUploadBtn.style.display = 'inline-flex';
     if (ingestaLockedAlert) ingestaLockedAlert.style.display = 'none';
     if (uploadZoneWrapper) uploadZoneWrapper.style.display = 'block';
   } else {
-    // Rol: Lector (Solo Lectura)
+    // Rol: Lector (Usuario Limitado / Solo Lectura)
+    // Ocultar completamente Ingesta de PDFs y cualquier función administrativa
     if (roleBadgeEl) {
       roleBadgeEl.className = 'role-badge viewer';
       roleBadgeEl.textContent = '👁️ Lector (Solo Lectura)';
     }
     if (openMgmtBtn) openMgmtBtn.style.display = 'none';
-    if (ingestaLockedAlert) ingestaLockedAlert.style.display = 'flex';
+    if (navTabIngesta) navTabIngesta.style.display = 'none';
+    if (dashboardNewEvalBtn) dashboardNewEvalBtn.style.display = 'none';
+    if (dashboardGoIngestaBtn) dashboardGoIngestaBtn.style.display = 'none';
+    if (driverEmptyUploadBtn) driverEmptyUploadBtn.style.display = 'none';
+    if (compareEmptyUploadBtn) compareEmptyUploadBtn.style.display = 'none';
+    if (ingestaLockedAlert) ingestaLockedAlert.style.display = 'none';
     if (uploadZoneWrapper) uploadZoneWrapper.style.display = 'none';
+
+    // Si el usuario limitado se encuentra en la vista de ingesta, redirigir al Dashboard
+    if (AppState.currentTab === 'ingesta') {
+      switchTab('dashboard');
+    }
   }
 }
 
@@ -350,11 +386,14 @@ function renderDashboard() {
   const recentTableBody = document.getElementById('recentEvalsTableBody');
   if (recentTableBody) {
     if (evals.length === 0) {
+      const emptyMsg = AppState.userRole === 'admin'
+        ? "No hay evaluaciones registradas aún. Sube tus archivos PDF en la pestaña 'Ingesta de PDFs'."
+        : "No hay evaluaciones registradas aún en el sistema.";
       recentTableBody.innerHTML = `
         <tr>
           <td colspan="5" style="text-align: center; padding: 3rem 1.5rem; color: var(--text-muted);">
             <div style="font-size: 2rem; margin-bottom: 0.5rem;">📁</div>
-            No hay evaluaciones registradas aún. Sube tus archivos PDF en la pestaña 'Ingesta de PDFs'.
+            ${emptyMsg}
           </td>
         </tr>
       `;
@@ -527,6 +566,10 @@ function displayStagingEvaluations(items) {
       <td>
         <strong>${(item.practicaSimuladorPuntos || 0).toFixed(2)}</strong> / 7.0
         <div style="font-size: 0.7rem; color: var(--text-muted);">${item.practicaSimuladorPct || 0}%</div>
+        ${item.simulacionesDetalle?.simulacion_2 != null ? `
+          <div style="font-size: 0.68rem; color: #a855f7; margin-top: 0.2rem; font-weight: 500;" title="Calificaciones obtenidas en simulaciones individuales">
+            S2: ${item.simulacionesDetalle.simulacion_2} | S3: ${item.simulacionesDetalle.simulacion_3 ?? '-'} | S4: ${item.simulacionesDetalle.simulacion_4 ?? '-'}
+          </div>` : ''}
       </td>
       <td>
         <span class="score-pill" style="color: var(--primary);">
@@ -827,11 +870,14 @@ function renderDirectoryTable() {
 
   if (list.length === 0) {
     const isFiltered = !!search || empresa !== 'all' || estado !== 'all';
+    const noEvalsMsg = AppState.userRole === 'admin'
+      ? 'No hay evaluaciones registradas aún. Sube tus archivos PDF en la pestaña "Ingesta de PDFs" para comenzar.'
+      : 'No hay evaluaciones registradas aún en el sistema.';
     tbody.innerHTML = `
       <tr>
         <td colspan="8" style="text-align: center; padding: 3rem 1.5rem; color: var(--text-muted);">
           <div style="font-size: 2rem; margin-bottom: 0.5rem;">📋</div>
-          ${isFiltered ? 'No se encontraron evaluaciones con los filtros seleccionados.' : 'No hay evaluaciones registradas aún. Sube tus archivos PDF en la pestaña "Ingesta de PDFs" para comenzar.'}
+          ${isFiltered ? 'No se encontraron evaluaciones con los filtros seleccionados.' : noEvalsMsg}
         </td>
       </tr>
     `;
@@ -959,9 +1005,9 @@ function initModals() {
     document.getElementById('modalScoreExact').textContent = item.calificacionExacta || item.evaluacionFinalPuntos || '0.00';
 
     // Simulaciones
-    document.getElementById('modalSim2').textContent = item.simulacionesDetalle?.simulacion_2 || 'N/A';
-    document.getElementById('modalSim3').textContent = item.simulacionesDetalle?.simulacion_3 || 'N/A';
-    document.getElementById('modalSim4').textContent = item.simulacionesDetalle?.simulacion_4 || 'N/A';
+    document.getElementById('modalSim2').textContent = item.simulacionesDetalle?.simulacion_2 != null ? `${item.simulacionesDetalle.simulacion_2} / 10` : 'N/A';
+    document.getElementById('modalSim3').textContent = item.simulacionesDetalle?.simulacion_3 != null ? `${item.simulacionesDetalle.simulacion_3} / 10` : 'N/A';
+    document.getElementById('modalSim4').textContent = item.simulacionesDetalle?.simulacion_4 != null ? `${item.simulacionesDetalle.simulacion_4} / 10` : 'N/A';
 
     // Incidentes
     document.getElementById('modalCollisions').textContent = item.colisiones || 0;
@@ -996,6 +1042,10 @@ function initUserManagement() {
   if (!mgmtModal) return;
 
   const showModal = async () => {
+    if (AppState.userRole !== 'admin') {
+      showToast('Acceso restringido: Exclusivo para administradores.', 'warning');
+      return;
+    }
     mgmtModal.classList.add('active');
     await loadRegisteredUsers();
   };

@@ -1192,3 +1192,41 @@ input, select, textarea {
   color: #cbd5e1;
 }
 
+/* ========================================================
+   CONTROL DE VISIBILIDAD POR ROLES (Admin vs Lector Limitado)
+   ======================================================== */
+.admin-only {
+  display: none !important;
+}
+
+.viewer-only {
+  display: none !important;
+}
+
+body.role-admin .admin-only {
+  display: inline-flex !important;
+}
+
+body.role-admin li.admin-only,
+body.role-admin div.admin-only {
+  display: flex !important;
+}
+
+body.role-admin .viewer-only {
+  display: none !important;
+}
+
+body.role-viewer .admin-only {
+  display: none !important;
+}
+
+body.role-viewer .viewer-only {
+  display: inline-flex !important;
+}
+
+body.role-viewer p.viewer-only,
+body.role-viewer div.viewer-only {
+  display: block !important;
+}
+
+
