@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ==========================================
 function initNavigation() {
   window.switchTab = switchTab;
-  
+
   window.confirmDeleteEvaluation = async (evalId, conductorName) => {
     if (AppState.userRole !== 'admin') {
       showToast('Acción restringida a administradores.', 'warning');
@@ -472,7 +472,10 @@ function renderDashboard() {
         <tr>
           <td>
             <div style="font-weight: 600;">${e.conductor}</div>
-            <div style="font-size: 0.75rem; color: var(--text-muted);">${e.empresa || 'Empresa'}</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap;">
+              <span>${e.empresa || 'Empresa'}</span>
+              ${e.sede ? `<span style="color: #38bdf8;">· 📍 ${e.sede}</span>` : ''}
+            </div>
           </td>
           <td>${e.fechaCapacitacionFormato || e.fechaCapacitacion || e.fechaReporte}</td>
           <td>
@@ -632,7 +635,10 @@ function displayStagingEvaluations(items) {
         <div style="font-weight: 600;">${item.conductor || 'Sin Conductor'}</div>
         <div style="font-size: 0.75rem; color: var(--text-muted);">${item.filename}</div>
       </td>
-      <td>${item.empresa || 'N/A'}</td>
+      <td>
+        <div style="font-weight: 600;">${item.empresa || 'N/A'}</div>
+        ${item.sede ? `<div style="font-size: 0.72rem; color: #38bdf8; display: flex; align-items: center; gap: 0.2rem; margin-top: 0.15rem;">📍 ${item.sede}</div>` : ''}
+      </td>
       <td>${item.fechaCapacitacionFormato || item.fechaCapacitacion || item.fechaReporte}</td>
       <td>
         <strong>${(item.habilidadesManejoPuntos || 0).toFixed(2)}</strong> / 3.0
@@ -944,7 +950,7 @@ function renderCompanyView() {
     const currentVal = AppState.selectedCompany ? AppState.selectedCompany.nombre : '';
     select.innerHTML = companies.map(c => `
       <option value="${c.nombre}" ${c.nombre === currentVal ? 'selected' : ''}>
-        🏢 ${c.nombre} (${c.totalConductores} operadores - ${c.totalEvaluaciones} reportes)
+        🏢 ${c.nombre} ${c.sedes && c.sedes.length > 0 ? `(📍 Sede: ${c.sedes.join(', ')})` : ''} (${c.totalConductores} operadores)
       </option>
     `).join('');
   }
@@ -955,6 +961,15 @@ function renderCompanyView() {
   // 1. Resumen Hero
   const titleEl = document.getElementById('companyNameTitle');
   if (titleEl) titleEl.textContent = comp.nombre;
+
+  const sedesSubtitle = document.getElementById('companySedesSubtitle');
+  if (sedesSubtitle) {
+    if (comp.sedes && comp.sedes.length > 0) {
+      sedesSubtitle.innerHTML = `📍 Sede de Evaluación: <strong style="color: #38bdf8;">${comp.sedes.join(', ')}</strong>`;
+    } else {
+      sedesSubtitle.textContent = 'Flota Oficial de Autotransporte TrackSIM';
+    }
+  }
 
   const totalDriversEl = document.getElementById('companyStatTotalDrivers');
   if (totalDriversEl) totalDriversEl.textContent = `${comp.totalConductores} operadores`;
@@ -1100,9 +1115,42 @@ function initDirectoryFilters() {
   }
 }
 
+/**
+ * Llena dinámicamente las opciones del selector de empresa en el directorio
+ */
+function populateDirectoryCompanyFilter() {
+  const companySelect = document.getElementById('filterCompany');
+  if (!companySelect) return;
+
+  let currentVal = AppState.filters.empresa || 'all';
+
+  // Extraer empresas únicas presentes en las evaluaciones registradas
+  const companies = Array.from(new Set(
+    AppState.evaluations
+      .map(e => (e.empresa || '').trim())
+      .filter(emp => emp.length > 0)
+  )).sort((a, b) => a.localeCompare(b));
+
+  if (currentVal !== 'all' && !companies.includes(currentVal)) {
+    currentVal = 'all';
+    AppState.filters.empresa = 'all';
+  }
+
+  companySelect.innerHTML = `
+    <option value="all" ${currentVal === 'all' ? 'selected' : ''}>Todas las Empresas (${AppState.evaluations.length})</option>
+    ${companies.map(emp => {
+      const count = AppState.evaluations.filter(e => (e.empresa || '').trim() === emp).length;
+      return `<option value="${emp}" ${emp === currentVal ? 'selected' : ''}>🏢 ${emp} (${count})</option>`;
+    }).join('')}
+  `;
+}
+
 function renderDirectoryTable() {
   const tbody = document.getElementById('directoryTableBody');
   if (!tbody) return;
+
+  // Actualizar opciones del filtro de empresas
+  populateDirectoryCompanyFilter();
 
   let list = AppState.evaluations.slice();
 
@@ -1150,7 +1198,10 @@ function renderDirectoryTable() {
         <div style="font-weight: 600; color: #ffffff;">${e.conductor}</div>
         <div style="font-size: 0.74rem; color: var(--text-muted);">${e.cursoCodigo}</div>
       </td>
-      <td>${e.empresa || 'N/A'}</td>
+      <td>
+        <div style="font-weight: 600; color: #ffffff;">${e.empresa || 'N/A'}</div>
+        ${e.sede ? `<div style="font-size: 0.72rem; color: #38bdf8; display: flex; align-items: center; gap: 0.2rem; margin-top: 0.15rem;">📍 ${e.sede}</div>` : ''}
+      </td>
       <td>${e.fechaCapacitacionFormato || e.fechaCapacitacion || e.fechaReporte}</td>
       <td>
         <span style="font-weight: 600; color: #10b981;">${(e.habilidadesManejoPuntos || 0).toFixed(2)}</span>
@@ -1272,7 +1323,9 @@ function initModals() {
 
     document.getElementById('modalTitle').textContent = `Reporte de Evaluación - ${item.conductor}`;
     document.getElementById('modalDriver').textContent = item.conductor;
-    document.getElementById('modalCompany').textContent = item.empresa || '';
+    document.getElementById('modalCompany').textContent = item.empresa || 'N/A';
+    const sedeEl = document.getElementById('modalSedeText');
+    if (sedeEl) sedeEl.textContent = item.sede || 'No especificada';
     document.getElementById('modalDate').textContent = item.fechaCapacitacionFormato || item.fechaCapacitacion || item.fechaReporte;
     document.getElementById('modalCourse').textContent = `${item.cursoCodigo} - ${item.cursoNombre}`;
     document.getElementById('modalInstructor').textContent = item.instructor || 'Mario Agraz';

@@ -324,6 +324,7 @@ export function processCompanySummaries(evaluations) {
     let totalOffRoad = 0;
     let approvedCount = 0;
     const nombresSimulaciones = {};
+    const sedesSet = new Set();
 
     data.evaluaciones.forEach(ev => {
       const finalScore = ev.evaluacionFinalPuntos || ev.calificacionExacta || 0;
@@ -334,6 +335,10 @@ export function processCompanySummaries(evaluations) {
       totalFatalities += (ev.fatalidades || 0);
       totalOffRoad += (ev.vehiculoFueraVia || 0);
       if (finalScore >= 6.0) approvedCount++;
+
+      if (ev.sede) {
+        sedesSet.add(ev.sede);
+      }
 
       // Recopilar nombres dinámicos de los ejercicios evaluados
       if (Array.isArray(ev.ejercicios)) {
@@ -378,6 +383,7 @@ export function processCompanySummaries(evaluations) {
         ultimaFecha: latest.fechaCapacitacionFormato || latest.fechaCapacitacion || latest.fechaReporte,
         ultimoScore: latestScore,
         promedioScore: avgScore,
+        sede: latest.sede || '',
         simulaciones: latest.simulacionesDetalle || {},
         simulacionesNombres: latest.nombresSimulaciones || nombresSimulaciones,
         ejercicios: latest.ejercicios || [],
@@ -395,6 +401,7 @@ export function processCompanySummaries(evaluations) {
     summaries.push({
       nombre: name,
       slug: data.slug,
+      sedes: Array.from(sedesSet),
       totalConductores: conductores.length,
       totalEvaluaciones: totalEvals,
       promedioFinal: totalEvals > 0 ? (sumFinal / totalEvals) : 0,

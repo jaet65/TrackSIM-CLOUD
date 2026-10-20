@@ -54,6 +54,69 @@ export async function extractTextFromPDF(pdfDoc) {
 }
 
 /**
+ * Catálogo de Estados de la República Mexicana para identificar la Sede de evaluación
+ */
+export const ESTADOS_MEXICO = [
+  { regex: /(?:Estado\s+de\s+M[eé]xico|Edo\.?\s*de\s*M[eé]xico|Edomex)(?![a-záéíóúñ])/i, name: 'Estado de México' },
+  { regex: /(?:Ciudad\s+de\s+M[eé]xico|CDMX|Distrito\s+Federal|D\.?F\.?)(?![a-záéíóúñ])/i, name: 'Ciudad de México' },
+  { regex: /(?:Baja\s+California\s+Sur)(?![a-záéíóúñ])/i, name: 'Baja California Sur' },
+  { regex: /(?:Baja\s+California)(?![a-záéíóúñ])/i, name: 'Baja California' },
+  { regex: /(?:Nuevo\s+Le[oó]n)(?![a-záéíóúñ])/i, name: 'Nuevo León' },
+  { regex: /(?:San\s+Luis\s+Potos[ií])(?![a-záéíóúñ])/i, name: 'San Luis Potosí' },
+  { regex: /(?:Quintana\s+Roo)(?![a-záéíóúñ])/i, name: 'Quintana Roo' },
+  { regex: /(?:Aguascalientes)(?![a-záéíóúñ])/i, name: 'Aguascalientes' },
+  { regex: /(?:Campeche)(?![a-záéíóúñ])/i, name: 'Campeche' },
+  { regex: /(?:Chiapas)(?![a-záéíóúñ])/i, name: 'Chiapas' },
+  { regex: /(?:Chihuahua)(?![a-záéíóúñ])/i, name: 'Chihuahua' },
+  { regex: /(?:Coahuila(?:\s+de\s+Zaragoza)?)(?![a-záéíóúñ])/i, name: 'Coahuila' },
+  { regex: /(?:Colima)(?![a-záéíóúñ])/i, name: 'Colima' },
+  { regex: /(?:Durango)(?![a-záéíóúñ])/i, name: 'Durango' },
+  { regex: /(?:Guanajuato)(?![a-záéíóúñ])/i, name: 'Guanajuato' },
+  { regex: /(?:Guerrero)(?![a-záéíóúñ])/i, name: 'Guerrero' },
+  { regex: /(?:Hidalgo)(?![a-záéíóúñ])/i, name: 'Hidalgo' },
+  { regex: /(?:Jalisco)(?![a-záéíóúñ])/i, name: 'Jalisco' },
+  { regex: /(?:Michoac[aá]n(?:\s+de\s+Ocampo)?)(?![a-záéíóúñ])/i, name: 'Michoacán' },
+  { regex: /(?:Morelos)(?![a-záéíóúñ])/i, name: 'Morelos' },
+  { regex: /(?:Nayarit)(?![a-záéíóúñ])/i, name: 'Nayarit' },
+  { regex: /(?:Oaxaca)(?![a-záéíóúñ])/i, name: 'Oaxaca' },
+  { regex: /(?:Puebla)(?![a-záéíóúñ])/i, name: 'Puebla' },
+  { regex: /(?:Quer[eé]taro)(?![a-záéíóúñ])/i, name: 'Querétaro' },
+  { regex: /(?:Sinaloa)(?![a-záéíóúñ])/i, name: 'Sinaloa' },
+  { regex: /(?:Sonora)(?![a-záéíóúñ])/i, name: 'Sonora' },
+  { regex: /(?:Tabasco)(?![a-záéíóúñ])/i, name: 'Tabasco' },
+  { regex: /(?:Tamaulipas)(?![a-záéíóúñ])/i, name: 'Tamaulipas' },
+  { regex: /(?:Tlaxcala)(?![a-záéíóúñ])/i, name: 'Tlaxcala' },
+  { regex: /(?:Veracruz(?:\s+de\s+Ignacio\s+de\s+la\s+Llave)?)(?![a-záéíóúñ])/i, name: 'Veracruz' },
+  { regex: /(?:Yucat[aá]n)(?![a-záéíóúñ])/i, name: 'Yucatán' },
+  { regex: /(?:Zacatecas)(?![a-záéíóúñ])/i, name: 'Zacatecas' }
+];
+
+/**
+ * Separa de forma inteligente el nombre de la empresa y la sede (Estado de la República)
+ */
+export function parseEmpresaYSede(rawText) {
+  if (!rawText) return { empresa: '', sede: '' };
+  let text = rawText.trim();
+  let detectedSede = '';
+
+  for (const estado of ESTADOS_MEXICO) {
+    if (estado.regex.test(text)) {
+      detectedSede = estado.name;
+      text = text.replace(estado.regex, '').trim();
+      break;
+    }
+  }
+
+  let cleanEmpresa = text.replace(/^[\s\-–—,]+|[\s\-–—,]+$/g, '').trim();
+  cleanEmpresa = cleanEmpresa.replace(/\s+/g, ' ');
+
+  return {
+    empresa: cleanEmpresa || rawText.trim(),
+    sede: detectedSede
+  };
+}
+
+/**
  * Extrae con alta precisión los datos del encabezado tabular (Página 1)
  * analizando la posición cartesiana X,Y de cada celda del reporte de simulación.
  */
@@ -79,14 +142,17 @@ export function extractHeaderFromCoordinates(items) {
 
   const result = {};
 
-  // 1. Empresa: elementos situados verticalmente entre Fecha y Empresa, en la columna izquierda (antes de Curso)
+  // 1. Empresa y Sede: elementos situados verticalmente entre Fecha y Empresa, en la columna izquierda
   if (empHdr && fechaHdr) {
     const maxX = cursoHdr ? cursoHdr.x - 2 : 130;
     const empItems = cleanItems.filter(i => i.y > fechaHdr.y && i.y < empHdr.y && i.x < maxX);
     empItems.sort((a, b) => b.y - a.y);
     const empName = empItems.map(i => i.text).join(' ').trim();
     if (empName) {
-      result.empresa = empName;
+      result.empresaRaw = empName;
+      const parsed = parseEmpresaYSede(empName);
+      result.empresa = parsed.empresa;
+      result.sede = parsed.sede;
     }
   }
 
@@ -301,6 +367,8 @@ export function parseEvaluationData(pagesText, filename = '', rawPage1Items = nu
     id: '',
     filename: filename,
     empresa: '',
+    sede: '',
+    empresaCompleta: '',
     cursoCodigo: '',
     cursoNombre: '',
     conductor: '',
@@ -350,12 +418,13 @@ export function parseEvaluationData(pagesText, filename = '', rawPage1Items = nu
     }
   }
 
-  // 2. Empresa (Extracción de alta fidelidad desde encabezado P1)
-  if (headerMeta && headerMeta.empresa) {
-    data.empresa = headerMeta.empresa;
+  // 2. Empresa y Sede (El estado de la república representa la sede donde se aplicó la evaluación)
+  let rawEmpresa = '';
+  if (headerMeta && (headerMeta.empresaRaw || headerMeta.empresa)) {
+    rawEmpresa = headerMeta.empresaRaw || headerMeta.empresa;
   }
 
-  if (!data.empresa) {
+  if (!rawEmpresa) {
     // Fallback 1: Buscar texto entre "Empresa" y "Fecha" en la página 1
     const fechaIdx = p1.search(/\bFecha\b/i);
     const p1Head = fechaIdx !== -1 ? p1.substring(0, fechaIdx) : p1.substring(0, 450);
@@ -364,25 +433,24 @@ export function parseEvaluationData(pagesText, filename = '', rawPage1Items = nu
       let candidate = mEmp[1].replace(/CUR-[A-Z0-9\-]+/gi, '').replace(/Curso avanzado[^\n]*/gi, '').trim();
       candidate = candidate.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
       if (candidate.length > 2) {
-        data.empresa = candidate;
+        rawEmpresa = candidate;
       }
     }
   }
 
-  if (!data.empresa) {
+  if (!rawEmpresa) {
     // Fallback 2: Buscar en el nombre del archivo (ej. "... - Jarritos-EDOMEX - CUR-RIG-3C .pdf")
     const mFileEmp = filename.match(/^[^-]+-\s*(.*?)\s*-\s*CUR/i) || filename.match(/-\s*([^-]+?)\s*-\s*CUR/i);
     if (mFileEmp && mFileEmp[1].trim()) {
-      let rawName = mFileEmp[1].trim();
-      if (/jarritos/i.test(rawName)) {
-        data.empresa = 'Jarritos Estado de México';
-      } else if (/corona/i.test(rawName)) {
-        data.empresa = 'La Corona Estado de México';
-      } else {
-        data.empresa = rawName.replace(/-EDOMEX/i, ' Estado de México').trim();
-      }
+      rawEmpresa = mFileEmp[1].trim();
     }
   }
+
+  // Separar Empresa y Sede
+  const parsedEmp = parseEmpresaYSede(rawEmpresa);
+  data.empresa = parsedEmp.empresa || rawEmpresa;
+  data.sede = parsedEmp.sede || (headerMeta?.sede || '');
+  data.empresaCompleta = rawEmpresa;
 
   // 3. Curso Código y Nombre
   if (headerMeta && headerMeta.cursoCodigo) {
