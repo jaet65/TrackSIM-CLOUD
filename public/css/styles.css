@@ -1602,4 +1602,103 @@ body.role-viewer div.viewer-only {
   display: block !important;
 }
 
+/* ========================================================
+   MODAL DE EDICIÓN INDIVIDUAL DE EVALUACIÓN
+   ======================================================== */
+.edit-eval-section {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 1.15rem 1.25rem;
+  margin-bottom: 1.25rem;
+  transition: var(--transition);
+}
+
+.edit-eval-section:hover {
+  border-color: rgba(56, 189, 248, 0.25);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.edit-eval-section-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #38bdf8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.85rem;
+}
+
+.edit-eval-section-title span.left-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.85rem;
+}
+
+.form-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.85rem;
+}
+
+.form-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.85rem;
+}
+
+@media (max-width: 768px) {
+  .form-grid-2,
+  .form-grid-3,
+  .form-grid-4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.edit-eval-exercise-row {
+  background: rgba(8, 12, 20, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 0.75rem 0.85rem;
+  margin-bottom: 0.6rem;
+  display: grid;
+  grid-template-columns: 80px 1.4fr 100px 1.8fr 36px;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .edit-eval-exercise-row {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+}
+
+.calc-auto-btn {
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #38bdf8;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 0.25rem 0.65rem;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: var(--transition);
+}
+
+.calc-auto-btn:hover {
+  background: rgba(56, 189, 248, 0.3);
+  color: #ffffff;
+}
+
+
 

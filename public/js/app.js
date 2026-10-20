@@ -30,6 +30,7 @@ import {
   clearAllEvaluations,
   clearLocalCache,
   updateEvaluationsBatchEmpresaSede,
+  updateSingleEvaluation,
   processDriverSummaries,
   processCompanySummaries,
   slugify
@@ -336,6 +337,7 @@ function applyRolePermissions(user, role) {
   const nameEl = document.getElementById('userName');
   const emailSubEl = document.getElementById('userEmailSubtitle');
   const roleBadgeEl = document.getElementById('userRoleBadge');
+  if (roleBadgeEl) roleBadgeEl.remove();
   const openMgmtBtn = document.getElementById('openUserMgmtBtn');
   const navTabIngesta = document.getElementById('navTabIngesta');
   const dashboardNewEvalBtn = document.getElementById('dashboardNewEvalBtn');
@@ -360,10 +362,6 @@ function applyRolePermissions(user, role) {
   }
 
   if (role === 'admin') {
-    if (roleBadgeEl) {
-      roleBadgeEl.className = 'role-badge admin';
-      roleBadgeEl.textContent = '👑 Admin';
-    }
     if (openMgmtBtn) openMgmtBtn.style.display = 'inline-flex';
     if (navTabIngesta) navTabIngesta.style.display = 'flex';
     if (dashboardNewEvalBtn) dashboardNewEvalBtn.style.display = 'inline-flex';
@@ -375,10 +373,6 @@ function applyRolePermissions(user, role) {
   } else {
     // Rol: Lector (Usuario Limitado / Solo Lectura)
     // Ocultar completamente Ingesta de PDFs y cualquier función administrativa
-    if (roleBadgeEl) {
-      roleBadgeEl.className = 'role-badge viewer';
-      roleBadgeEl.textContent = '👁️ Lector (Solo Lectura)';
-    }
     if (openMgmtBtn) openMgmtBtn.style.display = 'none';
     if (navTabIngesta) navTabIngesta.style.display = 'none';
     if (dashboardNewEvalBtn) dashboardNewEvalBtn.style.display = 'none';
@@ -506,6 +500,9 @@ function renderDashboard() {
                 Detalle
               </button>
               ${AppState.userRole === 'admin' ? `
+                <button class="btn btn-secondary btn-sm" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.35); padding: 0.25rem 0.5rem;" onclick="window.editSingleEvaluationPrompt('${e.id}')" title="Editar Evaluación">
+                  ✏️
+                </button>
                 <button class="btn btn-secondary btn-sm" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35); padding: 0.25rem 0.5rem;" onclick="window.confirmDeleteEvaluation('${e.id}', '${(e.conductor || '').replace(/'/g, "\\'")}')" title="Eliminar evaluación">
                   🗑️
                 </button>` : ''}
@@ -1607,7 +1604,12 @@ function initDirectoryFilters() {
 
   if (openModalBtn) {
     openModalBtn.addEventListener('click', () => {
-      openDirectoryBatchEditModal();
+      if (AppState.selectedDirectoryIds.size === 1) {
+        const singleId = Array.from(AppState.selectedDirectoryIds)[0];
+        openEditSingleEvaluationModal(singleId);
+      } else {
+        openDirectoryBatchEditModal();
+      }
     });
   }
 
@@ -1626,6 +1628,95 @@ function initDirectoryFilters() {
     confirmUpdateBtn.addEventListener('click', async () => {
       await handleDirectoryBatchUpdate();
     });
+  }
+
+  // Configuración de modal de edición individual completa
+  const editModal = document.getElementById('editIndividualEvalModal');
+  const closeEditModalBtn = document.getElementById('closeEditIndividualModalBtn');
+  const cancelEditModalBtn = document.getElementById('cancelEditIndividualModalBtn');
+  const editEvalForm = document.getElementById('editIndividualEvalForm');
+  const addExerciseBtn = document.getElementById('editEvalAddExerciseBtn');
+  const calcAutoBtn = document.getElementById('editEvalCalcAutoBtn');
+  const habPuntosInput = document.getElementById('editEvalHabPuntos');
+  const simPuntosInput = document.getElementById('editEvalSimPuntos');
+
+  if (closeEditModalBtn) closeEditModalBtn.addEventListener('click', closeEditSingleEvaluationModal);
+  if (cancelEditModalBtn) cancelEditModalBtn.addEventListener('click', closeEditSingleEvaluationModal);
+  if (editModal) {
+    editModal.addEventListener('click', (e) => {
+      if (e.target === editModal) closeEditSingleEvaluationModal();
+    });
+  }
+
+  if (addExerciseBtn) {
+    addExerciseBtn.addEventListener('click', () => {
+      const container = document.getElementById('editEvalEjerciciosContainer');
+      if (container) addEditExerciseRowToContainer(container);
+    });
+  }
+
+  if (calcAutoBtn) {
+    calcAutoBtn.addEventListener('click', () => {
+      recalculateEditScores();
+      showToast('Puntajes y dictamen oficial recalculados en el fondo.', 'info');
+    });
+  }
+
+  const finalPuntosInput = document.getElementById('editEvalFinalPuntos');
+
+  const updateCalculationsInBackground = () => {
+    const habVal = parseFloat(habPuntosInput?.value) || 0;
+    const simVal = parseFloat(simPuntosInput?.value) || 0;
+    const habPct = Math.round((habVal / 3.0) * 10000) / 100;
+    const simPct = Math.round((simVal / 7.0) * 10000) / 100;
+    const total = Number((habVal + simVal).toFixed(2));
+    const totalPct = Math.round((total / 10.0) * 10000) / 100;
+
+    const habPctEl = document.getElementById('editEvalHabPct');
+    if (habPctEl) habPctEl.value = habPct;
+    const simPctEl = document.getElementById('editEvalSimPct');
+    if (simPctEl) simPctEl.value = simPct;
+
+    if (finalPuntosInput) finalPuntosInput.value = total;
+    const finalPctEl = document.getElementById('editEvalFinalPct');
+    if (finalPctEl) finalPctEl.value = totalPct;
+    const calExactaEl = document.getElementById('editEvalCalExacta');
+    if (calExactaEl) calExactaEl.value = total;
+
+    // Dictamen oficial calculado en el fondo
+    let est = 'No Aprobado';
+    if (total >= 8.0) est = 'Sobresaliente';
+    else if (total >= 6.0) est = 'Aprobado';
+    else if (total >= 5.0) est = 'Requiere Refuerzo';
+    const estadoEl = document.getElementById('editEvalEstado');
+    if (estadoEl) estadoEl.value = est;
+  };
+
+  if (habPuntosInput) habPuntosInput.addEventListener('input', updateCalculationsInBackground);
+  if (simPuntosInput) simPuntosInput.addEventListener('input', updateCalculationsInBackground);
+
+  if (finalPuntosInput) {
+    finalPuntosInput.addEventListener('input', () => {
+      const val = parseFloat(finalPuntosInput.value);
+      if (!isNaN(val)) {
+        const finalPctEl = document.getElementById('editEvalFinalPct');
+        if (finalPctEl) finalPctEl.value = Math.round((val / 10.0) * 10000) / 100;
+        const calExactaEl = document.getElementById('editEvalCalExacta');
+        if (calExactaEl) calExactaEl.value = val;
+
+        // Dictamen oficial calculado en el fondo
+        let est = 'No Aprobado';
+        if (val >= 8.0) est = 'Sobresaliente';
+        else if (val >= 6.0) est = 'Aprobado';
+        else if (val >= 5.0) est = 'Requiere Refuerzo';
+        const estadoEl = document.getElementById('editEvalEstado');
+        if (estadoEl) estadoEl.value = est;
+      }
+    });
+  }
+
+  if (editEvalForm) {
+    editEvalForm.addEventListener('submit', handleEditIndividualEvaluationSubmit);
   }
 
   // Inicializar ordenamiento interactivo de la tabla del directorio
@@ -1837,8 +1928,349 @@ function closeDirectoryBatchEditModal() {
   if (modal) modal.classList.remove('active');
 }
 
+/**
+ * Mapea el estado oficial a la clase CSS del badge
+ */
+function getBadgeColorForEstado(estado) {
+  switch (estado) {
+    case 'Sobresaliente': return 'success';
+    case 'Aprobado': return 'info';
+    case 'Requiere Refuerzo': return 'warning';
+    case 'No Aprobado': return 'danger';
+    default: return 'info';
+  }
+}
+
+/**
+ * Abre el modal de edición individual completa con todos los campos pre-cargados
+ */
+function openEditSingleEvaluationModal(evalId) {
+  if (AppState.userRole !== 'admin') {
+    showToast('Acceso restringido: Se requieren permisos de administrador para editar.', 'warning');
+    return;
+  }
+
+  const item = AppState.evaluations.find(e => e.id === evalId);
+  if (!item) {
+    showToast('No se encontró la evaluación seleccionada.', 'error');
+    return;
+  }
+
+  const modal = document.getElementById('editIndividualEvalModal');
+  const subtitle = document.getElementById('editIndividualModalSubtitle');
+  const sedeSelect = document.getElementById('editEvalSede');
+
+  if (subtitle) {
+    subtitle.textContent = `Modificando reporte oficial de ${item.conductor || 'Sin Conductor'} (${item.cursoCodigo || 'TrackSIM'})`;
+  }
+
+  // Poblar select de sedes si aún no tiene las opciones
+  if (sedeSelect && sedeSelect.options.length <= 2) {
+    sedeSelect.innerHTML = `
+      <option value="">-- Sin Sede --</option>
+      ${NOMBRES_ESTADOS_MEXICO.map(st => `<option value="${st}">📍 ${st}</option>`).join('')}
+    `;
+  }
+
+  // Cargar datos en los campos
+  document.getElementById('editEvalId').value = item.id;
+  document.getElementById('editEvalConductor').value = item.conductor || '';
+  document.getElementById('editEvalEmpresa').value = item.empresa || '';
+  if (sedeSelect) sedeSelect.value = item.sede || '';
+
+  // Fecha
+  let dateVal = '';
+  if (item.fechaCapacitacion && /^\d{4}-\d{2}-\d{2}$/.test(item.fechaCapacitacion)) {
+    dateVal = item.fechaCapacitacion;
+  } else if (item.fechaCapacitacionFormato && /^\d{2}\/\d{2}\/\d{4}$/.test(item.fechaCapacitacionFormato)) {
+    const [d, m, y] = item.fechaCapacitacionFormato.split('/');
+    dateVal = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  } else if (item.fechaReporte && /^\d{2}\/\d{2}\/\d{4}$/.test(item.fechaReporte)) {
+    const [d, m, y] = item.fechaReporte.split('/');
+    dateVal = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  document.getElementById('editEvalFechaCapacitacion').value = dateVal;
+
+  document.getElementById('editEvalCursoCodigo').value = item.cursoCodigo || '';
+  document.getElementById('editEvalCursoNombre').value = item.cursoNombre || '';
+  document.getElementById('editEvalInstructor').value = item.instructor || 'Mario Agraz';
+  document.getElementById('editEvalFolioGrupo').value = item.folioGrupo || '1';
+
+  // Calificaciones
+  document.getElementById('editEvalHabPuntos').value = item.habilidadesManejoPuntos != null ? item.habilidadesManejoPuntos : '';
+  document.getElementById('editEvalHabPct').value = item.habilidadesManejoPct != null ? item.habilidadesManejoPct : '';
+  document.getElementById('editEvalSimPuntos').value = item.practicaSimuladorPuntos != null ? item.practicaSimuladorPuntos : '';
+  document.getElementById('editEvalSimPct').value = item.practicaSimuladorPct != null ? item.practicaSimuladorPct : '';
+  document.getElementById('editEvalFinalPuntos').value = item.evaluacionFinalPuntos != null ? item.evaluacionFinalPuntos : '';
+  document.getElementById('editEvalFinalPct').value = item.evaluacionFinalPct != null ? item.evaluacionFinalPct : '';
+  document.getElementById('editEvalCalExacta').value = item.calificacionExacta != null ? item.calificacionExacta : (item.evaluacionFinalPuntos != null ? item.evaluacionFinalPuntos : '');
+
+  // Incidentes
+  document.getElementById('editEvalColisiones').value = item.colisiones != null ? item.colisiones : 0;
+  document.getElementById('editEvalFatalidades').value = item.fatalidades != null ? item.fatalidades : 0;
+  document.getElementById('editEvalVehiculoFueraVia').value = item.vehiculoFueraVia != null ? item.vehiculoFueraVia : 0;
+
+  // Estatus y Firma
+  const estadoSelect = document.getElementById('editEvalEstado');
+  if (estadoSelect) estadoSelect.value = item.estado || 'Aprobado';
+  document.getElementById('editEvalFirmaDigital').value = item.firmaDigital || '';
+  document.getElementById('editEvalObservaciones').value = item.observaciones || '';
+
+  // Desglose de ejercicios evaluados
+  renderEditExercises(item);
+
+  if (modal) modal.classList.add('active');
+}
+
+/**
+ * Cierra el modal de edición individual
+ */
+function closeEditSingleEvaluationModal() {
+  const modal = document.getElementById('editIndividualEvalModal');
+  if (modal) modal.classList.remove('active');
+}
+
+/**
+ * Renderiza los ejercicios evaluados en el modal de edición
+ */
+function renderEditExercises(item) {
+  const container = document.getElementById('editEvalEjerciciosContainer');
+  if (!container) return;
+
+  let ejerciciosToRender = [];
+  if (Array.isArray(item.ejercicios) && item.ejercicios.length > 0) {
+    ejerciciosToRender = JSON.parse(JSON.stringify(item.ejercicios));
+  } else {
+    // Fallback estándar de simulaciones
+    ejerciciosToRender = [
+      { numero: 2, nombre: 'Montaña', descripcion: 'Conducción en Montaña con uso de frenos auxiliares.', calificacion: item.simulacionesDetalle?.simulacion_2 ?? null },
+      { numero: 3, nombre: 'Sierra', descripcion: 'Conducción en Sierra con condiciones adversas de baja tracción.', calificacion: item.simulacionesDetalle?.simulacion_3 ?? null },
+      { numero: 4, nombre: 'Maniobras / Niebla', descripcion: 'Conducción bajo condiciones críticas o adversas.', calificacion: item.simulacionesDetalle?.simulacion_4 ?? null }
+    ];
+  }
+
+  container.innerHTML = '';
+  ejerciciosToRender.forEach(ex => addEditExerciseRowToContainer(container, ex));
+}
+
+/**
+ * Agrega una fila de ejercicio al contenedor de edición
+ */
+function addEditExerciseRowToContainer(container, ex = {}) {
+  const currentCount = container.querySelectorAll('.edit-eval-exercise-row').length;
+  const num = ex.numero != null ? ex.numero : (currentCount + 2);
+  const name = ex.nombre || '';
+  const score = ex.calificacion != null ? ex.calificacion : '';
+  const desc = ex.descripcion || '';
+
+  const row = document.createElement('div');
+  row.className = 'edit-eval-exercise-row';
+  row.innerHTML = `
+    <div>
+      <input type="number" class="custom-input edit-ex-num" value="${num}" style="width: 100%; height: 32px; font-weight: 700; text-align: center; color: #38bdf8;" title="N° de Simulación" />
+    </div>
+    <div>
+      <input type="text" class="custom-input edit-ex-name" value="${(name || '').replace(/"/g, '&quot;')}" placeholder="Nombre (Ej: Montaña)..." style="width: 100%; height: 32px;" />
+    </div>
+    <div>
+      <input type="number" step="0.1" min="0" max="10" class="custom-input edit-ex-score" value="${score}" placeholder="Nota / 10" style="width: 100%; height: 32px; font-weight: 700; text-align: right;" />
+    </div>
+    <div>
+      <input type="text" class="custom-input edit-ex-desc" value="${(desc || '').replace(/"/g, '&quot;')}" placeholder="Descripción breve..." style="width: 100%; height: 32px;" />
+    </div>
+    <div style="text-align: right;">
+      <button type="button" class="btn btn-secondary btn-sm" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35); padding: 0.2rem 0.4rem; height: 32px;" title="Eliminar simulación">
+        ✕
+      </button>
+    </div>
+  `;
+
+  row.querySelector('button').addEventListener('click', () => row.remove());
+  container.appendChild(row);
+}
+
+/**
+ * Recalcula automáticamente porcentajes, nota final y estado sugerido
+ */
+function recalculateEditScores() {
+  const hab = parseFloat(document.getElementById('editEvalHabPuntos')?.value) || 0;
+  const sim = parseFloat(document.getElementById('editEvalSimPuntos')?.value) || 0;
+  const finalPtsInput = document.getElementById('editEvalFinalPuntos');
+  const finalPts = finalPtsInput && finalPtsInput.value !== '' ? parseFloat(finalPtsInput.value) : Number((hab + sim).toFixed(2));
+
+  const habPct = Math.round((hab / 3.0) * 10000) / 100;
+  const simPct = Math.round((sim / 7.0) * 10000) / 100;
+  const finalPct = Math.round((finalPts / 10.0) * 10000) / 100;
+
+  const habPctEl = document.getElementById('editEvalHabPct');
+  if (habPctEl) habPctEl.value = habPct;
+  const simPctEl = document.getElementById('editEvalSimPct');
+  if (simPctEl) simPctEl.value = simPct;
+  if (finalPtsInput) finalPtsInput.value = finalPts;
+  const finalPctEl = document.getElementById('editEvalFinalPct');
+  if (finalPctEl) finalPctEl.value = finalPct;
+  const calExactaEl = document.getElementById('editEvalCalExacta');
+  if (calExactaEl) calExactaEl.value = finalPts;
+
+  // Dictamen oficial calculado automáticamente de fondo
+  let est = 'No Aprobado';
+  if (finalPts >= 8.0) est = 'Sobresaliente';
+  else if (finalPts >= 6.0) est = 'Aprobado';
+  else if (finalPts >= 5.0) est = 'Requiere Refuerzo';
+  const estadoEl = document.getElementById('editEvalEstado');
+  if (estadoEl) estadoEl.value = est;
+}
+
+/**
+ * Maneja el guardado de la edición individual completa en Firestore
+ */
+async function handleEditIndividualEvaluationSubmit(e) {
+  if (e) e.preventDefault();
+
+  const evalId = document.getElementById('editEvalId').value;
+  if (!evalId) return;
+
+  const confirmBtn = document.getElementById('confirmEditIndividualBtn');
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Actualizando en Firestore...';
+  }
+
+  try {
+    const conductor = document.getElementById('editEvalConductor').value.trim();
+    const empresa = document.getElementById('editEvalEmpresa').value.trim();
+    const sede = document.getElementById('editEvalSede').value.trim();
+    const fechaCap = document.getElementById('editEvalFechaCapacitacion').value;
+
+    let fechaCapFormato = '';
+    let fechaCapIso = fechaCap;
+    if (fechaCap && /^\d{4}-\d{2}-\d{2}$/.test(fechaCap)) {
+      const [y, m, d] = fechaCap.split('-');
+      fechaCapFormato = `${d}/${m}/${y}`;
+    }
+
+    const cursoCodigo = document.getElementById('editEvalCursoCodigo').value.trim();
+    const cursoNombre = document.getElementById('editEvalCursoNombre').value.trim();
+    const instructor = document.getElementById('editEvalInstructor').value.trim();
+    const folioGrupo = document.getElementById('editEvalFolioGrupo').value.trim();
+
+    const habPts = parseFloat(document.getElementById('editEvalHabPuntos').value) || 0;
+    const simPts = parseFloat(document.getElementById('editEvalSimPuntos').value) || 0;
+    const finalPtsInput = document.getElementById('editEvalFinalPuntos');
+    let finalPts = finalPtsInput && finalPtsInput.value !== '' ? parseFloat(finalPtsInput.value) : Number((habPts + simPts).toFixed(2));
+    if (isNaN(finalPts)) finalPts = Number((habPts + simPts).toFixed(2));
+
+    // Cálculos en el fondo: porcentajes y calificación exacta
+    const habPct = Math.round((habPts / 3.0) * 10000) / 100;
+    const simPct = Math.round((simPts / 7.0) * 10000) / 100;
+    const finalPct = Math.round((finalPts / 10.0) * 10000) / 100;
+    const calExacta = Number(finalPts.toFixed(4));
+
+    // Dictamen oficial calculado en el fondo
+    let estado = 'No Aprobado';
+    if (finalPts >= 8.0) {
+      estado = 'Sobresaliente';
+    } else if (finalPts >= 6.0) {
+      estado = 'Aprobado';
+    } else if (finalPts >= 5.0) {
+      estado = 'Requiere Refuerzo';
+    } else {
+      estado = 'No Aprobado';
+    }
+    const badgeColor = getBadgeColorForEstado(estado);
+
+    // Desglose dinámico de ejercicios
+    const exRows = document.querySelectorAll('#editEvalEjerciciosContainer .edit-eval-exercise-row');
+    const ejercicios = [];
+    const simulacionesDetalle = {};
+    const nombresSimulaciones = {};
+
+    exRows.forEach(row => {
+      const numInput = row.querySelector('.edit-ex-num');
+      const nameInput = row.querySelector('.edit-ex-name');
+      const scoreInput = row.querySelector('.edit-ex-score');
+      const descInput = row.querySelector('.edit-ex-desc');
+
+      const num = parseInt(numInput?.value, 10);
+      const name = nameInput?.value.trim() || '';
+      const scoreVal = scoreInput?.value !== '' ? parseFloat(scoreInput.value) : null;
+      const desc = descInput?.value.trim() || '';
+
+      if (!isNaN(num)) {
+        ejercicios.push({
+          numero: num,
+          nombre: name,
+          calificacion: scoreVal,
+          descripcion: desc
+        });
+        simulacionesDetalle[`simulacion_${num}`] = scoreVal;
+        nombresSimulaciones[num] = name;
+      }
+    });
+
+    const colisiones = parseInt(document.getElementById('editEvalColisiones').value, 10) || 0;
+    const fatalidades = parseInt(document.getElementById('editEvalFatalidades').value, 10) || 0;
+    const vehiculoFueraVia = parseInt(document.getElementById('editEvalVehiculoFueraVia').value, 10) || 0;
+
+    const firmaDigital = document.getElementById('editEvalFirmaDigital').value.trim();
+    const observaciones = document.getElementById('editEvalObservaciones').value.trim();
+
+    const updatedFields = {
+      conductor,
+      empresa,
+      sede,
+      fechaCapacitacion: fechaCapIso || '',
+      fechaCapacitacionFormato: fechaCapFormato || fechaCapIso,
+      fechaReporte: fechaCapFormato || fechaCapIso,
+      cursoCodigo,
+      cursoNombre,
+      instructor,
+      folioGrupo,
+      habilidadesManejoPuntos: habPts,
+      habilidadesManejoPct: habPct,
+      practicaSimuladorPuntos: simPts,
+      practicaSimuladorPct: simPct,
+      evaluacionFinalPuntos: finalPts,
+      evaluacionFinalPct: finalPct,
+      calificacionExacta: calExacta,
+      ejercicios,
+      simulacionesDetalle,
+      nombresSimulaciones,
+      colisiones,
+      fatalidades,
+      vehiculoFueraVia,
+      estado,
+      badgeColor,
+      firmaDigital,
+      observaciones
+    };
+
+    await updateSingleEvaluation(evalId, updatedFields);
+
+    showToast(`¡Evaluación de ${conductor || 'operador'} actualizada exitosamente!`, 'success');
+    closeEditSingleEvaluationModal();
+
+    // Recargar datos y refrescar todas las vistas
+    await loadAndRefreshData();
+
+    // Si el modal de reporte digital está abierto y muestra esta evaluación, refrescar su contenido
+    const reportModal = document.getElementById('evaluationModal');
+    if (reportModal && reportModal.classList.contains('active')) {
+      window.viewEvaluationDetail(evalId);
+    }
+  } catch (err) {
+    console.error('Error al actualizar la evaluación:', err);
+    showToast('Error al actualizar los datos en Firestore.', 'error');
+  } finally {
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = '💾 Guardar Cambios en Firestore';
+    }
+  }
+}
+
 window.editSingleEvaluationPrompt = (evalId) => {
-  openDirectoryBatchEditModal(evalId);
+  openEditSingleEvaluationModal(evalId);
 };
 
 async function handleDirectoryBatchUpdate() {
@@ -2043,7 +2475,7 @@ function renderDirectoryTable() {
             📄 Reporte
           </button>
           ${AppState.userRole === 'admin' ? `
-            <button class="btn btn-secondary btn-sm" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.35); padding: 0.3rem 0.5rem;" onclick="window.editSingleEvaluationPrompt('${e.id}')" title="Editar Empresa y Sede">
+            <button class="btn btn-secondary btn-sm" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.35); padding: 0.3rem 0.5rem;" onclick="window.editSingleEvaluationPrompt('${e.id}')" title="Editar Evaluación Completa">
               ✏️
             </button>
             <button class="btn btn-secondary btn-sm" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35); padding: 0.3rem 0.5rem;" onclick="window.confirmDeleteEvaluation('${e.id}', '${(e.conductor || '').replace(/'/g, "\\'")}')" title="Eliminar evaluación">
@@ -2137,6 +2569,14 @@ function initModals() {
       if (!currentModalItem) return;
       await window.confirmDeleteEvaluation(currentModalItem.id, currentModalItem.conductor);
       hide();
+    });
+  }
+
+  const modalEditBtn = document.getElementById('modalEditBtn');
+  if (modalEditBtn) {
+    modalEditBtn.addEventListener('click', () => {
+      if (!currentModalItem) return;
+      openEditSingleEvaluationModal(currentModalItem.id);
     });
   }
 

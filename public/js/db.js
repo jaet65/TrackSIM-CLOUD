@@ -152,6 +152,52 @@ export async function updateEvaluationsBatchEmpresaSede(evalIds, newEmpresa, new
 }
 
 /**
+ * Actualiza todos los campos de una evaluación individual en Firestore y almacenamiento local
+ */
+export async function updateSingleEvaluation(evalId, updatedData) {
+  if (!evalId) throw new Error('ID de evaluación no válido.');
+
+  // Eliminar undefined para evitar que Firestore lance error
+  const cleanUpdates = {};
+  for (const [key, value] of Object.entries(updatedData)) {
+    if (value !== undefined) {
+      cleanUpdates[key] = value;
+    }
+  }
+  cleanUpdates.updatedAt = new Date().toISOString();
+
+  // 1. Guardar en localStorage
+  let list = [];
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    list = raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    list = [];
+  }
+
+  const idx = list.findIndex(e => e.id === evalId);
+  let mergedData = { id: evalId, ...cleanUpdates };
+  if (idx >= 0) {
+    mergedData = { ...list[idx], ...cleanUpdates };
+    list[idx] = mergedData;
+  } else {
+    list.unshift(mergedData);
+  }
+  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list));
+
+  // 2. Guardar en Cloud Firestore
+  try {
+    const docRef = doc(db, COLLECTION_NAME, evalId);
+    await setDoc(docRef, mergedData, { merge: true });
+    console.log(`Evaluación ${evalId} actualizada en Firestore exitosamente.`);
+  } catch (err) {
+    console.warn(`Error al actualizar Firestore para ${evalId}:`, err);
+  }
+
+  return mergedData;
+}
+
+/**
  * Guarda una evaluación tanto en Firestore como en localStorage
  */
 export async function saveEvaluation(evaluationData) {
