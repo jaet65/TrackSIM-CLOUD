@@ -1,0 +1,265 @@
+/**
+ * TrackSIM CLOUD - Interactive Visualizations & Chart Engine
+ * Utiliza Chart.js para generar gráficos interactivos de evolución, comparativa y métricas.
+ */
+
+const chartInstances = {};
+
+function destroyChart(id) {
+  if (chartInstances[id]) {
+    chartInstances[id].destroy();
+    delete chartInstances[id];
+  }
+}
+
+/**
+ * Gráfico de Línea Temporal: Evolución del Conductor
+ */
+export function renderEvolutionChart(canvasId, evaluations) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx || !window.Chart) return;
+
+  destroyChart(canvasId);
+
+  if (!evaluations || evaluations.length === 0) {
+    return;
+  }
+
+  // Ordenar cronológicamente
+  const sorted = evaluations.slice().sort((a, b) => {
+    const da = a.fechaCapacitacion || a.fechaReporte || '';
+    const db = b.fechaCapacitacion || b.fechaReporte || '';
+    return da.localeCompare(db);
+  });
+
+  const labels = sorted.map((e, idx) => {
+    return e.fechaCapacitacionFormato || e.fechaCapacitacion || `Sesión ${idx + 1}`;
+  });
+
+  const finalScores = sorted.map(e => e.evaluacionFinalPuntos || e.calificacionExacta || 0);
+  const simScores = sorted.map(e => e.practicaSimuladorPuntos || 0);
+  const habScores = sorted.map(e => e.habilidadesManejoPuntos || 0);
+
+  chartInstances[canvasId] = new window.Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Evaluación Final (0 - 10)',
+          data: finalScores,
+          borderColor: '#38bdf8',
+          backgroundColor: 'rgba(56, 189, 248, 0.15)',
+          fill: true,
+          tension: 0.35,
+          borderWidth: 3,
+          pointBackgroundColor: '#38bdf8',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2,
+          pointRadius: 6,
+          pointHoverRadius: 8
+        },
+        {
+          label: 'Práctica Simulador (0 - 7 ptos)',
+          data: simScores,
+          borderColor: '#a855f7',
+          backgroundColor: 'transparent',
+          borderDash: [5, 5],
+          tension: 0.35,
+          borderWidth: 2,
+          pointBackgroundColor: '#a855f7',
+          pointRadius: 4
+        },
+        {
+          label: 'Habilidades Manejo (0 - 3 ptos)',
+          data: habScores,
+          borderColor: '#10b981',
+          backgroundColor: 'transparent',
+          borderDash: [3, 3],
+          tension: 0.35,
+          borderWidth: 2,
+          pointBackgroundColor: '#10b981',
+          pointRadius: 4
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          labels: {
+            color: '#94a3b8',
+            font: { family: "'Plus Jakarta Sans', sans-serif", size: 12 }
+          }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          titleColor: '#f8fafc',
+          bodyColor: '#cbd5e1',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          borderWidth: 1,
+          padding: 12,
+          boxPadding: 6,
+          callbacks: {
+            afterBody: function(context) {
+              const idx = context[0].dataIndex;
+              const ev = sorted[idx];
+              return `\nColisiones: ${ev.colisiones || 0}\nFatalidades: ${ev.fatalidades || 0}\nEstado: ${ev.estado || 'N/A'}`;
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          min: 0,
+          max: 10,
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: { color: '#64748b', font: { family: "'Plus Jakarta Sans', sans-serif" } }
+        },
+        x: {
+          grid: { color: 'rgba(255, 255, 255, 0.03)' },
+          ticks: { color: '#94a3b8', font: { family: "'Plus Jakarta Sans', sans-serif" } }
+        }
+      }
+    }
+  });
+}
+
+/**
+ * Gráfico Radar: Comparativa Cabeza a Cabeza (Conductor vs Conductor o Promedio)
+ */
+export function renderComparisonRadarChart(canvasId, driverA, driverB) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx || !window.Chart) return;
+
+  destroyChart(canvasId);
+
+  // Dimensiones normalizadas de 0 a 10
+  const labels = [
+    'Evaluación Final',
+    'Habilidades Manejo (% x10)',
+    'Simulador (% x10)',
+    'Seguridad Vial (Sin Incidentes)',
+    'Simulación 3 (Sierra)',
+    'Simulación 4 (Críticas)'
+  ];
+
+  function getMetrics(driver) {
+    if (!driver || !driver.evaluaciones || driver.evaluaciones.length === 0) {
+      return [5, 5, 5, 5, 5, 5];
+    }
+    const latest = driver.evaluaciones[driver.evaluaciones.length - 1];
+    const finalScore = latest.evaluacionFinalPuntos || latest.calificacionExacta || 0;
+    const habNorm = (latest.habilidadesManejoPct || 50) / 10;
+    const simNorm = (latest.practicaSimuladorPct || 50) / 10;
+    const seguridadScore = Math.max(0, 10 - ((latest.colisiones || 0) * 2) - ((latest.fatalidades || 0) * 3));
+    const sim3 = latest.simulacionesDetalle?.simulacion_3 || 5;
+    const sim4 = latest.simulacionesDetalle?.simulacion_4 || 5;
+
+    return [finalScore, habNorm, simNorm, seguridadScore, sim3, sim4];
+  }
+
+  const dataA = getMetrics(driverA);
+  const dataB = getMetrics(driverB);
+
+  chartInstances[canvasId] = new window.Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: driverA ? driverA.nombre : 'Operador 1',
+          data: dataA,
+          borderColor: '#38bdf8',
+          backgroundColor: 'rgba(56, 189, 248, 0.25)',
+          borderWidth: 2,
+          pointBackgroundColor: '#38bdf8',
+          pointRadius: 4
+        },
+        {
+          label: driverB ? driverB.nombre : 'Operador 2 / Promedio',
+          data: dataB,
+          borderColor: '#f59e0b',
+          backgroundColor: 'rgba(245, 158, 11, 0.25)',
+          borderWidth: 2,
+          pointBackgroundColor: '#f59e0b',
+          pointRadius: 4
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          labels: { color: '#94a3b8', font: { family: "'Plus Jakarta Sans', sans-serif" } }
+        }
+      },
+      scales: {
+        r: {
+          min: 0,
+          max: 10,
+          angleLines: { color: 'rgba(255, 255, 255, 0.08)' },
+          grid: { color: 'rgba(255, 255, 255, 0.08)' },
+          pointLabels: { color: '#cbd5e1', font: { size: 11 } },
+          ticks: { backdropColor: 'transparent', color: '#64748b' }
+        }
+      }
+    }
+  });
+}
+
+/**
+ * Gráfico Donut de Distribución General de Evaluaciones
+ */
+export function renderDistributionChart(canvasId, evaluations) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx || !window.Chart) return;
+
+  destroyChart(canvasId);
+
+  if (!evaluations || evaluations.length === 0) {
+    return;
+  }
+
+  let sobresalientes = 0;
+  let aprobados = 0;
+  let refuerzo = 0;
+  let noAprobados = 0;
+
+  evaluations.forEach(e => {
+    const s = e.evaluacionFinalPuntos || e.calificacionExacta || 0;
+    if (s >= 8.0) sobresalientes++;
+    else if (s >= 6.0) aprobados++;
+    else if (s >= 5.0) refuerzo++;
+    else noAprobados++;
+  });
+
+  chartInstances[canvasId] = new window.Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Sobresaliente (8-10)', 'Aprobado (6-7.9)', 'Requiere Refuerzo (5-5.9)', 'No Aprobado (<5)'],
+      datasets: [
+        {
+          data: [sobresalientes, aprobados, refuerzo, noAprobados],
+          backgroundColor: ['#10b981', '#38bdf8', '#f59e0b', '#ef4444'],
+          borderColor: '#111827',
+          borderWidth: 2,
+          hoverOffset: 6
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { color: '#94a3b8', boxWidth: 12, font: { size: 11 } }
+        }
+      },
+      cutout: '68%'
+    }
+  });
+}

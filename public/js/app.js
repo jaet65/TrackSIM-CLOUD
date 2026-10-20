@@ -1,0 +1,1138 @@
+/**
+ * TrackSIM CLOUD - Application Main Controller
+ * Maneja la navegación, autenticación con Google, ingesta de PDFs,
+ * trazabilidad de conductores y sincronización con Firestore.
+ */
+
+import {
+  auth,
+  googleProvider,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  secondaryAuth,
+  db,
+  collection,
+  doc,
+  setDoc,
+  getDocs,
+  query,
+  orderBy
+} from './firebase-config.js';
+
+import {
+  getEvaluations,
+  saveEvaluation,
+  saveBatchEvaluations,
+  processDriverSummaries,
+  slugify
+} from './db.js';
+
+import {
+  parsePDFFile
+} from './pdf-parser.js';
+
+import {
+  renderEvolutionChart,
+  renderComparisonRadarChart,
+  renderDistributionChart
+} from './charts.js';
+
+// Estado global de la aplicación
+const AppState = {
+  user: null,
+  userRole: null, // 'admin' | 'viewer'
+  evaluations: [],
+  drivers: [],
+  selectedDriver: null,
+  stagingEvaluations: [],
+  currentTab: 'dashboard',
+  filters: {
+    search: '',
+    empresa: 'all',
+    estado: 'all'
+  }
+};
+
+// ==========================================
+// INICIALIZACIÓN
+// ==========================================
+document.addEventListener('DOMContentLoaded', async () => {
+  // Limpiar datos de prueba residuales para garantizar inicio limpio
+  if (!localStorage.getItem('tracksim_clean_empty_v2')) {
+    localStorage.removeItem('tracksim_cloud_evaluaciones');
+    localStorage.setItem('tracksim_clean_empty_v2', 'true');
+  }
+
+  initNavigation();
+  initAuth();
+  initDropzone();
+  initDirectoryFilters();
+  initModals();
+});
+
+// ==========================================
+// NAVEGACIÓN ENTRE SECCIONES
+// ==========================================
+function initNavigation() {
+  const navItems = document.querySelectorAll('.nav-item[data-tab]');
+  navItems.forEach(item => {
+    item.addEventListener('click', () => {
+      const targetTab = item.dataset.tab;
+      switchTab(targetTab);
+    });
+  });
+}
+
+export function switchTab(tabId) {
+  AppState.currentTab = tabId;
+
+  // Actualizar botones de navegación
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.classList.toggle('active', item.dataset.tab === tabId);
+  });
+
+  // Mostrar la sección correspondiente
+  document.querySelectorAll('.view-section').forEach(sec => {
+    sec.classList.remove('active');
+  });
+
+  const activeSec = document.getElementById(`view-${tabId}`);
+  if (activeSec) {
+    activeSec.classList.add('active');
+  }
+
+  // Actualizaciones específicas al entrar a una pestaña
+  if (tabId === 'dashboard') {
+    renderDashboard();
+  } else if (tabId === 'evolucion') {
+    renderEvolutionView();
+  } else if (tabId === 'comparativa') {
+    renderComparisonView();
+  } else if (tabId === 'directorio') {
+    renderDirectoryTable();
+  }
+}
+
+// ==========================================
+// AUTENTICACIÓN Y CONTROL DE ROLES
+// ==========================================
+function showLoginAlert(msg) {
+  const alertEl = document.getElementById('loginAlert');
+  if (alertEl) {
+    alertEl.textContent = msg;
+    alertEl.style.display = 'block';
+  }
+}
+
+function hideLoginAlert() {
+  const alertEl = document.getElementById('loginAlert');
+  if (alertEl) {
+    alertEl.style.display = 'none';
+  }
+}
+
+function initAuth() {
+  const loginScreen = document.getElementById('loginScreen');
+  const appContainer = document.getElementById('appContainer');
+  const googleLoginBtn = document.getElementById('googleLoginBtn');
+  const viewerLoginForm = document.getElementById('viewerLoginForm');
+  const logoutBtn = document.getElementById('logoutBtn');
+
+  // Listener del estado de autenticación
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      AppState.user = null;
+      AppState.userRole = null;
+      if (loginScreen) loginScreen.style.display = 'flex';
+      if (appContainer) appContainer.style.display = 'none';
+      return;
+    }
+
+    const email = (user.email || '').toLowerCase().trim();
+    const isGoogleAuth = user.providerData && user.providerData.some(p => p.providerId === 'google.com');
+
+    // Validación de dominio para Administradores de Google
+    if (isGoogleAuth) {
+      if (!email.endsWith('@corporativomaf.com')) {
+        showLoginAlert(`Acceso denegado: La cuenta ${email} no pertenece al dominio @corporativomaf.com. El acceso con Google está reservado para Administradores.`);
+        await signOut(auth);
+        return;
+      }
+      AppState.userRole = 'admin';
+    } else {
+      // Usuario autenticado por Correo y Contraseña -> Rol Lector
+      AppState.userRole = 'viewer';
+    }
+
+    AppState.user = user;
+    hideLoginAlert();
+
+    // Mostrar aplicación principal y ocultar ventana de login
+    if (loginScreen) loginScreen.style.display = 'none';
+    if (appContainer) appContainer.style.display = 'block';
+
+    // Configurar interfaz de usuario según rol
+    applyRolePermissions(user, AppState.userRole);
+
+    // Cargar datos ahora que estamos autenticados
+    await loadAndRefreshData();
+  });
+
+  // Acceso Administrador con Google
+  if (googleLoginBtn) {
+    googleLoginBtn.addEventListener('click', async () => {
+      hideLoginAlert();
+      googleLoginBtn.disabled = true;
+      googleLoginBtn.textContent = 'Conectando con Google...';
+      try {
+        await signInWithPopup(auth, googleProvider);
+      } catch (err) {
+        console.error('Error Google Sign-In:', err);
+        if (err.code !== 'auth/popup-closed-by-user') {
+          showLoginAlert('Error al autenticar con Google. Intente nuevamente.');
+        }
+      } finally {
+        googleLoginBtn.disabled = false;
+        googleLoginBtn.innerHTML = `
+          <svg width="20" height="20" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+          </svg>
+          Ingresar con Google (Admin)
+        `;
+      }
+    });
+  }
+
+  // Acceso Lector con Correo y Contraseña
+  if (viewerLoginForm) {
+    viewerLoginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideLoginAlert();
+      const email = document.getElementById('viewerEmail').value.trim();
+      const password = document.getElementById('viewerPassword').value;
+      const submitBtn = document.getElementById('viewerSubmitBtn');
+
+      if (!email || !password) return;
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Verificando credenciales...';
+
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+      } catch (err) {
+        console.error('Error al iniciar sesión con correo:', err);
+        let errorMsg = 'Correo o contraseña incorrectos. Verifica tus datos.';
+        if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+          errorMsg = 'Credenciales no autorizadas. Solicita a un Administrador que registre tu cuenta de Lector.';
+        } else if (err.code === 'auth/too-many-requests') {
+          errorMsg = 'Demasiados intentos fallidos. Por seguridad, intente en unos minutos.';
+        }
+        showLoginAlert(errorMsg);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Iniciar Sesión como Lector';
+      }
+    });
+  }
+
+  // Cerrar sesión
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', async () => {
+      await signOut(auth);
+      showToast('Sesión finalizada correctamente', 'info');
+    });
+  }
+}
+
+/**
+ * Ajusta la interfaz según el rol del usuario (Administrador vs Lector)
+ */
+function applyRolePermissions(user, role) {
+  const avatarEl = document.getElementById('userAvatar');
+  const nameEl = document.getElementById('userName');
+  const emailSubEl = document.getElementById('userEmailSubtitle');
+  const roleBadgeEl = document.getElementById('userRoleBadge');
+  const openMgmtBtn = document.getElementById('openUserMgmtBtn');
+  const ingestaLockedAlert = document.getElementById('ingestaLockedAlert');
+  const uploadZoneWrapper = document.getElementById('uploadZoneWrapper');
+
+  if (avatarEl) {
+    avatarEl.src = user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || user.email)}&background=0284c7&color=fff`;
+  }
+  if (nameEl) {
+    nameEl.textContent = user.displayName || user.email.split('@')[0];
+  }
+  if (emailSubEl) {
+    emailSubEl.textContent = user.email;
+  }
+
+  if (role === 'admin') {
+    if (roleBadgeEl) {
+      roleBadgeEl.className = 'role-badge admin';
+      roleBadgeEl.textContent = '👑 Admin';
+    }
+    if (openMgmtBtn) openMgmtBtn.style.display = 'inline-flex';
+    if (ingestaLockedAlert) ingestaLockedAlert.style.display = 'none';
+    if (uploadZoneWrapper) uploadZoneWrapper.style.display = 'block';
+  } else {
+    // Rol: Lector (Solo Lectura)
+    if (roleBadgeEl) {
+      roleBadgeEl.className = 'role-badge viewer';
+      roleBadgeEl.textContent = '👁️ Lector (Solo Lectura)';
+    }
+    if (openMgmtBtn) openMgmtBtn.style.display = 'none';
+    if (ingestaLockedAlert) ingestaLockedAlert.style.display = 'flex';
+    if (uploadZoneWrapper) uploadZoneWrapper.style.display = 'none';
+  }
+}
+
+// ==========================================
+// CARGA Y SINCRONIZACIÓN DE DATOS
+// ==========================================
+async function loadAndRefreshData() {
+  try {
+    AppState.evaluations = await getEvaluations();
+    AppState.drivers = processDriverSummaries(AppState.evaluations);
+
+    // Si aún no hay conductor seleccionado, seleccionar el primero
+    if (!AppState.selectedDriver && AppState.drivers.length > 0) {
+      AppState.selectedDriver = AppState.drivers[0];
+    }
+
+    renderDashboard();
+    renderEvolutionView();
+    renderComparisonView();
+    renderDirectoryTable();
+  } catch (e) {
+    console.error('Error cargando datos principales:', e);
+    showToast('Error al inicializar datos.', 'error');
+  }
+}
+
+// ==========================================
+// VISTA: DASHBOARD EJECUTIVO
+// ==========================================
+function renderDashboard() {
+  const evals = AppState.evaluations;
+  const drivers = AppState.drivers;
+
+  // 1. KPIs
+  document.getElementById('kpiTotalEvals').textContent = evals.length;
+  document.getElementById('kpiTotalDrivers').textContent = drivers.length;
+
+  if (evals.length > 0) {
+    const avgScore = (evals.reduce((acc, e) => acc + (e.evaluacionFinalPuntos || e.calificacionExacta || 0), 0) / evals.length).toFixed(2);
+    document.getElementById('kpiAvgScore').textContent = `${avgScore} / 10`;
+
+    const approvedCount = evals.filter(e => (e.evaluacionFinalPuntos || 0) >= 6.0).length;
+    const approvalRate = ((approvedCount / evals.length) * 100).toFixed(1);
+    document.getElementById('kpiApprovalRate').textContent = `${approvalRate}%`;
+
+    const totalCollisions = evals.reduce((acc, e) => acc + (e.colisiones || 0), 0);
+    const totalFatalities = evals.reduce((acc, e) => acc + (e.fatalidades || 0), 0);
+    document.getElementById('kpiTotalIncidents').textContent = totalCollisions + totalFatalities;
+  } else {
+    document.getElementById('kpiAvgScore').textContent = '0.00';
+    document.getElementById('kpiApprovalRate').textContent = '0%';
+    document.getElementById('kpiTotalIncidents').textContent = '0';
+  }
+
+  // 2. Gráfico Donut de Distribución
+  renderDistributionChart('distributionChartCanvas', evals);
+
+  // 3. Tabla de Evaluaciones Recientes
+  const recentTableBody = document.getElementById('recentEvalsTableBody');
+  if (recentTableBody) {
+    if (evals.length === 0) {
+      recentTableBody.innerHTML = `
+        <tr>
+          <td colspan="5" style="text-align: center; padding: 3rem 1.5rem; color: var(--text-muted);">
+            <div style="font-size: 2rem; margin-bottom: 0.5rem;">📁</div>
+            No hay evaluaciones registradas aún. Sube tus archivos PDF en la pestaña 'Ingesta de PDFs'.
+          </td>
+        </tr>
+      `;
+    } else {
+      const recents = evals.slice(0, 5);
+      recentTableBody.innerHTML = recents.map(e => `
+        <tr>
+          <td>
+            <div style="font-weight: 600;">${e.conductor}</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">${e.empresa || 'Empresa'}</div>
+          </td>
+          <td>${e.fechaCapacitacionFormato || e.fechaCapacitacion || e.fechaReporte}</td>
+          <td>
+            <span class="score-pill">
+              ${(e.evaluacionFinalPuntos || e.calificacionExacta || 0).toFixed(2)}
+              <small style="color: var(--text-muted); font-size: 0.7rem;">/ 10</small>
+            </span>
+          </td>
+          <td>
+            <span class="badge badge-${e.badgeColor || 'info'}">${e.estado || 'Procesado'}</span>
+          </td>
+          <td>
+            <button class="btn btn-secondary btn-sm" onclick="window.viewEvaluationDetail('${e.id}')">
+              Detalle
+            </button>
+          </td>
+        </tr>
+      `).join('');
+    }
+  }
+}
+
+// ==========================================
+// VISTA: INGESTA INTELIGENTE DE PDFS
+// ==========================================
+function initDropzone() {
+  const dropzone = document.getElementById('pdfDropzone');
+  const fileInput = document.getElementById('pdfFileInput');
+  const loadSamplesBtn = document.getElementById('loadSamplePdfsBtn');
+  const saveBatchBtn = document.getElementById('saveBatchBtn');
+
+  if (!dropzone || !fileInput) return;
+
+  dropzone.addEventListener('click', () => fileInput.click());
+
+  dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropzone.classList.add('dragover');
+  });
+
+  dropzone.addEventListener('dragleave', () => {
+    dropzone.classList.remove('dragover');
+  });
+
+  dropzone.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      await processSelectedFiles(Array.from(e.dataTransfer.files));
+    }
+  });
+
+  fileInput.addEventListener('change', async () => {
+    if (fileInput.files && fileInput.files.length > 0) {
+      await processSelectedFiles(Array.from(fileInput.files));
+    }
+  });
+
+  // Botón para confirmar y guardar en Firestore
+  if (saveBatchBtn) {
+    saveBatchBtn.addEventListener('click', async () => {
+      if (AppState.stagingEvaluations.length === 0) return;
+
+      saveBatchBtn.disabled = true;
+      saveBatchBtn.textContent = 'Guardando en Firestore...';
+
+      try {
+        await saveBatchEvaluations(AppState.stagingEvaluations);
+        showToast(`¡Se guardaron ${AppState.stagingEvaluations.length} evaluaciones en Firestore exitosamente!`, 'success');
+
+        AppState.stagingEvaluations = [];
+        document.getElementById('stagingReviewBox').style.display = 'none';
+
+        // Recargar datos y actualizar vistas
+        await loadAndRefreshData();
+        switchTab('evolucion');
+      } catch (err) {
+        console.error('Error al guardar en lote:', err);
+        showToast('Error al guardar en la base de datos.', 'error');
+      } finally {
+        saveBatchBtn.disabled = false;
+        saveBatchBtn.textContent = '💾 Confirmar y Guardar en Firestore';
+      }
+    });
+  }
+}
+
+/**
+ * Procesa una lista de archivos Files locales seleccionados por el usuario
+ */
+async function processSelectedFiles(fileList) {
+  const pdfs = fileList.filter(f => f.name.toLowerCase().endsWith('.pdf'));
+  if (pdfs.length === 0) {
+    showToast('Por favor selecciona archivos con formato PDF.', 'warning');
+    return;
+  }
+
+  showProgress(true, 10, `Iniciando análisis de ${pdfs.length} archivo(s)...`);
+  const parsedItems = [];
+
+  for (let i = 0; i < pdfs.length; i++) {
+    const file = pdfs[i];
+    const pct = Math.round(((i + 1) / pdfs.length) * 90);
+    showProgress(true, pct, `Leyendo ${file.name}...`);
+
+    try {
+      const data = await parsePDFFile(file, file.name);
+      parsedItems.push(data);
+    } catch (err) {
+      console.error(`Error procesando ${file.name}:`, err);
+      showToast(`Error al leer ${file.name}`, 'error');
+    }
+  }
+
+  showProgress(true, 100, '¡Todos los PDFs han sido procesados!');
+  setTimeout(() => showProgress(false), 800);
+
+  if (parsedItems.length > 0) {
+    displayStagingEvaluations(parsedItems);
+    showToast(`¡Se extrajeron con éxito ${parsedItems.length} reportes!`, 'success');
+  }
+}
+
+function showProgress(visible, percentage = 0, statusText = '') {
+  const card = document.getElementById('processingCard');
+  const bar = document.getElementById('processingBarFill');
+  const text = document.getElementById('processingStatusText');
+
+  if (!card) return;
+  card.style.display = visible ? 'block' : 'none';
+  if (bar) bar.style.width = `${percentage}%`;
+  if (text && statusText) text.textContent = statusText;
+}
+
+/**
+ * Despliega los resultados extraídos en la tabla de revisión antes de guardar
+ */
+function displayStagingEvaluations(items) {
+  AppState.stagingEvaluations = items;
+  const box = document.getElementById('stagingReviewBox');
+  const tbody = document.getElementById('stagingTableBody');
+  const countBadge = document.getElementById('stagingCountBadge');
+
+  if (!box || !tbody) return;
+  box.style.display = 'block';
+  if (countBadge) countBadge.textContent = `${items.length} pendientes`;
+
+  tbody.innerHTML = items.map((item, idx) => `
+    <tr>
+      <td>
+        <div style="font-weight: 600;">${item.conductor || 'Sin Conductor'}</div>
+        <div style="font-size: 0.75rem; color: var(--text-muted);">${item.filename}</div>
+      </td>
+      <td>${item.empresa || 'N/A'}</td>
+      <td>${item.fechaCapacitacionFormato || item.fechaCapacitacion || item.fechaReporte}</td>
+      <td>
+        <strong>${(item.habilidadesManejoPuntos || 0).toFixed(2)}</strong> / 3.0
+        <div style="font-size: 0.7rem; color: var(--text-muted);">${item.habilidadesManejoPct || 0}%</div>
+      </td>
+      <td>
+        <strong>${(item.practicaSimuladorPuntos || 0).toFixed(2)}</strong> / 7.0
+        <div style="font-size: 0.7rem; color: var(--text-muted);">${item.practicaSimuladorPct || 0}%</div>
+      </td>
+      <td>
+        <span class="score-pill" style="color: var(--primary);">
+          ${(item.evaluacionFinalPuntos || 0).toFixed(2)}
+        </span>
+        <div style="font-size: 0.7rem; color: var(--text-muted);">${item.evaluacionFinalPct || 0}%</div>
+      </td>
+      <td>
+        <span style="color: ${(item.colisiones + item.fatalidades) > 0 ? 'var(--danger)' : 'var(--success)'}; font-weight: 600;">
+          ${item.colisiones} col / ${item.fatalidades} fat
+        </span>
+      </td>
+      <td>
+        <span class="badge badge-${item.badgeColor}">${item.estado}</span>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// ==========================================
+// VISTA: TRAZABILIDAD Y EVOLUCIÓN
+// ==========================================
+function renderEvolutionView() {
+  const select = document.getElementById('driverSelect');
+  const selectorBar = document.getElementById('driverSelectorBar');
+  const emptyEl = document.getElementById('driverHeroEmpty');
+  const contentEl = document.getElementById('driverHeroContent');
+
+  const drivers = AppState.drivers;
+  if (!drivers || drivers.length === 0) {
+    if (emptyEl) emptyEl.style.display = 'block';
+    if (contentEl) contentEl.style.display = 'none';
+    if (selectorBar) selectorBar.style.display = 'none';
+    return;
+  }
+
+  if (emptyEl) emptyEl.style.display = 'none';
+  if (contentEl) contentEl.style.display = 'block';
+  if (selectorBar) selectorBar.style.display = 'flex';
+
+  if (!select) return;
+
+  // Llenar selector
+  select.innerHTML = drivers.map(d => `
+    <option value="${d.slug}" ${AppState.selectedDriver && AppState.selectedDriver.slug === d.slug ? 'selected' : ''}>
+      ${d.nombre} (${d.totalEvaluaciones} evaluaciones)
+    </option>
+  `).join('');
+
+  select.onchange = (e) => {
+    const found = drivers.find(d => d.slug === e.target.value);
+    if (found) {
+      AppState.selectedDriver = found;
+      updateDriverDetails(found);
+    }
+  };
+
+  if (!AppState.selectedDriver) {
+    AppState.selectedDriver = drivers[0];
+  }
+
+  updateDriverDetails(AppState.selectedDriver);
+}
+
+function updateDriverDetails(driver) {
+  if (!driver) return;
+
+  // Header del conductor
+  document.getElementById('driverNameTitle').textContent = driver.nombre;
+  document.getElementById('driverCompanySubtitle').textContent = driver.empresa;
+  document.getElementById('driverInitialsAvatar').textContent = driver.nombre.split(' ').map(n => n[0]).slice(0, 2).join('');
+
+  // Estadísticas
+  document.getElementById('statTotalEvals').textContent = driver.totalEvaluaciones;
+  document.getElementById('statLatestScore').textContent = `${(driver.ultimaCalificacion || 0).toFixed(2)} / 10`;
+  document.getElementById('statAvgScore').textContent = `${(driver.promedioCalificacion || 0).toFixed(2)}`;
+
+  const changeEl = document.getElementById('statEvolutionChange');
+  if (driver.totalEvaluaciones > 1) {
+    const sign = driver.cambioPorcentual > 0 ? '+' : '';
+    changeEl.textContent = `${sign}${driver.cambioPorcentual}%`;
+    changeEl.style.color = driver.cambioPorcentual >= 0 ? 'var(--success)' : 'var(--danger)';
+  } else {
+    changeEl.textContent = '1ra Evaluación (Línea base)';
+    changeEl.style.color = 'var(--text-muted)';
+  }
+
+  // Gráfico de línea temporal
+  renderEvolutionChart('driverEvolutionChartCanvas', driver.evaluaciones);
+
+  // Timeline cronológico
+  const timelineContainer = document.getElementById('driverTimelineContainer');
+  if (timelineContainer) {
+    timelineContainer.innerHTML = driver.evaluaciones.map((ev, index) => {
+      const dotColor = ev.badgeColor || 'info';
+      return `
+        <div class="timeline-item">
+          <div class="timeline-dot ${dotColor}"></div>
+          <div class="timeline-content">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+              <div>
+                <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">SESIÓN #${index + 1}</span>
+                <h4 style="font-size: 1.1rem; color: #ffffff;">${ev.cursoNombre || ev.cursoCodigo}</h4>
+                <div style="font-size: 0.82rem; color: var(--text-secondary);">
+                  📅 Fecha: ${ev.fechaCapacitacionFormato || ev.fechaCapacitacion || ev.fechaReporte} &nbsp;|&nbsp; 👨‍🏫 Instructor: ${ev.instructor || 'Mario Agraz'}
+                </div>
+              </div>
+              <div>
+                <span class="badge badge-${ev.badgeColor}">${ev.estado}</span>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1rem; margin-top: 1rem; background: rgba(0, 0, 0, 0.2); padding: 0.8rem; border-radius: var(--radius-sm);">
+              <div>
+                <div style="font-size: 0.72rem; color: var(--text-muted);">HABILIDADES (3 PTS)</div>
+                <div style="font-weight: 700; color: #10b981;">${(ev.habilidadesManejoPuntos || 0).toFixed(2)} (${ev.habilidadesManejoPct || 0}%)</div>
+              </div>
+              <div>
+                <div style="font-size: 0.72rem; color: var(--text-muted);">SIMULADOR (7 PTS)</div>
+                <div style="font-weight: 700; color: #a855f7;">${(ev.practicaSimuladorPuntos || 0).toFixed(2)} (${ev.practicaSimuladorPct || 0}%)</div>
+              </div>
+              <div>
+                <div style="font-size: 0.72rem; color: var(--text-muted);">FINAL (10 PTS)</div>
+                <div style="font-weight: 800; font-size: 1.1rem; color: #38bdf8;">${(ev.evaluacionFinalPuntos || ev.calificacionExacta || 0).toFixed(2)}</div>
+              </div>
+              <div>
+                <div style="font-size: 0.72rem; color: var(--text-muted);">INCIDENTES</div>
+                <div style="font-weight: 600; color: ${(ev.colisiones + ev.fatalidades) > 0 ? 'var(--danger)' : 'var(--success)'};">
+                  ${ev.colisiones || 0} colisiones / ${ev.fatalidades || 0} fat.
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top: 0.8rem; display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 0.75rem; color: var(--text-muted); font-family: monospace;">Firma: ${(ev.firmaDigital || '').substring(0, 16)}...</span>
+              <button class="btn btn-secondary btn-sm" onclick="window.viewEvaluationDetail('${ev.id}')">
+                Ver Reporte Completo
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+}
+
+// ==========================================
+// VISTA: COMPARADOR DE CONDUCTORES
+// ==========================================
+function renderComparisonView() {
+  const selectA = document.getElementById('compareDriverA');
+  const selectB = document.getElementById('compareDriverB');
+  const emptyState = document.getElementById('compareEmptyState');
+  const compareContent = document.getElementById('compareContent');
+
+  const drivers = AppState.drivers;
+  if (!drivers || drivers.length < 2) {
+    if (emptyState) emptyState.style.display = 'block';
+    if (compareContent) compareContent.style.display = 'none';
+    return;
+  }
+
+  if (emptyState) emptyState.style.display = 'none';
+  if (compareContent) compareContent.style.display = 'block';
+
+  if (!selectA || !selectB) return;
+
+  const optionsHTML = drivers.map(d => `<option value="${d.slug}">${d.nombre}</option>`).join('');
+  selectA.innerHTML = optionsHTML;
+  selectB.innerHTML = optionsHTML;
+
+  if (drivers.length > 1) {
+    selectB.selectedIndex = 1;
+  }
+
+  const updateRadar = () => {
+    const dA = drivers.find(d => d.slug === selectA.value) || drivers[0];
+    const dB = drivers.find(d => d.slug === selectB.value) || drivers[1] || drivers[0];
+
+    renderComparisonRadarChart('comparisonRadarCanvas', dA, dB);
+    renderComparisonCards(dA, dB);
+  };
+
+  selectA.onchange = updateRadar;
+  selectB.onchange = updateRadar;
+
+  updateRadar();
+}
+
+function renderComparisonCards(driverA, driverB) {
+  const cardA = document.getElementById('compareCardA');
+  const cardB = document.getElementById('compareCardB');
+  if (!cardA || !cardB) return;
+
+  function renderCardHTML(d, color) {
+    return `
+      <div style="border-left: 4px solid ${color}; padding-left: 1rem;">
+        <h3 style="color: ${color}; font-size: 1.3rem;">${d.nombre}</h3>
+        <p style="color: var(--text-muted); font-size: 0.85rem;">${d.empresa}</p>
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; margin-top: 1rem;">
+          <div>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Calificación Actual:</span>
+            <div style="font-size: 1.4rem; font-weight: 700; color: #ffffff;">${(d.ultimaCalificacion || 0).toFixed(2)}</div>
+          </div>
+          <div>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Promedio General:</span>
+            <div style="font-size: 1.4rem; font-weight: 700; color: #ffffff;">${(d.promedioCalificacion || 0).toFixed(2)}</div>
+          </div>
+          <div>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Habilidades Manejo:</span>
+            <div style="font-weight: 600; color: #10b981;">${(d.promedioHabilidades || 0).toFixed(2)} / 3.0</div>
+          </div>
+          <div>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Práctica Simulador:</span>
+            <div style="font-weight: 600; color: #a855f7;">${(d.promedioSimulador || 0).toFixed(2)} / 7.0</div>
+          </div>
+          <div>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Total Incidentes:</span>
+            <div style="font-weight: 600; color: ${(d.totalColisiones + d.totalFatalidades) > 0 ? 'var(--danger)' : 'var(--success)'};">
+              ${d.totalColisiones} Colisiones / ${d.totalFatalidades} Fatalidades
+            </div>
+          </div>
+          <div>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Tendencia:</span>
+            <div><span class="badge badge-${d.badgeColor}">${d.estadoGeneral}</span></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  cardA.innerHTML = renderCardHTML(driverA, '#38bdf8');
+  cardB.innerHTML = renderCardHTML(driverB, '#f59e0b');
+}
+
+// ==========================================
+// VISTA: DIRECTORIO & FILTROS
+// ==========================================
+function initDirectoryFilters() {
+  const searchInput = document.getElementById('directorySearch');
+  const companySelect = document.getElementById('filterCompany');
+  const statusSelect = document.getElementById('filterStatus');
+  const exportBtn = document.getElementById('exportCsvBtn');
+
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      AppState.filters.search = e.target.value.toLowerCase().trim();
+      renderDirectoryTable();
+    });
+  }
+
+  if (companySelect) {
+    companySelect.addEventListener('change', (e) => {
+      AppState.filters.empresa = e.target.value;
+      renderDirectoryTable();
+    });
+  }
+
+  if (statusSelect) {
+    statusSelect.addEventListener('change', (e) => {
+      AppState.filters.estado = e.target.value;
+      renderDirectoryTable();
+    });
+  }
+
+  if (exportBtn) {
+    exportBtn.addEventListener('click', () => exportToCSV());
+  }
+}
+
+function renderDirectoryTable() {
+  const tbody = document.getElementById('directoryTableBody');
+  if (!tbody) return;
+
+  let list = AppState.evaluations.slice();
+
+  // Filtrado
+  const { search, empresa, estado } = AppState.filters;
+
+  if (search) {
+    list = list.filter(e =>
+      (e.conductor || '').toLowerCase().includes(search) ||
+      (e.empresa || '').toLowerCase().includes(search) ||
+      (e.instructor || '').toLowerCase().includes(search) ||
+      (e.cursoCodigo || '').toLowerCase().includes(search)
+    );
+  }
+
+  if (empresa !== 'all') {
+    list = list.filter(e => e.empresa === empresa);
+  }
+
+  if (estado !== 'all') {
+    list = list.filter(e => e.estado === estado);
+  }
+
+  document.getElementById('directoryCountBadge').textContent = `${list.length} registros`;
+
+  if (list.length === 0) {
+    const isFiltered = !!search || empresa !== 'all' || estado !== 'all';
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" style="text-align: center; padding: 3rem 1.5rem; color: var(--text-muted);">
+          <div style="font-size: 2rem; margin-bottom: 0.5rem;">📋</div>
+          ${isFiltered ? 'No se encontraron evaluaciones con los filtros seleccionados.' : 'No hay evaluaciones registradas aún. Sube tus archivos PDF en la pestaña "Ingesta de PDFs" para comenzar.'}
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = list.map(e => `
+    <tr>
+      <td>
+        <div style="font-weight: 600; color: #ffffff;">${e.conductor}</div>
+        <div style="font-size: 0.74rem; color: var(--text-muted);">${e.cursoCodigo}</div>
+      </td>
+      <td>${e.empresa || 'N/A'}</td>
+      <td>${e.fechaCapacitacionFormato || e.fechaCapacitacion || e.fechaReporte}</td>
+      <td>
+        <span style="font-weight: 600; color: #10b981;">${(e.habilidadesManejoPuntos || 0).toFixed(2)}</span>
+        <small style="color: var(--text-muted);">/ 3</small>
+      </td>
+      <td>
+        <span style="font-weight: 600; color: #a855f7;">${(e.practicaSimuladorPuntos || 0).toFixed(2)}</span>
+        <small style="color: var(--text-muted);">/ 7</small>
+      </td>
+      <td>
+        <span class="score-pill" style="color: #38bdf8;">
+          ${(e.evaluacionFinalPuntos || e.calificacionExacta || 0).toFixed(2)}
+        </span>
+      </td>
+      <td>
+        <span class="badge badge-${e.badgeColor}">${e.estado}</span>
+      </td>
+      <td>
+        <button class="btn btn-secondary btn-sm" onclick="window.viewEvaluationDetail('${e.id}')">
+          Ver Reporte
+        </button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+/**
+ * Exporta las evaluaciones filtradas a un archivo CSV
+ */
+function exportToCSV() {
+  const evals = AppState.evaluations;
+  if (evals.length === 0) {
+    showToast('No hay datos disponibles para exportar.', 'warning');
+    return;
+  }
+
+  const headers = [
+    'Conductor', 'Empresa', 'Fecha', 'Curso', 'Instructor',
+    'Habilidades Manejo (Puntos)', 'Habilidades Manejo (%)',
+    'Simulador (Puntos)', 'Simulador (%)',
+    'Evaluacion Final', 'Calificacion Exacta',
+    'Colisiones', 'Fatalidades', 'Fuera de Via',
+    'Estado', 'Firma Digital'
+  ];
+
+  const rows = evals.map(e => [
+    `"${e.conductor || ''}"`,
+    `"${e.empresa || ''}"`,
+    `"${e.fechaCapacitacionFormato || e.fechaCapacitacion || ''}"`,
+    `"${e.cursoCodigo || ''}"`,
+    `"${e.instructor || ''}"`,
+    e.habilidadesManejoPuntos || 0,
+    e.habilidadesManejoPct || 0,
+    e.practicaSimuladorPuntos || 0,
+    e.practicaSimuladorPct || 0,
+    e.evaluacionFinalPuntos || 0,
+    e.calificacionExacta || 0,
+    e.colisiones || 0,
+    e.fatalidades || 0,
+    e.vehiculoFueraVia || 0,
+    `"${e.estado || ''}"`,
+    `"${e.firmaDigital || ''}"`
+  ]);
+
+  const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `TrackSIM_Evaluaciones_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Archivo CSV generado y descargado correctamente.', 'success');
+}
+
+// ==========================================
+// MODAL: REPORTE DIGITAL INDIVIDUAL
+// ==========================================
+function initModals() {
+  const modal = document.getElementById('evaluationModal');
+  const closeBtn = document.getElementById('modalCloseBtn');
+  const closeFooterBtn = document.getElementById('modalCloseFooterBtn');
+
+  const hide = () => modal.classList.remove('active');
+
+  if (closeBtn) closeBtn.addEventListener('click', hide);
+  if (closeFooterBtn) closeFooterBtn.addEventListener('click', hide);
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) hide();
+  });
+
+  // Exponer al scope global para botones inline
+  window.viewEvaluationDetail = (evalId) => {
+    const item = AppState.evaluations.find(e => e.id === evalId);
+    if (!item) return;
+
+    document.getElementById('modalTitle').textContent = `Reporte de Evaluación - ${item.conductor}`;
+    document.getElementById('modalDriver').textContent = item.conductor;
+    document.getElementById('modalCompany').textContent = item.empresa || '';
+    document.getElementById('modalDate').textContent = item.fechaCapacitacionFormato || item.fechaCapacitacion || item.fechaReporte;
+    document.getElementById('modalCourse').textContent = `${item.cursoCodigo} - ${item.cursoNombre}`;
+    document.getElementById('modalInstructor').textContent = item.instructor || 'Mario Agraz';
+    document.getElementById('modalFolio').textContent = item.folioGrupo || '1';
+
+    // Calificaciones
+    document.getElementById('modalScoreHab').textContent = `${(item.habilidadesManejoPuntos || 0).toFixed(2)} / 3.0 (${item.habilidadesManejoPct || 0}%)`;
+    document.getElementById('modalScoreSim').textContent = `${(item.practicaSimuladorPuntos || 0).toFixed(2)} / 7.0 (${item.practicaSimuladorPct || 0}%)`;
+    document.getElementById('modalScoreFinal').textContent = `${(item.evaluacionFinalPuntos || 0).toFixed(2)} / 10.0 (${item.evaluacionFinalPct || 0}%)`;
+    document.getElementById('modalScoreExact').textContent = item.calificacionExacta || item.evaluacionFinalPuntos || '0.00';
+
+    // Simulaciones
+    document.getElementById('modalSim2').textContent = item.simulacionesDetalle?.simulacion_2 || 'N/A';
+    document.getElementById('modalSim3').textContent = item.simulacionesDetalle?.simulacion_3 || 'N/A';
+    document.getElementById('modalSim4').textContent = item.simulacionesDetalle?.simulacion_4 || 'N/A';
+
+    // Incidentes
+    document.getElementById('modalCollisions').textContent = item.colisiones || 0;
+    document.getElementById('modalFatalities').textContent = item.fatalidades || 0;
+    document.getElementById('modalOffRoad').textContent = item.vehiculoFueraVia || 0;
+
+    // Estado & Firma
+    const badgeEl = document.getElementById('modalStatusBadge');
+    badgeEl.className = `badge badge-${item.badgeColor}`;
+    badgeEl.textContent = item.estado;
+
+    document.getElementById('modalDigitalSign').textContent = item.firmaDigital || 'Sin firma digital registrada';
+    document.getElementById('modalObservations').textContent = item.observaciones || 'Reporte procesado exitosamente por TrackSIM Cloud.';
+
+    modal.classList.add('active');
+  };
+
+  // Inicializar modal de gestión de usuarios lectores
+  initUserManagement();
+}
+
+/**
+ * Gestión de Usuarios Lectores (Creación por Administrador con SecondaryAuth)
+ */
+function initUserManagement() {
+  const mgmtModal = document.getElementById('userMgmtModal');
+  const openBtn = document.getElementById('openUserMgmtBtn');
+  const closeBtn = document.getElementById('closeUserMgmtBtn');
+  const closeFooterBtn = document.getElementById('closeUserMgmtFooterBtn');
+  const form = document.getElementById('adminCreateUserForm');
+
+  if (!mgmtModal) return;
+
+  const showModal = async () => {
+    mgmtModal.classList.add('active');
+    await loadRegisteredUsers();
+  };
+
+  const hideModal = () => {
+    mgmtModal.classList.remove('active');
+  };
+
+  if (openBtn) openBtn.addEventListener('click', showModal);
+  if (closeBtn) closeBtn.addEventListener('click', hideModal);
+  if (closeFooterBtn) closeFooterBtn.addEventListener('click', hideModal);
+
+  mgmtModal.addEventListener('click', (e) => {
+    if (e.target === mgmtModal) hideModal();
+  });
+
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const emailInput = document.getElementById('newViewerEmail');
+      const passInput = document.getElementById('newViewerPassword');
+      const submitBtn = document.getElementById('btnSubmitCreateUser');
+
+      const email = emailInput.value.trim().toLowerCase();
+      const password = passInput.value;
+
+      if (!email || !password || password.length < 6) {
+        showToast('La contraseña debe tener al menos 6 caracteres.', 'warning');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creando usuario...';
+
+      try {
+        // Crear usuario en instancia secundaria para no cerrar la sesión del admin
+        const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+        await signOut(secondaryAuth);
+
+        // Guardar registro en colección usuarios de Firestore
+        const userDocRef = doc(db, 'usuarios', cred.user.uid);
+        await setDoc(userDocRef, {
+          uid: cred.user.uid,
+          email: email,
+          role: 'viewer',
+          creadoPor: auth.currentUser?.email || 'admin@corporativomaf.com',
+          fechaAlta: new Date().toISOString()
+        });
+
+        showToast(`Usuario lector ${email} creado exitosamente.`, 'success');
+        form.reset();
+        await loadRegisteredUsers();
+      } catch (err) {
+        console.error('Error al crear usuario lector:', err);
+        let msg = 'Error al registrar el usuario.';
+        if (err.code === 'auth/email-already-in-use') {
+          msg = 'Este correo electrónico ya está registrado en Firebase.';
+        } else if (err.code === 'auth/invalid-email') {
+          msg = 'Formato de correo inválido.';
+        } else if (err.code === 'auth/weak-password') {
+          msg = 'La contraseña es muy débil (mínimo 6 caracteres).';
+        }
+        showToast(msg, 'error');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '➕ Crear Cuenta de Lector';
+      }
+    });
+  }
+}
+
+/**
+ * Consulta y lista los usuarios creados en Firestore
+ */
+async function loadRegisteredUsers() {
+  const tbody = document.getElementById('registeredUsersTableBody');
+  if (!tbody) return;
+
+  try {
+    const q = query(collection(db, 'usuarios'), orderBy('fechaAlta', 'desc'));
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+            No se han registrado usuarios lectores aún.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    const users = [];
+    snapshot.forEach(docSnap => users.push(docSnap.data()));
+
+    tbody.innerHTML = users.map(u => `
+      <tr>
+        <td><strong>${u.email}</strong></td>
+        <td><span class="role-badge viewer">👁️ Lector</span></td>
+        <td style="font-size: 0.8rem; color: var(--text-muted);">${u.creadoPor || 'Admin'}</td>
+        <td style="font-size: 0.8rem;">${u.fechaAlta ? new Date(u.fechaAlta).toLocaleDateString() : 'N/A'}</td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    console.warn('No se pudo cargar la lista de usuarios:', err);
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+          Sin registros disponibles o modo local.
+        </td>
+      </tr>
+    `;
+  }
+}
+
+// ==========================================
+// TOAST NOTIFICATIONS
+// ==========================================
+export function showToast(message, type = 'info') {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+
+  let icon = 'ℹ️';
+  if (type === 'success') icon = '✅';
+  if (type === 'error') icon = '⚠️';
+  if (type === 'warning') icon = '⚡';
+
+  toast.innerHTML = `<span>${icon}</span> <div>${message}</div>`;
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(100%)';
+    setTimeout(() => toast.remove(), 300);
+  }, 4000);
+}

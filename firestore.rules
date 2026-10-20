@@ -2,8 +2,34 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Función para verificar si el usuario es Administrador (@corporativomaf.com)
+    function isAdmin() {
+      return request.auth != null && 
+             request.auth.token.email != null && 
+             request.auth.token.email.matches('.*@corporativomaf[.]com$');
+    }
+
+    // Evaluaciones: lectura para cualquier usuario autenticado, escritura exclusiva para administradores
+    match /evaluaciones/{evalId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+    
+    // Fichas de conductores
+    match /conductores/{conductorId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    // Registro de usuarios gestionados por administradores
+    match /usuarios/{userId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
     match /{document=**} {
-      allow read, write: if false;
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
     }
   }
 }
