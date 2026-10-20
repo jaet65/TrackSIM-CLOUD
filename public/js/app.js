@@ -1168,7 +1168,12 @@ function initCompanyView() {
 
   if (searchInput) {
     searchInput.addEventListener('input', (e) => {
-      renderCompanyDriversTable(e.target.value.toLowerCase().trim());
+      const q = e.target.value.toLowerCase().trim();
+      renderCompanyDriversTable(q);
+      if (AppState.selectedCompany) {
+        renderCompanyRankingChart('companyRankingChartCanvas', AppState.selectedCompany.conductores, q);
+        renderCompanySimulationsChart('companySimulationsChartCanvas', AppState.selectedCompany, q);
+      }
     });
   }
 
@@ -1177,7 +1182,8 @@ function initCompanyView() {
   if (rankingDetails) {
     rankingDetails.addEventListener('toggle', () => {
       if (rankingDetails.open && AppState.selectedCompany) {
-        renderCompanyRankingChart('companyRankingChartCanvas', AppState.selectedCompany.conductores);
+        const q = searchInput ? searchInput.value.toLowerCase().trim() : '';
+        renderCompanyRankingChart('companyRankingChartCanvas', AppState.selectedCompany.conductores, q);
       }
     });
   }
@@ -1187,10 +1193,36 @@ function initCompanyView() {
   if (simDetails) {
     simDetails.addEventListener('toggle', () => {
       if (simDetails.open && AppState.selectedCompany) {
-        renderCompanySimulationsChart('companySimulationsChartCanvas', AppState.selectedCompany);
+        const q = searchInput ? searchInput.value.toLowerCase().trim() : '';
+        renderCompanySimulationsChart('companySimulationsChartCanvas', AppState.selectedCompany, q);
       }
     });
   }
+
+  // Función global para filtrar operador al hacer clic directamente en la gráfica de ranking
+  window.selectCompanyDriverFromChart = (driverName) => {
+    if (!driverName || !searchInput) return;
+
+    // Si ya está filtrado por este mismo conductor, alternar (desfiltrar)
+    if (searchInput.value.trim().toLowerCase() === driverName.trim().toLowerCase()) {
+      searchInput.value = '';
+    } else {
+      searchInput.value = driverName;
+    }
+
+    const q = searchInput.value.toLowerCase().trim();
+    renderCompanyDriversTable(q);
+    if (AppState.selectedCompany) {
+      renderCompanyRankingChart('companyRankingChartCanvas', AppState.selectedCompany.conductores, q);
+      renderCompanySimulationsChart('companySimulationsChartCanvas', AppState.selectedCompany, q);
+    }
+
+    // Scroll suave hacia la tabla si el usuario lo seleccionó
+    const tableEl = document.getElementById('companyDriversTable');
+    if (tableEl && q) {
+      tableEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  };
 
   // Inicializar ordenamiento interactivo de la tabla de operadores de la flota
   initCompanyDriversTableSorting();
@@ -1416,12 +1448,13 @@ function renderCompanyView() {
   if (approvalRateEl) approvalRateEl.textContent = `${comp.tasaAprobacion.toFixed(1)}%`;
 
   // 2. Gráficos de la Empresa
-  renderCompanyRankingChart('companyRankingChartCanvas', comp.conductores);
-  renderCompanySimulationsChart('companySimulationsChartCanvas', comp);
-
-  // 3. Tabla / Roster de Operadores de la Empresa
   const searchInput = document.getElementById('companyDriverSearch');
   const currentSearch = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
+  renderCompanyRankingChart('companyRankingChartCanvas', comp.conductores, currentSearch);
+  renderCompanySimulationsChart('companySimulationsChartCanvas', comp, currentSearch);
+
+  // 3. Tabla / Roster de Operadores de la Empresa
   renderCompanyDriversTable(currentSearch);
 }
 

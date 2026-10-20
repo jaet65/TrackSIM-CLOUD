@@ -33,8 +33,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <!-- Estilos del Sistema de Diseño -->
-  <script type="module" crossorigin src="/assets/index-DzsPY3AP.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-Cnm3MBgv.css">
+  <script type="module" crossorigin src="/assets/index-2TLzIgL4.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-B5MUTxlM.css">
 </head>
 
 <body>
@@ -789,7 +789,8 @@
             <summary class="chart-header" style="cursor: pointer; list-style: none; user-select: none;">
               <div>
                 <h3 class="chart-title">🏆 Ranking de Operadores de la Flota</h3>
-                <p style="font-size: 0.8rem; color: var(--text-muted);">Evaluación final (promedio si tiene más de 1 sesión), de mayor a menor</p>
+                <p style="font-size: 0.8rem; color: var(--text-muted);">Evaluación final (promedio si tiene más de 1
+                  sesión), de mayor a menor</p>
               </div>
               <span class="badge badge-info">▼ Mostrar / ocultar</span>
             </summary>
@@ -799,11 +800,12 @@
           </details>
 
           <!-- Desglose de Simulaciones de la Flota (colapsable) -->
-          <details id="companySimulationsDetails" class="glass-card" style="margin-bottom: 1.5rem;" open>
+          <details id="companySimulationsDetails" class="glass-card" style="margin-bottom: 1.5rem;" close>
             <summary class="chart-header" style="cursor: pointer; list-style: none; user-select: none;">
               <div>
                 <h3 class="chart-title">🎮 Rendimiento Promedio en Simulaciones</h3>
-                <p id="companySimChartSubtitle" style="font-size: 0.8rem; color: var(--text-muted);">Promedio por ejercicio realizado en simulador</p>
+                <p id="companySimChartSubtitle" style="font-size: 0.8rem; color: var(--text-muted);">Promedio por
+                  ejercicio realizado en simulador</p>
               </div>
               <span class="badge badge-info">▼ Mostrar / ocultar</span>
             </summary>
@@ -875,7 +877,8 @@
           </div>
           <div style="display:flex; gap:0.5rem;">
             <input type="file" id="importCsvInput" accept=".csv,text/csv" style="display:none;" />
-            <button id="importCsvBtn" class="btn btn-secondary" title="Edición masiva: sube un CSV generado con Exportar CSV">
+            <button id="importCsvBtn" class="btn btn-secondary"
+              title="Edición masiva: sube un CSV generado con Exportar CSV">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                 <polyline points="17 8 12 3 7 8"></polyline>
@@ -1180,7 +1183,8 @@
                   Habilidades de Manejo (Máx 3.00 Puntos)
                 </span>
                 <label for="editEvalHabPuntos"
-                  style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">Puntos (/ 3.0):</label>
+                  style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">Puntos (/
+                  3.0):</label>
                 <input type="number" step="0.01" min="0" max="3" id="editEvalHabPuntos" class="custom-input"
                   style="width: 100%; height: 34px;" />
                 <input type="hidden" id="editEvalHabPct" />
@@ -1193,7 +1197,8 @@
                   Práctica en Simulador (Máx 7.00 Puntos)
                 </span>
                 <label for="editEvalSimPuntos"
-                  style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">Puntos (/ 7.0):</label>
+                  style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">Puntos (/
+                  7.0):</label>
                 <input type="number" step="0.01" min="0" max="7" id="editEvalSimPuntos" class="custom-input"
                   style="width: 100%; height: 34px;" />
                 <input type="hidden" id="editEvalSimPct" />
@@ -1206,7 +1211,8 @@
                   Evaluación Final Global (Máx 10.00 Puntos)
                 </span>
                 <label for="editEvalFinalPuntos"
-                  style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">Puntos Finales (/ 10.0):</label>
+                  style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">Puntos
+                  Finales (/ 10.0):</label>
                 <input type="number" step="0.01" min="0" max="10" id="editEvalFinalPuntos" class="custom-input"
                   style="width: 100%; height: 34px;" />
                 <input type="hidden" id="editEvalFinalPct" />

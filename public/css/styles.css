@@ -1194,8 +1194,11 @@ input, select, textarea {
   min-width: 0;
 }
 
-.filter-bar .search-input-wrapper {
+.search-input-wrapper {
   position: relative;
+}
+
+.filter-bar .search-input-wrapper {
   flex: 1 1 240px;
   min-width: 180px;
   max-width: 100%;
