@@ -129,11 +129,11 @@ import{initializeApp as e}from"https://www.gstatic.com/firebasejs/10.14.1/fireba
         <span class="badge badge-${e.badgeColor}">${e.estado}</span>
       </td>
     </tr>
-  `).join(``))}function G(){let e=document.getElementById(`driverSelect`),t=document.getElementById(`driverSelectorBar`),n=document.getElementById(`driverHeroEmpty`),r=document.getElementById(`driverHeroContent`),i=P.drivers;!i||i.length===0?(n&&(n.style.display=`block`),r&&(r.style.display=`none`),t&&(t.style.display=`none`)):(n&&(n.style.display=`none`),r&&(r.style.display=`block`),t&&(t.style.display=`flex`),e&&(e.innerHTML=i.map(e=>`
+  `).join(``))}function G(){let e=document.getElementById(`driverSelect`),t=document.getElementById(`driverSelectorBar`),n=document.getElementById(`driverHeroEmpty`),r=document.getElementById(`driverHeroContent`),i=P.drivers||[],a=i.filter(e=>(e.totalEvaluaciones||e.evaluaciones?.length||0)>1);if(!a||a.length===0){if(n){n.style.display=`block`;let e=n.querySelector(`h3`),t=n.querySelector(`p`);i.length>0?(e&&(e.textContent=`Sin Operadores con Trazabilidad`),t&&(t.textContent=`La trazabilidad y evolución histórica temporal requiere que el operador cuente con al menos 2 evaluaciones registradas. Actualmente todos los operadores registrados cuentan con una sola evaluación (línea base).`)):(e&&(e.textContent=`Sin Evaluaciones Registradas`),t&&(t.textContent=`Aún no se han cargado reportes PDF en el sistema. Sube los archivos de tus operadores en la sección de Ingesta para comenzar a visualizar el historial y trazabilidad.`))}r&&(r.style.display=`none`),t&&(t.style.display=`none`)}else n&&(n.style.display=`none`),r&&(r.style.display=`block`),t&&(t.style.display=`flex`),e&&(e.innerHTML=a.map(e=>`
     <option value="${e.slug}" ${P.selectedDriver&&P.selectedDriver.slug===e.slug?`selected`:``}>
       ${e.nombre} (${e.totalEvaluaciones} evaluaciones)
     </option>
-  `).join(``),e.onchange=e=>{let t=i.find(t=>t.slug===e.target.value);t&&(P.selectedDriver=t,K(t))},P.selectedDriver||=i[0],K(P.selectedDriver)))}function K(e){if(!e)return;document.getElementById(`driverNameTitle`).textContent=e.nombre,document.getElementById(`driverCompanySubtitle`).textContent=e.empresa,document.getElementById(`driverInitialsAvatar`).textContent=e.nombre.split(` `).map(e=>e[0]).slice(0,2).join(``),document.getElementById(`statTotalEvals`).textContent=e.totalEvaluaciones,document.getElementById(`statLatestScore`).textContent=`${(e.ultimaCalificacion||0).toFixed(2)} / 10`,document.getElementById(`statAvgScore`).textContent=`${(e.promedioCalificacion||0).toFixed(2)}`;let t=document.getElementById(`statEvolutionChange`);e.totalEvaluaciones>1?(t.textContent=`${e.cambioPorcentual>0?`+`:``}${e.cambioPorcentual}%`,t.style.color=e.cambioPorcentual>=0?`var(--success)`:`var(--danger)`):(t.textContent=`1ra Evaluación (Línea base)`,t.style.color=`var(--text-muted)`),fe(`driverEvolutionChartCanvas`,e.evaluaciones);let n=document.getElementById(`driverTimelineContainer`);n&&(n.innerHTML=e.evaluaciones.map((e,t)=>`
+  `).join(``),e.onchange=e=>{let t=a.find(t=>t.slug===e.target.value);t&&(P.selectedDriver=t,K(t))},(!P.selectedDriver||!a.some(e=>e.slug===P.selectedDriver.slug))&&(P.selectedDriver=a[0]),e.value=P.selectedDriver.slug,K(P.selectedDriver))}function K(e){if(!e)return;document.getElementById(`driverNameTitle`).textContent=e.nombre,document.getElementById(`driverCompanySubtitle`).textContent=e.empresa,document.getElementById(`driverInitialsAvatar`).textContent=e.nombre.split(` `).map(e=>e[0]).slice(0,2).join(``),document.getElementById(`statTotalEvals`).textContent=e.totalEvaluaciones,document.getElementById(`statLatestScore`).textContent=`${(e.ultimaCalificacion||0).toFixed(2)} / 10`,document.getElementById(`statAvgScore`).textContent=`${(e.promedioCalificacion||0).toFixed(2)}`;let t=document.getElementById(`statEvolutionChange`);e.totalEvaluaciones>1?(t.textContent=`${e.cambioPorcentual>0?`+`:``}${e.cambioPorcentual}%`,t.style.color=e.cambioPorcentual>=0?`var(--success)`:`var(--danger)`):(t.textContent=`1ra Evaluación (Línea base)`,t.style.color=`var(--text-muted)`),fe(`driverEvolutionChartCanvas`,e.evaluaciones);let n=document.getElementById(`driverTimelineContainer`);n&&(n.innerHTML=e.evaluaciones.map((e,t)=>`
         <div class="timeline-item">
           <div class="timeline-dot ${e.badgeColor||`info`}"></div>
           <div class="timeline-content">
@@ -212,7 +212,7 @@ import{initializeApp as e}from"https://www.gstatic.com/firebasejs/10.14.1/fireba
           </div>
         </div>
       </div>
-    `}n.innerHTML=i(e,`#38bdf8`),r.innerHTML=i(t,`#f59e0b`)}function Ce(){let e=document.getElementById(`companySelect`),t=document.getElementById(`companyDriverSearch`);e&&e.addEventListener(`change`,e=>{let t=e.target.value;P.selectedCompany=P.companies.find(e=>e.nombre===t)||null,q()}),t&&t.addEventListener(`input`,e=>{we(e.target.value.toLowerCase().trim())}),window.inspectDriverEvolucion=e=>{let t=P.drivers.find(t=>t.nombre===e);if(t){P.selectedDriver=t;let e=document.getElementById(`driverSelect`);e&&(e.value=t.slug),F(`evolucion`)}}}function q(){let e=P.companies,t=document.getElementById(`companyEmptyState`),n=document.getElementById(`companyContent`),r=document.getElementById(`companyCountBadge`),i=document.getElementById(`companySelect`);if(r&&(r.textContent=`${e.length} Empresa${e.length===1?``:`s`}`),!e||e.length===0){t&&(t.style.display=`block`),n&&(n.style.display=`none`);return}if(t&&(t.style.display=`none`),n&&(n.style.display=`block`),(!P.selectedCompany||!e.some(e=>e.nombre===P.selectedCompany.nombre))&&(P.selectedCompany=e[0]),i){let t=P.selectedCompany?P.selectedCompany.nombre:``;i.innerHTML=e.map(e=>`
+    `}n.innerHTML=i(e,`#38bdf8`),r.innerHTML=i(t,`#f59e0b`)}function Ce(){let e=document.getElementById(`companySelect`),t=document.getElementById(`companyDriverSearch`);e&&e.addEventListener(`change`,e=>{let t=e.target.value;P.selectedCompany=P.companies.find(e=>e.nombre===t)||null,q()}),t&&t.addEventListener(`input`,e=>{we(e.target.value.toLowerCase().trim())}),window.inspectDriverEvolucion=e=>{let t=P.drivers.find(t=>t.nombre===e);if(!t)return;if(t.totalEvaluaciones<=1){$(`${t.nombre} solo tiene 1 evaluación registrada (línea base). Se requieren al menos 2 capacitaciones para visualizar trazabilidad temporal.`,`info`);return}P.selectedDriver=t;let n=document.getElementById(`driverSelect`);n&&(n.value=t.slug),F(`evolucion`)}}function q(){let e=P.companies,t=document.getElementById(`companyEmptyState`),n=document.getElementById(`companyContent`),r=document.getElementById(`companyCountBadge`),i=document.getElementById(`companySelect`);if(r&&(r.textContent=`${e.length} Empresa${e.length===1?``:`s`}`),!e||e.length===0){t&&(t.style.display=`block`),n&&(n.style.display=`none`);return}if(t&&(t.style.display=`none`),n&&(n.style.display=`block`),(!P.selectedCompany||!e.some(e=>e.nombre===P.selectedCompany.nombre))&&(P.selectedCompany=e[0]),i){let t=P.selectedCompany?P.selectedCompany.nombre:``;i.innerHTML=e.map(e=>`
       <option value="${e.nombre}" ${e.nombre===t?`selected`:``}>
         🏢 ${e.nombre} ${e.sedes&&e.sedes.length>0?`(📍 Sede: ${e.sedes.join(`, `)})`:``} (${e.totalConductores} operadores)
       </option>
@@ -247,10 +247,10 @@ import{initializeApp as e}from"https://www.gstatic.com/firebasejs/10.14.1/fireba
           <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.15rem;">Último: ${e.ultimoScore.toFixed(2)}</div>
         </td>
         <td>
-          <div style="font-size: 0.78rem; line-height: 1.5;">
-            <span style="color: #94a3b8;" title="S2 (${n})">S2: <strong>${a}</strong></span> ·
-            <span style="color: #f97316;" title="S3 (${r})">S3: <strong>${o}</strong></span> ·
-            <span style="color: #38bdf8;" title="S4 (${i})">S4 (${i}): <strong>${s}</strong></span>
+          <div style="font-size: 0.76rem; display: flex; gap: 0.35rem; align-items: center; white-space: nowrap;">
+            <span style="color: #94a3b8;" title="S2: ${n}">S2: <strong>${a}</strong></span> ·
+            <span style="color: #f97316;" title="S3: ${r}">S3: <strong>${o}</strong></span> ·
+            <span style="color: #38bdf8;" title="S4: ${i}">S4: <strong>${s}</strong></span>
           </div>
         </td>
         <td>
@@ -261,11 +261,13 @@ import{initializeApp as e}from"https://www.gstatic.com/firebasejs/10.14.1/fireba
         <td>
           <span class="badge badge-${e.badgeColor}">${e.estado}</span>
         </td>
-        <td>
-          <div style="display: flex; gap: 0.4rem; align-items: center;">
-            <button class="btn btn-secondary btn-sm" onclick="window.inspectDriverEvolucion('${e.nombre.replace(/'/g,`\\'`)}')" title="Ver curva de evolución y trazabilidad del conductor">
-              📈 Trazabilidad
-            </button>
+        <td class="actions-col">
+          <div class="table-actions">
+            ${e.totalEvaluaciones>1?`
+              <button class="btn btn-secondary btn-sm" onclick="window.inspectDriverEvolucion('${e.nombre.replace(/'/g,`\\'`)}')" title="Ver curva de evolución y trazabilidad del conductor">
+                📈 Trazabilidad
+              </button>
+            `:``}
             ${e.latestEvalId?`
               <button class="btn btn-primary btn-sm" onclick="window.viewEvaluationDetail('${e.latestEvalId}')" title="Ver último reporte digital oficial">
                 📄 Reporte
@@ -339,16 +341,16 @@ import{initializeApp as e}from"https://www.gstatic.com/firebasejs/10.14.1/fireba
       <td>
         <span class="badge badge-${e.badgeColor}">${e.estado}</span>
       </td>
-      <td>
-        <div style="display: flex; gap: 0.4rem; align-items: center;">
+      <td class="actions-col">
+        <div class="table-actions">
           <button class="btn btn-secondary btn-sm" onclick="window.viewEvaluationDetail('${e.id}')" title="Ver reporte">
-            Ver Reporte
+            📄 Reporte
           </button>
           ${P.userRole===`admin`?`
-            <button class="btn btn-secondary btn-sm" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.35); padding: 0.25rem 0.5rem;" onclick="window.editSingleEvaluationPrompt('${e.id}')" title="Editar Empresa y Sede">
+            <button class="btn btn-secondary btn-sm" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.35); padding: 0.3rem 0.5rem;" onclick="window.editSingleEvaluationPrompt('${e.id}')" title="Editar Empresa y Sede">
               ✏️
             </button>
-            <button class="btn btn-secondary btn-sm" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35); padding: 0.25rem 0.5rem;" onclick="window.confirmDeleteEvaluation('${e.id}', '${(e.conductor||``).replace(/'/g,`\\'`)}')" title="Eliminar evaluación">
+            <button class="btn btn-secondary btn-sm" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35); padding: 0.3rem 0.5rem;" onclick="window.confirmDeleteEvaluation('${e.id}', '${(e.conductor||``).replace(/'/g,`\\'`)}')" title="Eliminar evaluación">
               🗑️
             </button>`:``}
         </div>

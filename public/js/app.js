@@ -779,13 +779,13 @@ function displayStagingEvaluations(items) {
     sedeCounts[sed] = (sedeCounts[sed] || 0) + 1;
   });
 
-  const empBadges = Object.entries(empresaCounts).map(([emp, cnt]) => 
+  const empBadges = Object.entries(empresaCounts).map(([emp, cnt]) =>
     `<span style="color: #38bdf8; background: rgba(56, 189, 248, 0.16); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: 600;">
       🏢 ${emp} (${cnt})
     </span>`
   ).join(' ');
 
-  const sedeBadges = Object.entries(sedeCounts).map(([sed, cnt]) => 
+  const sedeBadges = Object.entries(sedeCounts).map(([sed, cnt]) =>
     `<span style="color: #a855f7; background: rgba(168, 85, 247, 0.16); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: 600;">
       📍 ${sed} (${cnt})
     </span>`
@@ -901,9 +901,23 @@ function renderEvolutionView() {
   const emptyEl = document.getElementById('driverHeroEmpty');
   const contentEl = document.getElementById('driverHeroContent');
 
-  const drivers = AppState.drivers;
+  const allDrivers = AppState.drivers || [];
+  // Filtrar exclusivamente operadores con más de 1 evaluación para graficar trazabilidad temporal
+  const drivers = allDrivers.filter(d => (d.totalEvaluaciones || d.evaluaciones?.length || 0) > 1);
+
   if (!drivers || drivers.length === 0) {
-    if (emptyEl) emptyEl.style.display = 'block';
+    if (emptyEl) {
+      emptyEl.style.display = 'block';
+      const emptyTitle = emptyEl.querySelector('h3');
+      const emptyText = emptyEl.querySelector('p');
+      if (allDrivers.length > 0) {
+        if (emptyTitle) emptyTitle.textContent = 'Sin Operadores con Trazabilidad';
+        if (emptyText) emptyText.textContent = 'La trazabilidad y evolución histórica temporal requiere que el operador cuente con al menos 2 evaluaciones registradas. Actualmente todos los operadores registrados cuentan con una sola evaluación (línea base).';
+      } else {
+        if (emptyTitle) emptyTitle.textContent = 'Sin Evaluaciones Registradas';
+        if (emptyText) emptyText.textContent = 'Aún no se han cargado reportes PDF en el sistema. Sube los archivos de tus operadores en la sección de Ingesta para comenzar a visualizar el historial y trazabilidad.';
+      }
+    }
     if (contentEl) contentEl.style.display = 'none';
     if (selectorBar) selectorBar.style.display = 'none';
     return;
@@ -915,7 +929,7 @@ function renderEvolutionView() {
 
   if (!select) return;
 
-  // Llenar selector
+  // Llenar selector exclusivamente con operadores que tienen más de 1 evaluación
   select.innerHTML = drivers.map(d => `
     <option value="${d.slug}" ${AppState.selectedDriver && AppState.selectedDriver.slug === d.slug ? 'selected' : ''}>
       ${d.nombre} (${d.totalEvaluaciones} evaluaciones)
@@ -930,10 +944,12 @@ function renderEvolutionView() {
     }
   };
 
-  if (!AppState.selectedDriver) {
+  // Si no hay conductor seleccionado o el actual solo tiene 1 evaluación, seleccionar el primero válido
+  if (!AppState.selectedDriver || !drivers.some(d => d.slug === AppState.selectedDriver.slug)) {
     AppState.selectedDriver = drivers[0];
   }
 
+  select.value = AppState.selectedDriver.slug;
   updateDriverDetails(AppState.selectedDriver);
 }
 
@@ -1132,12 +1148,17 @@ function initCompanyView() {
   // Permite saltar directamente a la trazabilidad del conductor desde la empresa
   window.inspectDriverEvolucion = (driverName) => {
     const driver = AppState.drivers.find(d => d.nombre === driverName);
-    if (driver) {
-      AppState.selectedDriver = driver;
-      const driverSelect = document.getElementById('driverSelect');
-      if (driverSelect) driverSelect.value = driver.slug;
-      switchTab('evolucion');
+    if (!driver) return;
+
+    if (driver.totalEvaluaciones <= 1) {
+      showToast(`${driver.nombre} solo tiene 1 evaluación registrada (línea base). Se requieren al menos 2 capacitaciones para visualizar trazabilidad temporal.`, 'info');
+      return;
     }
+
+    AppState.selectedDriver = driver;
+    const driverSelect = document.getElementById('driverSelect');
+    if (driverSelect) driverSelect.value = driver.slug;
+    switchTab('evolucion');
   };
 }
 
@@ -1269,10 +1290,10 @@ function renderCompanyDriversTable(filterSearch = '') {
           <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.15rem;">Último: ${c.ultimoScore.toFixed(2)}</div>
         </td>
         <td>
-          <div style="font-size: 0.78rem; line-height: 1.5;">
-            <span style="color: #94a3b8;" title="S2 (${n2})">S2: <strong>${s2}</strong></span> ·
-            <span style="color: #f97316;" title="S3 (${n3})">S3: <strong>${s3}</strong></span> ·
-            <span style="color: #38bdf8;" title="S4 (${n4})">S4 (${n4}): <strong>${s4}</strong></span>
+          <div style="font-size: 0.76rem; display: flex; gap: 0.35rem; align-items: center; white-space: nowrap;">
+            <span style="color: #94a3b8;" title="S2: ${n2}">S2: <strong>${s2}</strong></span> ·
+            <span style="color: #f97316;" title="S3: ${n3}">S3: <strong>${s3}</strong></span> ·
+            <span style="color: #38bdf8;" title="S4: ${n4}">S4: <strong>${s4}</strong></span>
           </div>
         </td>
         <td>
@@ -1283,11 +1304,13 @@ function renderCompanyDriversTable(filterSearch = '') {
         <td>
           <span class="badge badge-${c.badgeColor}">${c.estado}</span>
         </td>
-        <td>
-          <div style="display: flex; gap: 0.4rem; align-items: center;">
-            <button class="btn btn-secondary btn-sm" onclick="window.inspectDriverEvolucion('${c.nombre.replace(/'/g, "\\'")}')" title="Ver curva de evolución y trazabilidad del conductor">
-              📈 Trazabilidad
-            </button>
+        <td class="actions-col">
+          <div class="table-actions">
+            ${c.totalEvaluaciones > 1 ? `
+              <button class="btn btn-secondary btn-sm" onclick="window.inspectDriverEvolucion('${c.nombre.replace(/'/g, "\\'")}')" title="Ver curva de evolución y trazabilidad del conductor">
+                📈 Trazabilidad
+              </button>
+            ` : ''}
             ${c.latestEvalId ? `
               <button class="btn btn-primary btn-sm" onclick="window.viewEvaluationDetail('${c.latestEvalId}')" title="Ver último reporte digital oficial">
                 📄 Reporte
@@ -1607,9 +1630,9 @@ function populateDirectoryCompanyFilter() {
   companySelect.innerHTML = `
     <option value="all" ${currentVal === 'all' ? 'selected' : ''}>Todas las Empresas (${AppState.evaluations.length})</option>
     ${companies.map(emp => {
-      const count = AppState.evaluations.filter(e => (e.empresa || '').trim() === emp).length;
-      return `<option value="${emp}" ${emp === currentVal ? 'selected' : ''}>🏢 ${emp} (${count})</option>`;
-    }).join('')}
+    const count = AppState.evaluations.filter(e => (e.empresa || '').trim() === emp).length;
+    return `<option value="${emp}" ${emp === currentVal ? 'selected' : ''}>🏢 ${emp} (${count})</option>`;
+  }).join('')}
   `;
 }
 
@@ -1639,9 +1662,9 @@ function populateDirectorySedeFilter() {
   sedeSelect.innerHTML = `
     <option value="all" ${currentVal === 'all' ? 'selected' : ''}>Todas las Sedes (${AppState.evaluations.length})</option>
     ${sedes.map(s => {
-      const count = AppState.evaluations.filter(e => (e.sede || '').trim() === s).length;
-      return `<option value="${s}" ${s === currentVal ? 'selected' : ''}>📍 ${s} (${count})</option>`;
-    }).join('')}
+    const count = AppState.evaluations.filter(e => (e.sede || '').trim() === s).length;
+    return `<option value="${s}" ${s === currentVal ? 'selected' : ''}>📍 ${s} (${count})</option>`;
+  }).join('')}
     ${countWithoutSede > 0 ? `<option value="__NONE__" ${currentVal === '__NONE__' ? 'selected' : ''}>⚠️ Sin Sede Asignada (${countWithoutSede})</option>` : ''}
   `;
 }
@@ -1712,16 +1735,16 @@ function renderDirectoryTable() {
       <td>
         <span class="badge badge-${e.badgeColor}">${e.estado}</span>
       </td>
-      <td>
-        <div style="display: flex; gap: 0.4rem; align-items: center;">
+      <td class="actions-col">
+        <div class="table-actions">
           <button class="btn btn-secondary btn-sm" onclick="window.viewEvaluationDetail('${e.id}')" title="Ver reporte">
-            Ver Reporte
+            📄 Reporte
           </button>
           ${AppState.userRole === 'admin' ? `
-            <button class="btn btn-secondary btn-sm" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.35); padding: 0.25rem 0.5rem;" onclick="window.editSingleEvaluationPrompt('${e.id}')" title="Editar Empresa y Sede">
+            <button class="btn btn-secondary btn-sm" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.35); padding: 0.3rem 0.5rem;" onclick="window.editSingleEvaluationPrompt('${e.id}')" title="Editar Empresa y Sede">
               ✏️
             </button>
-            <button class="btn btn-secondary btn-sm" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35); padding: 0.25rem 0.5rem;" onclick="window.confirmDeleteEvaluation('${e.id}', '${(e.conductor || '').replace(/'/g, "\\'")}')" title="Eliminar evaluación">
+            <button class="btn btn-secondary btn-sm" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35); padding: 0.3rem 0.5rem;" onclick="window.confirmDeleteEvaluation('${e.id}', '${(e.conductor || '').replace(/'/g, "\\'")}')" title="Eliminar evaluación">
               🗑️
             </button>` : ''}
         </div>

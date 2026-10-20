@@ -617,27 +617,49 @@ input, select, textarea {
 .custom-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.88rem;
+  font-size: 0.86rem;
 }
 
 .custom-table th {
   text-align: left;
-  padding: 0.9rem 1rem;
+  padding: 0.75rem 0.65rem;
   background: rgba(14, 20, 34, 0.8);
   color: var(--text-secondary);
   font-weight: 600;
   text-transform: uppercase;
-  font-size: 0.74rem;
-  letter-spacing: 0.06em;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
   border-bottom: 1px solid var(--border-subtle);
   white-space: nowrap;
 }
 
 .custom-table td {
-  padding: 1rem;
+  padding: 0.7rem 0.65rem;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-main);
   vertical-align: middle;
+}
+
+.custom-table th.actions-col,
+.custom-table td.actions-col {
+  text-align: right;
+  white-space: nowrap;
+  width: 1%;
+  padding-right: 0.75rem;
+}
+
+.table-actions {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.table-actions .btn {
+  white-space: nowrap;
+  padding: 0.32rem 0.6rem;
+  font-size: 0.78rem;
 }
 
 .custom-table tbody tr {
