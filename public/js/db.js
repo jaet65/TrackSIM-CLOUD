@@ -109,6 +109,49 @@ export function clearLocalCache() {
 }
 
 /**
+ * Actualiza la empresa y/o sede de un conjunto de evaluaciones en Firestore y almacenamiento local
+ */
+export async function updateEvaluationsBatchEmpresaSede(evalIds, newEmpresa, newSede) {
+  if (!evalIds || evalIds.length === 0) return [];
+
+  let list = [];
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    list = raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    list = [];
+  }
+
+  const updatedResults = [];
+
+  for (const id of evalIds) {
+    const updates = { updatedAt: new Date().toISOString() };
+    if (newEmpresa !== null && newEmpresa !== undefined && newEmpresa.trim() !== '') {
+      updates.empresa = newEmpresa.trim();
+    }
+    if (newSede !== '__KEEP__' && newSede !== undefined) {
+      updates.sede = newSede ? newSede.trim() : '';
+    }
+
+    try {
+      const docRef = doc(db, COLLECTION_NAME, id);
+      await setDoc(docRef, updates, { merge: true });
+    } catch (err) {
+      console.warn(`Error actualizando Firestore para ${id}:`, err);
+    }
+
+    const idx = list.findIndex(e => e.id === id);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...updates };
+      updatedResults.push(list[idx]);
+    }
+  }
+
+  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list));
+  return updatedResults;
+}
+
+/**
  * Guarda una evaluación tanto en Firestore como en localStorage
  */
 export async function saveEvaluation(evaluationData) {

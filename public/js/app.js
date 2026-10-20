@@ -29,6 +29,7 @@ import {
   deleteEvaluation,
   clearAllEvaluations,
   clearLocalCache,
+  updateEvaluationsBatchEmpresaSede,
   processDriverSummaries,
   processCompanySummaries,
   slugify
@@ -58,10 +59,12 @@ const AppState = {
   selectedCompany: null,
   stagingEvaluations: [],
   stagingEditing: false,
+  selectedDirectoryIds: new Set(),
   currentTab: 'dashboard',
   filters: {
     search: '',
     empresa: 'all',
+    sede: 'all',
     estado: 'all'
   }
 };
@@ -1302,8 +1305,15 @@ function renderCompanyDriversTable(filterSearch = '') {
 function initDirectoryFilters() {
   const searchInput = document.getElementById('directorySearch');
   const companySelect = document.getElementById('filterCompany');
+  const sedeSelect = document.getElementById('filterSede');
   const statusSelect = document.getElementById('filterStatus');
   const exportBtn = document.getElementById('exportCsvBtn');
+  const selectAllCheckbox = document.getElementById('selectAllDirCheckbox');
+  const clearSelectionBtn = document.getElementById('clearDirSelectionBtn');
+  const openModalBtn = document.getElementById('openBatchEditDirModalBtn');
+  const closeModalBtn = document.getElementById('closeDirBatchModalBtn');
+  const cancelModalBtn = document.getElementById('cancelDirBatchModalBtn');
+  const confirmUpdateBtn = document.getElementById('confirmDirBatchUpdateBtn');
 
   if (searchInput) {
     searchInput.addEventListener('input', (e) => {
@@ -1319,6 +1329,13 @@ function initDirectoryFilters() {
     });
   }
 
+  if (sedeSelect) {
+    sedeSelect.addEventListener('change', (e) => {
+      AppState.filters.sede = e.target.value;
+      renderDirectoryTable();
+    });
+  }
+
   if (statusSelect) {
     statusSelect.addEventListener('change', (e) => {
       AppState.filters.estado = e.target.value;
@@ -1328,6 +1345,241 @@ function initDirectoryFilters() {
 
   if (exportBtn) {
     exportBtn.addEventListener('click', () => exportToCSV());
+  }
+
+  // Selección de todas las evaluaciones visibles en el directorio
+  if (selectAllCheckbox) {
+    selectAllCheckbox.addEventListener('change', (e) => {
+      const visibleIds = getFilteredDirectoryEvaluations().map(ev => ev.id);
+      if (e.target.checked) {
+        visibleIds.forEach(id => AppState.selectedDirectoryIds.add(id));
+      } else {
+        visibleIds.forEach(id => AppState.selectedDirectoryIds.delete(id));
+      }
+      updateDirectorySelectionUI();
+    });
+  }
+
+  if (clearSelectionBtn) {
+    clearSelectionBtn.addEventListener('click', () => {
+      AppState.selectedDirectoryIds.clear();
+      updateDirectorySelectionUI();
+    });
+  }
+
+  if (openModalBtn) {
+    openModalBtn.addEventListener('click', () => {
+      openDirectoryBatchEditModal();
+    });
+  }
+
+  if (closeModalBtn) closeModalBtn.addEventListener('click', () => closeDirectoryBatchEditModal());
+  if (cancelModalBtn) cancelModalBtn.addEventListener('click', () => closeDirectoryBatchEditModal());
+
+  const dirModal = document.getElementById('dirBatchEditModal');
+  if (dirModal) {
+    dirModal.addEventListener('click', (e) => {
+      if (e.target === dirModal) closeDirectoryBatchEditModal();
+    });
+  }
+
+  // Confirmar actualización en Firestore
+  if (confirmUpdateBtn) {
+    confirmUpdateBtn.addEventListener('click', async () => {
+      await handleDirectoryBatchUpdate();
+    });
+  }
+}
+
+/**
+ * Obtiene la lista actual de evaluaciones que cumplen con los filtros activos
+ */
+function getFilteredDirectoryEvaluations() {
+  let list = AppState.evaluations.slice();
+  const { search, empresa, sede, estado } = AppState.filters;
+
+  if (search) {
+    list = list.filter(e =>
+      (e.conductor || '').toLowerCase().includes(search) ||
+      (e.empresa || '').toLowerCase().includes(search) ||
+      (e.sede || '').toLowerCase().includes(search) ||
+      (e.instructor || '').toLowerCase().includes(search) ||
+      (e.cursoCodigo || '').toLowerCase().includes(search)
+    );
+  }
+
+  if (empresa !== 'all') {
+    list = list.filter(e => e.empresa === empresa);
+  }
+
+  if (sede !== 'all') {
+    if (sede === '__NONE__') {
+      list = list.filter(e => !(e.sede || '').trim());
+    } else {
+      list = list.filter(e => (e.sede || '').trim() === sede);
+    }
+  }
+
+  if (estado !== 'all') {
+    list = list.filter(e => e.estado === estado);
+  }
+
+  return list;
+}
+
+/**
+ * Actualiza la barra de acción por lote y el checkbox de selección maestra
+ */
+function updateDirectorySelectionUI() {
+  const count = AppState.selectedDirectoryIds.size;
+  const bar = document.getElementById('dirBatchActionBar');
+  const countSpan = document.getElementById('dirSelectedCountSpan');
+  const textEl = document.getElementById('dirBatchSelectionText');
+  const selectAll = document.getElementById('selectAllDirCheckbox');
+
+  if (bar) bar.style.display = count > 0 ? 'flex' : 'none';
+  if (countSpan) countSpan.textContent = count;
+  if (textEl) {
+    textEl.textContent = `${count} ${count === 1 ? 'evaluación seleccionada' : 'evaluaciones seleccionadas'}`;
+  }
+
+  const visibleList = getFilteredDirectoryEvaluations();
+  if (selectAll && visibleList.length > 0) {
+    const allSelected = visibleList.every(ev => AppState.selectedDirectoryIds.has(ev.id));
+    const someSelected = visibleList.some(ev => AppState.selectedDirectoryIds.has(ev.id));
+    selectAll.checked = allSelected;
+    selectAll.indeterminate = someSelected && !allSelected;
+  }
+
+  document.querySelectorAll('.dir-item-checkbox').forEach(cb => {
+    cb.checked = AppState.selectedDirectoryIds.has(cb.value);
+  });
+}
+
+window.toggleDirectoryItemSelection = (id) => {
+  if (AppState.selectedDirectoryIds.has(id)) {
+    AppState.selectedDirectoryIds.delete(id);
+  } else {
+    AppState.selectedDirectoryIds.add(id);
+  }
+  updateDirectorySelectionUI();
+};
+
+function openDirectoryBatchEditModal(preselectedId = null) {
+  if (preselectedId) {
+    AppState.selectedDirectoryIds.clear();
+    AppState.selectedDirectoryIds.add(preselectedId);
+    updateDirectorySelectionUI();
+  }
+
+  const selectedCount = AppState.selectedDirectoryIds.size;
+  if (selectedCount === 0) {
+    showToast('Selecciona al menos una evaluación para editar.', 'warning');
+    return;
+  }
+
+  const modal = document.getElementById('dirBatchEditModal');
+  const subtitle = document.getElementById('dirBatchModalSubtitle');
+  const empresaInput = document.getElementById('modalBatchEmpresaInput');
+  const sedeSelect = document.getElementById('modalBatchSedeSelect');
+  const previewList = document.getElementById('dirBatchPreviewList');
+
+  if (subtitle) {
+    subtitle.textContent = `Actualizando ${selectedCount} ${selectedCount === 1 ? 'evaluación seleccionada' : 'evaluaciones seleccionadas'}`;
+  }
+
+  // Poblar select de sedes si aún no tiene las opciones
+  if (sedeSelect && sedeSelect.options.length <= 2) {
+    sedeSelect.innerHTML = `
+      <option value="__KEEP__">-- Conservar Sede Actual --</option>
+      <option value="">-- Sin Sede (Limpiar Sede) --</option>
+      ${NOMBRES_ESTADOS_MEXICO.map(st => `<option value="${st}">📍 ${st}</option>`).join('')}
+    `;
+  }
+
+  const selectedItems = AppState.evaluations.filter(e => AppState.selectedDirectoryIds.has(e.id));
+
+  // Si solo hay uno seleccionado, pre-cargar sus datos actuales
+  if (selectedCount === 1) {
+    const single = selectedItems[0];
+    if (empresaInput) empresaInput.value = single.empresa || '';
+    if (sedeSelect) sedeSelect.value = single.sede || '';
+  } else {
+    if (empresaInput) empresaInput.value = '';
+    if (sedeSelect) sedeSelect.value = '__KEEP__';
+  }
+
+  if (previewList) {
+    previewList.innerHTML = selectedItems.map(item => `
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06);">
+        <div>
+          <strong style="color: #f8fafc;">${item.conductor}</strong>
+          <span style="color: var(--text-muted); font-size: 0.72rem; margin-left: 0.4rem;">${item.cursoCodigo}</span>
+        </div>
+        <div style="font-size: 0.74rem; text-align: right;">
+          <span style="color: #38bdf8;">${item.empresa || 'Sin Empresa'}</span>
+          ${item.sede ? `<span style="color: #c084fc; margin-left: 0.35rem;">📍 ${item.sede}</span>` : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  if (modal) modal.classList.add('active');
+}
+
+function closeDirectoryBatchEditModal() {
+  const modal = document.getElementById('dirBatchEditModal');
+  if (modal) modal.classList.remove('active');
+}
+
+window.editSingleEvaluationPrompt = (evalId) => {
+  openDirectoryBatchEditModal(evalId);
+};
+
+async function handleDirectoryBatchUpdate() {
+  const selectedIds = Array.from(AppState.selectedDirectoryIds);
+  if (selectedIds.length === 0) return;
+
+  const empresaInput = document.getElementById('modalBatchEmpresaInput');
+  const sedeSelect = document.getElementById('modalBatchSedeSelect');
+  const confirmBtn = document.getElementById('confirmDirBatchUpdateBtn');
+
+  const newEmpresa = empresaInput ? empresaInput.value.trim() : '';
+  const newSede = sedeSelect ? sedeSelect.value : '__KEEP__';
+
+  if (!newEmpresa && newSede === '__KEEP__') {
+    showToast('Ingresa un nuevo nombre de empresa o selecciona una sede para actualizar.', 'warning');
+    return;
+  }
+
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Actualizando en Firestore...';
+  }
+
+  try {
+    await updateEvaluationsBatchEmpresaSede(
+      selectedIds,
+      newEmpresa || null,
+      newSede
+    );
+
+    showToast(`¡Se actualizaron ${selectedIds.length} evaluaciones en Firestore exitosamente!`, 'success');
+    closeDirectoryBatchEditModal();
+
+    AppState.selectedDirectoryIds.clear();
+    updateDirectorySelectionUI();
+
+    // Recargar datos y refrescar todas las vistas
+    await loadAndRefreshData();
+  } catch (err) {
+    console.error('Error al actualizar lote en directorio:', err);
+    showToast('Error al actualizar las evaluaciones en Firestore.', 'error');
+  } finally {
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = '💾 Guardar Cambios en Firestore';
+    }
   }
 }
 
@@ -1361,55 +1613,80 @@ function populateDirectoryCompanyFilter() {
   `;
 }
 
+/**
+ * Llena dinámicamente las opciones del selector de sede en el directorio
+ */
+function populateDirectorySedeFilter() {
+  const sedeSelect = document.getElementById('filterSede');
+  if (!sedeSelect) return;
+
+  let currentVal = AppState.filters.sede || 'all';
+
+  // Extraer sedes únicas presentes en las evaluaciones registradas
+  const sedes = Array.from(new Set(
+    AppState.evaluations
+      .map(e => (e.sede || '').trim())
+      .filter(s => s.length > 0)
+  )).sort((a, b) => a.localeCompare(b));
+
+  const countWithoutSede = AppState.evaluations.filter(e => !(e.sede || '').trim()).length;
+
+  if (currentVal !== 'all' && currentVal !== '__NONE__' && !sedes.includes(currentVal)) {
+    currentVal = 'all';
+    AppState.filters.sede = 'all';
+  }
+
+  sedeSelect.innerHTML = `
+    <option value="all" ${currentVal === 'all' ? 'selected' : ''}>Todas las Sedes (${AppState.evaluations.length})</option>
+    ${sedes.map(s => {
+      const count = AppState.evaluations.filter(e => (e.sede || '').trim() === s).length;
+      return `<option value="${s}" ${s === currentVal ? 'selected' : ''}>📍 ${s} (${count})</option>`;
+    }).join('')}
+    ${countWithoutSede > 0 ? `<option value="__NONE__" ${currentVal === '__NONE__' ? 'selected' : ''}>⚠️ Sin Sede Asignada (${countWithoutSede})</option>` : ''}
+  `;
+}
+
 function renderDirectoryTable() {
   const tbody = document.getElementById('directoryTableBody');
   if (!tbody) return;
 
-  // Actualizar opciones del filtro de empresas
+  // Actualizar opciones del filtro de empresas y sedes
   populateDirectoryCompanyFilter();
+  populateDirectorySedeFilter();
 
-  let list = AppState.evaluations.slice();
-
-  // Filtrado
-  const { search, empresa, estado } = AppState.filters;
-
-  if (search) {
-    list = list.filter(e =>
-      (e.conductor || '').toLowerCase().includes(search) ||
-      (e.empresa || '').toLowerCase().includes(search) ||
-      (e.instructor || '').toLowerCase().includes(search) ||
-      (e.cursoCodigo || '').toLowerCase().includes(search)
-    );
-  }
-
-  if (empresa !== 'all') {
-    list = list.filter(e => e.empresa === empresa);
-  }
-
-  if (estado !== 'all') {
-    list = list.filter(e => e.estado === estado);
-  }
+  const list = getFilteredDirectoryEvaluations();
 
   document.getElementById('directoryCountBadge').textContent = `${list.length} registros`;
 
   if (list.length === 0) {
-    const isFiltered = !!search || empresa !== 'all' || estado !== 'all';
+    const isFiltered = !!AppState.filters.search || AppState.filters.empresa !== 'all' || AppState.filters.sede !== 'all' || AppState.filters.estado !== 'all';
     const noEvalsMsg = AppState.userRole === 'admin'
       ? 'No hay evaluaciones registradas aún. Sube tus archivos PDF en la pestaña "Ingesta de PDFs" para comenzar.'
       : 'No hay evaluaciones registradas aún en el sistema.';
     tbody.innerHTML = `
       <tr>
-        <td colspan="8" style="text-align: center; padding: 3rem 1.5rem; color: var(--text-muted);">
+        <td colspan="9" style="text-align: center; padding: 3rem 1.5rem; color: var(--text-muted);">
           <div style="font-size: 2rem; margin-bottom: 0.5rem;">📋</div>
           ${isFiltered ? 'No se encontraron evaluaciones con los filtros seleccionados.' : noEvalsMsg}
         </td>
       </tr>
     `;
+    updateDirectorySelectionUI();
     return;
   }
 
   tbody.innerHTML = list.map(e => `
     <tr>
+      <td style="text-align: center;">
+        <input 
+          type="checkbox" 
+          class="dir-item-checkbox" 
+          value="${e.id}" 
+          ${AppState.selectedDirectoryIds.has(e.id) ? 'checked' : ''}
+          onchange="window.toggleDirectoryItemSelection('${e.id}')"
+          style="cursor: pointer; width: 16px; height: 16px; accent-color: #38bdf8;"
+        >
+      </td>
       <td>
         <div style="font-weight: 600; color: #ffffff;">${e.conductor}</div>
         <div style="font-size: 0.74rem; color: var(--text-muted);">${e.cursoCodigo}</div>
@@ -1437,10 +1714,13 @@ function renderDirectoryTable() {
       </td>
       <td>
         <div style="display: flex; gap: 0.4rem; align-items: center;">
-          <button class="btn btn-secondary btn-sm" onclick="window.viewEvaluationDetail('${e.id}')">
+          <button class="btn btn-secondary btn-sm" onclick="window.viewEvaluationDetail('${e.id}')" title="Ver reporte">
             Ver Reporte
           </button>
           ${AppState.userRole === 'admin' ? `
+            <button class="btn btn-secondary btn-sm" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.35); padding: 0.25rem 0.5rem;" onclick="window.editSingleEvaluationPrompt('${e.id}')" title="Editar Empresa y Sede">
+              ✏️
+            </button>
             <button class="btn btn-secondary btn-sm" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35); padding: 0.25rem 0.5rem;" onclick="window.confirmDeleteEvaluation('${e.id}', '${(e.conductor || '').replace(/'/g, "\\'")}')" title="Eliminar evaluación">
               🗑️
             </button>` : ''}
@@ -1448,20 +1728,22 @@ function renderDirectoryTable() {
       </td>
     </tr>
   `).join('');
+
+  updateDirectorySelectionUI();
 }
 
 /**
  * Exporta las evaluaciones filtradas a un archivo CSV
  */
 function exportToCSV() {
-  const evals = AppState.evaluations;
+  const evals = getFilteredDirectoryEvaluations();
   if (evals.length === 0) {
-    showToast('No hay datos disponibles para exportar.', 'warning');
+    showToast('No hay datos disponibles para exportar con los filtros seleccionados.', 'warning');
     return;
   }
 
   const headers = [
-    'Conductor', 'Empresa', 'Fecha', 'Curso', 'Instructor',
+    'Conductor', 'Empresa', 'Sede', 'Fecha', 'Curso', 'Instructor',
     'Habilidades Manejo (Puntos)', 'Habilidades Manejo (%)',
     'Simulador (Puntos)', 'Simulador (%)',
     'Evaluacion Final', 'Calificacion Exacta',
@@ -1472,6 +1754,7 @@ function exportToCSV() {
   const rows = evals.map(e => [
     `"${e.conductor || ''}"`,
     `"${e.empresa || ''}"`,
+    `"${e.sede || ''}"`,
     `"${e.fechaCapacitacionFormato || e.fechaCapacitacion || ''}"`,
     `"${e.cursoCodigo || ''}"`,
     `"${e.instructor || ''}"`,

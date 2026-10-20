@@ -33,7 +33,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <!-- Estilos del Sistema de Diseño -->
-  <script type="module" crossorigin src="/assets/index-yNN2uVpk.js"></script>
+  <script type="module" crossorigin src="/assets/index-ClaRvC1K.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-B5rnancl.css">
 </head>
 
@@ -861,17 +861,42 @@
               placeholder="Buscar por conductor, empresa, curso...">
           </div>
 
-          <select id="filterCompany" class="custom-select" style="min-width: 200px;">
+          <select id="filterCompany" class="custom-select" style="min-width: 190px;">
             <option value="all">Todas las Empresas</option>
           </select>
 
-          <select id="filterStatus" class="custom-select" style="min-width: 180px;">
-            <option value="all">Todos los Estados</option>
+          <select id="filterSede" class="custom-select" style="min-width: 190px;">
+            <option value="all">Todas las Sedes</option>
+          </select>
+
+          <select id="filterStatus" class="custom-select" style="min-width: 170px;">
+            <option value="all">Todos los Estatus</option>
             <option value="Sobresaliente">Sobresaliente</option>
             <option value="Aprobado">Aprobado</option>
             <option value="Requiere Refuerzo">Requiere Refuerzo</option>
             <option value="No Aprobado">No Aprobado</option>
           </select>
+        </div>
+
+        <!-- Barra de Acción por Lote (Aparece al seleccionar filas) -->
+        <div id="dirBatchActionBar" style="display: none; background: linear-gradient(135deg, rgba(56, 189, 248, 0.12), rgba(129, 140, 248, 0.08)); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: var(--radius-sm); padding: 0.75rem 1.25rem; margin-bottom: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div style="width: 32px; height: 32px; border-radius: 6px; background: rgba(56, 189, 248, 0.2); display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
+              ⚡
+            </div>
+            <div>
+              <strong id="dirBatchSelectionText" style="color: #f8fafc; font-size: 0.9rem;">0 evaluaciones seleccionadas</strong>
+              <div style="font-size: 0.75rem; color: var(--text-secondary);">Actualiza masivamente la empresa y sede en Cloud Firestore</div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button type="button" id="openBatchEditDirModalBtn" class="btn btn-primary btn-sm">
+              ✏️ Modificar Empresa / Sede (<span id="dirSelectedCountSpan">0</span>)
+            </button>
+            <button type="button" id="clearDirSelectionBtn" class="btn btn-secondary btn-sm">
+              ✕ Cancelar Selección
+            </button>
+          </div>
         </div>
 
         <!-- Tabla de Evaluaciones -->
@@ -886,6 +911,9 @@
             <table class="custom-table">
               <thead>
                 <tr>
+                  <th style="width: 40px; text-align: center;">
+                    <input type="checkbox" id="selectAllDirCheckbox" title="Seleccionar todas las evaluaciones visibles" style="cursor: pointer; width: 16px; height: 16px; accent-color: #38bdf8;">
+                  </th>
                   <th>Conductor</th>
                   <th>Empresa</th>
                   <th>Fecha</th>
@@ -905,6 +933,76 @@
       </section>
 
     </main>
+
+    <!-- ========================================================
+       MODAL: EDICIÓN EN LOTE DE EMPRESA Y SEDE (DIRECTORIO)
+       ======================================================== -->
+    <div id="dirBatchEditModal" class="modal-overlay">
+      <div class="modal-dialog" style="max-width: 520px;">
+        <div class="modal-header">
+          <div>
+            <h3 style="font-size: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+              <span>🏢</span> Actualizar Empresa y Sede
+            </h3>
+            <span id="dirBatchModalSubtitle" style="font-size: 0.75rem; color: var(--text-muted);">
+              Modificando 0 evaluaciones seleccionadas
+            </span>
+          </div>
+          <button id="closeDirBatchModalBtn" class="close-btn">&times;</button>
+        </div>
+
+        <div class="modal-body" style="padding: 1.25rem 1.5rem;">
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem;">
+            Aplica los cambios a todas las evaluaciones seleccionadas. Los cambios se guardarán automáticamente en Cloud Firestore.
+          </p>
+
+          <div style="margin-bottom: 1.2rem;">
+            <label for="modalBatchEmpresaInput" class="batch-edit-label">
+              <span>🏢</span> Empresa:
+            </label>
+            <input 
+              type="text" 
+              id="modalBatchEmpresaInput" 
+              class="custom-input" 
+              placeholder="Nombre de la nueva empresa..." 
+              style="width: 100%; height: 40px;"
+            />
+            <small style="color: var(--text-muted); font-size: 0.72rem; display: block; margin-top: 0.35rem;">
+              * Deja este campo vacío si no deseas modificar el nombre de la empresa.
+            </small>
+          </div>
+
+          <div style="margin-bottom: 1.25rem;">
+            <label for="modalBatchSedeSelect" class="batch-edit-label">
+              <span>📍</span> Sede (Estado de la República):
+            </label>
+            <select id="modalBatchSedeSelect" class="custom-select" style="width: 100%; height: 40px;">
+              <option value="__KEEP__">-- Conservar Sede Actual --</option>
+              <option value="">-- Sin Sede (Limpiar Sede) --</option>
+              <!-- Opciones pobladas dinámicamente con los 32 estados -->
+            </select>
+          </div>
+
+          <div style="margin-bottom: 1.25rem;">
+            <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 0.35rem;">
+              Evaluaciones seleccionadas:
+            </span>
+            <div id="dirBatchPreviewList" style="background: rgba(8, 12, 20, 0.8); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-sm); padding: 0.6rem 0.85rem; max-height: 120px; overflow-y: auto; font-size: 0.8rem; color: #cbd5e1;">
+              <!-- Lista de conductores -->
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 0.75rem; padding-top: 0.5rem; border-top: 1px solid var(--border-subtle);">
+            <button type="button" id="cancelDirBatchModalBtn" class="btn btn-secondary">
+              Cancelar
+            </button>
+            <button type="button" id="confirmDirBatchUpdateBtn" class="btn btn-primary">
+              💾 Guardar Cambios en Firestore
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- ========================================================
        MODAL: REPORTE DIGITAL INDIVIDUAL
