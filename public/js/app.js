@@ -1294,15 +1294,25 @@ function updateDirectoryTableSortHeaders(activeCol, activeDir) {
 }
 
 function getEvaluationSimScore(e) {
-  if (!e || !e.simulacionesDetalle) return -1;
-  const s2 = e.simulacionesDetalle.simulacion_2;
-  const s3 = e.simulacionesDetalle.simulacion_3;
-  const s4 = e.simulacionesDetalle.simulacion_4;
-  let sum = 0, count = 0;
-  if (typeof s2 === 'number' && !isNaN(s2)) { sum += s2; count++; }
-  if (typeof s3 === 'number' && !isNaN(s3)) { sum += s3; count++; }
-  if (typeof s4 === 'number' && !isNaN(s4)) { sum += s4; count++; }
-  return count > 0 ? (sum / count) : -1;
+  if (!e) return -1;
+  if (e.simulacionesDetalle) {
+    const s2 = e.simulacionesDetalle.simulacion_2;
+    const s3 = e.simulacionesDetalle.simulacion_3;
+    const s4 = e.simulacionesDetalle.simulacion_4;
+    let sum = 0, count = 0;
+    if (typeof s2 === 'number' && !isNaN(s2) && s2 >= 0) { sum += s2; count++; }
+    if (typeof s3 === 'number' && !isNaN(s3) && s3 >= 0) { sum += s3; count++; }
+    if (typeof s4 === 'number' && !isNaN(s4) && s4 >= 0) { sum += s4; count++; }
+    if (count > 0) return (sum / count);
+  }
+  // Fallback si no vinieron calificaciones individuales: promedio obtenido en la práctica de simulador sobre 10
+  if (typeof e.practicaSimuladorPct === 'number' && e.practicaSimuladorPct > 0) {
+    return e.practicaSimuladorPct / 10;
+  }
+  if (typeof e.practicaSimuladorPuntos === 'number' && e.practicaSimuladorPuntos > 0) {
+    return (e.practicaSimuladorPuntos / 7) * 10;
+  }
+  return -1;
 }
 
 function renderCompanyView() {
@@ -1976,8 +1986,8 @@ function renderDirectoryTable() {
   }
 
   tbody.innerHTML = list.map(e => {
-    const n2 = (e.nombresSimulaciones && e.nombresSimulaciones[2]) || 'Montaña';
-    const n3 = (e.nombresSimulaciones && e.nombresSimulaciones[3]) || 'Sierra';
+    const n2 = (e.nombresSimulaciones && e.nombresSimulaciones[2]) || 'S2';
+    const n3 = (e.nombresSimulaciones && e.nombresSimulaciones[3]) || 'S3';
     const n4 = (e.nombresSimulaciones && e.nombresSimulaciones[4]) || 'S4';
     const s2 = e.simulacionesDetalle?.simulacion_2 != null ? e.simulacionesDetalle.simulacion_2 : '-';
     const s3 = e.simulacionesDetalle?.simulacion_3 != null ? e.simulacionesDetalle.simulacion_3 : '-';

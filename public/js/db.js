@@ -394,15 +394,15 @@ export function processCompanySummaries(evaluations) {
         Object.assign(nombresSimulaciones, ev.nombresSimulaciones);
       }
 
-      if (ev.simulacionesDetalle?.simulacion_2) {
+      if (typeof ev.simulacionesDetalle?.simulacion_2 === 'number' && !isNaN(ev.simulacionesDetalle.simulacion_2)) {
         sumSim2 += ev.simulacionesDetalle.simulacion_2;
         countSim2++;
       }
-      if (ev.simulacionesDetalle?.simulacion_3) {
+      if (typeof ev.simulacionesDetalle?.simulacion_3 === 'number' && !isNaN(ev.simulacionesDetalle.simulacion_3)) {
         sumSim3 += ev.simulacionesDetalle.simulacion_3;
         countSim3++;
       }
-      if (ev.simulacionesDetalle?.simulacion_4) {
+      if (typeof ev.simulacionesDetalle?.simulacion_4 === 'number' && !isNaN(ev.simulacionesDetalle.simulacion_4)) {
         sumSim4 += ev.simulacionesDetalle.simulacion_4;
         countSim4++;
       }
