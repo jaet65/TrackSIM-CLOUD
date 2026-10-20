@@ -24,6 +24,8 @@
   <script>
     if (window.pdfjsLib) {
       window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      // Silenciar advertencias internas de TrueType font no esenciales del worker (ej: Warning: TT: undefined function: 21)
+      window.pdfjsLib.verbosity = 0; // 0 = ERRORS only
     }
   </script>
 
@@ -160,6 +162,14 @@
                 <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
               </svg>
               Comparador
+            </li>
+            <li class="nav-item" data-tab="empresas">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+              </svg>
+              Empresas
             </li>
             <li class="nav-item" data-tab="directorio">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -614,7 +624,146 @@
       </section>
 
       <!-- ========================================================
-         VISTA 5: DIRECTORIO Y REPORTES
+         VISTA 5: FLOTAS POR EMPRESA
+         ======================================================== -->
+      <section id="view-empresas" class="view-section">
+        <div class="section-header">
+          <div>
+            <h2>🏢 Inspección de Flotas por Empresa</h2>
+            <p>Supervisa, compara y analiza el desempeño consolidado de todos los operadores de cada empresa cliente.</p>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <span id="companyCountBadge" class="badge badge-info">0 Empresas</span>
+          </div>
+        </div>
+
+        <!-- Estado Vacío Empresas -->
+        <div id="companyEmptyState" class="glass-card" style="display: block; text-align: center; padding: 4rem 2rem;">
+          <div style="font-size: 3.5rem; margin-bottom: 1rem;">🏢</div>
+          <h3 style="font-size: 1.5rem; margin-bottom: 0.5rem; color: #ffffff;">Sin Flotas Registradas</h3>
+          <p style="color: var(--text-secondary); max-width: 520px; margin: 0 auto 1.5rem; line-height: 1.6;">
+            Aún no hay empresas o evaluaciones cargadas en el sistema. Al subir reportes PDF en el simulador, las flotas y sus respectivos conductores se asociarán automáticamente aquí.
+          </p>
+          <button class="btn btn-primary admin-only" onclick="window.switchTab('ingesta')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            Cargar PDFs de Evaluación
+          </button>
+        </div>
+
+        <div id="companyContent" style="display: none;">
+          <!-- Barra de Selección de Empresa y Búsqueda -->
+          <div class="driver-selector-bar" style="justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+              <label for="companySelect" style="font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 0.4rem;">
+                🏢 Seleccionar Empresa:
+              </label>
+              <select id="companySelect" class="custom-select" style="min-width: 280px;">
+                <!-- Opciones dinámicas -->
+              </select>
+            </div>
+            <div class="search-input-wrapper" style="max-width: 320px; margin: 0;">
+              <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input type="text" id="companyDriverSearch" class="search-input" placeholder="Buscar operador en esta empresa...">
+            </div>
+          </div>
+
+          <!-- Hero Resumen de la Empresa -->
+          <div class="glass-card driver-hero-card" style="margin-bottom: 1.5rem;">
+            <div class="driver-avatar-huge" style="background: linear-gradient(135deg, #0284c7, #38bdf8); font-size: 2rem;">🏢</div>
+            <div>
+              <h3 id="companyNameTitle" style="font-size: 1.8rem; margin-bottom: 0.2rem; color: #ffffff;">-</h3>
+              <p style="color: var(--primary); font-size: 0.95rem; font-weight: 600;">Flota Oficial de Autotransporte TrackSIM</p>
+            </div>
+            <div class="driver-stats-strip">
+              <div class="stat-metric-box">
+                <span class="label">Operadores</span>
+                <span id="companyStatTotalDrivers" class="val" style="color: #38bdf8;">0</span>
+              </div>
+              <div class="stat-metric-box">
+                <span class="label">Evaluaciones</span>
+                <span id="companyStatTotalEvals" class="val">0</span>
+              </div>
+              <div class="stat-metric-box">
+                <span class="label">Promedio Flota</span>
+                <span id="companyStatAvgScore" class="val" style="color: #10b981;">0.00 / 10</span>
+              </div>
+              <div class="stat-metric-box">
+                <span class="label">Tasa Aprobación</span>
+                <span id="companyStatApprovalRate" class="val" style="color: #fbbf24;">0%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cuadrícula de Gráficos de la Empresa -->
+          <div class="charts-grid" style="margin-bottom: 1.5rem;">
+            <!-- Ranking de Operadores de la Empresa -->
+            <div class="glass-card">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">🏆 Ranking de Operadores de la Flota</h3>
+                  <p style="font-size: 0.8rem; color: var(--text-muted);">Calificación promedio de mayor a menor</p>
+                </div>
+              </div>
+              <div class="chart-container" style="height: 320px;">
+                <canvas id="companyRankingChartCanvas"></canvas>
+              </div>
+            </div>
+
+            <!-- Desglose de Simulaciones de la Flota -->
+            <div class="glass-card">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">🎮 Rendimiento Promedio en Simulaciones</h3>
+                  <p id="companySimChartSubtitle" style="font-size: 0.8rem; color: var(--text-muted);">Promedio en Montaña (S2), Sierra (S3) y Maniobras (S4)</p>
+                </div>
+              </div>
+              <div class="chart-container" style="height: 320px;">
+                <canvas id="companySimulationsChartCanvas"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tabla / Roster de Operadores de la Empresa -->
+          <div class="glass-card">
+            <div class="chart-header">
+              <div>
+                <h3 class="chart-title">👥 Operadores Pertenecientes a esta Flota</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted);">Historial de calificaciones y detalle de cada conductor</p>
+              </div>
+              <span id="companyDriversCountBadge" class="badge badge-info">0 operadores</span>
+            </div>
+            <div class="table-responsive">
+              <table class="custom-table">
+                <thead>
+                  <tr>
+                    <th>Operador / Conductor</th>
+                    <th>Evaluaciones</th>
+                    <th>Última Capacitación</th>
+                    <th>Calificación Promedio</th>
+                    <th>Desglose Simulaciones</th>
+                    <th>Incidentes</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="companyDriversTableBody">
+                  <!-- Se puebla dinámicamente con JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================
+         VISTA 6: DIRECTORIO Y REPORTES
          ======================================================== -->
       <section id="view-directorio" class="view-section">
         <div class="section-header">
@@ -661,8 +810,11 @@
 
         <!-- Tabla de Evaluaciones -->
         <div class="glass-card">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
             <span id="directoryCountBadge" class="badge badge-info">0 registros</span>
+            <button id="clearAllEvalsBtn" class="btn btn-secondary btn-sm admin-only" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35);" onclick="window.confirmClearAllEvaluations()">
+              🗑️ Vaciar Todas las Evaluaciones
+            </button>
           </div>
           <div class="table-responsive">
             <table class="custom-table">
@@ -756,17 +908,16 @@
           </div>
 
           <!-- Desglose de Simulaciones e Incidentes -->
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+          <div style="display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 1rem; margin-bottom: 1.5rem;">
             <div
               style="background: rgba(255, 255, 255, 0.03); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
-              <h4 style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.6rem;">Calificaciones de
-                Simulaciones</h4>
-              <ul style="list-style: none; font-size: 0.85rem; line-height: 1.8;">
-                <li>🏔️ Simulación 2 (Montaña): <strong id="modalSim2" style="color: #ffffff;">-</strong></li>
-                <li>🌲 Simulación 3 (Sierra): <strong id="modalSim3" style="color: #ffffff;">-</strong></li>
-                <li>🏙️ Simulación 4 (Maniobras Críticas): <strong id="modalSim4" style="color: #ffffff;">-</strong>
-                </li>
-              </ul>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
+                <h4 style="font-size: 0.85rem; color: var(--text-secondary); margin: 0;">🎮 Ejercicios Evaluados en Simulador</h4>
+                <span style="font-size: 0.68rem; color: var(--text-muted); background: rgba(255,255,255,0.05); padding: 0.15rem 0.4rem; border-radius: 4px;">Pág. 4 y 5</span>
+              </div>
+              <div id="modalSimulationsContainer" style="display: flex; flex-direction: column; gap: 0.6rem;">
+                <!-- Generado dinámicamente -->
+              </div>
             </div>
 
             <div
@@ -800,9 +951,16 @@
           </div>
         </div>
 
-        <div class="modal-footer">
-          <button id="modalCloseFooterBtn" class="btn btn-secondary">Cerrar</button>
-          <button class="btn btn-primary" onclick="window.print()">Imprimir Reporte</button>
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <button id="modalDeleteBtn" class="btn btn-secondary admin-only" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35);" type="button">
+              🗑️ Eliminar Evaluación
+            </button>
+          </div>
+          <div style="display: flex; gap: 0.5rem;">
+            <button id="modalCloseFooterBtn" class="btn btn-secondary">Cerrar</button>
+            <button class="btn btn-primary" onclick="window.print()">Imprimir Reporte</button>
+          </div>
         </div>
       </div>
     </div>

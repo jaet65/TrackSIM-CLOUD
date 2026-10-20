@@ -263,3 +263,143 @@ export function renderDistributionChart(canvasId, evaluations) {
     }
   });
 }
+
+/**
+ * Gráfico de Barras Horizontal: Ranking de Conductores de la Empresa
+ */
+export function renderCompanyRankingChart(canvasId, conductores) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx || !window.Chart) return;
+
+  destroyChart(canvasId);
+
+  if (!conductores || conductores.length === 0) return;
+
+  const sorted = conductores.slice(0, 15);
+  const labels = sorted.map(c => c.nombre);
+  const scores = sorted.map(c => parseFloat(c.promedioScore.toFixed(2)));
+  const colors = sorted.map(c => {
+    if (c.promedioScore >= 8.0) return '#10b981';
+    if (c.promedioScore >= 6.0) return '#38bdf8';
+    if (c.promedioScore >= 5.0) return '#f59e0b';
+    return '#ef4444';
+  });
+
+  chartInstances[canvasId] = new window.Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Calificación Promedio',
+          data: scores,
+          backgroundColor: colors.map(c => c + '33'),
+          borderColor: colors,
+          borderWidth: 1.5,
+          borderRadius: 6
+        }
+      ]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          titleColor: '#f8fafc',
+          bodyColor: '#cbd5e1',
+          callbacks: {
+            label: (ctx) => `Promedio: ${ctx.raw} / 10`
+          }
+        }
+      },
+      scales: {
+        x: {
+          min: 0,
+          max: 10,
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: { color: '#94a3b8' }
+        },
+        y: {
+          grid: { display: false },
+          ticks: { color: '#f1f5f9', font: { family: "'Plus Jakarta Sans', sans-serif", weight: '500' } }
+        }
+      }
+    }
+  });
+}
+
+/**
+ * Gráfico de Barras Vertical: Rendimiento por Simulación en la Empresa
+ */
+export function renderCompanySimulationsChart(canvasId, company) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx || !window.Chart) return;
+
+  destroyChart(canvasId);
+
+  if (!company) return;
+
+  const name2 = company.nombresSimulaciones?.[2] || 'Montaña';
+  const name3 = company.nombresSimulaciones?.[3] || 'Sierra';
+  const name4 = company.nombresSimulaciones?.[4] || 'Simulación 4';
+  const labels = [`S2: ${name2}`, `S3: ${name3}`, `S4: ${name4}`];
+
+  const subtitleEl = document.getElementById('companySimChartSubtitle');
+  if (subtitleEl) {
+    subtitleEl.textContent = `Promedio en ${name2} (S2), ${name3} (S3) y ${name4} (S4)`;
+  }
+
+  const scores = [
+    parseFloat((company.promedioSim2 || 0).toFixed(2)),
+    parseFloat((company.promedioSim3 || 0).toFixed(2)),
+    parseFloat((company.promedioSim4 || 0).toFixed(2))
+  ];
+
+  chartInstances[canvasId] = new window.Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Promedio Flota',
+          data: scores,
+          backgroundColor: ['rgba(148, 163, 184, 0.25)', 'rgba(249, 115, 22, 0.25)', 'rgba(59, 130, 246, 0.25)'],
+          borderColor: ['#94a3b8', '#f97316', '#3b82f6'],
+          borderWidth: 2,
+          borderRadius: 8
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          titleColor: '#f8fafc',
+          bodyColor: '#cbd5e1',
+          callbacks: {
+            label: (ctx) => `Promedio Flota: ${ctx.raw} / 10`
+          }
+        }
+      },
+      scales: {
+        y: {
+          min: 0,
+          max: 10,
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: { color: '#94a3b8' }
+        },
+        x: {
+          grid: { display: false },
+          ticks: { color: '#cbd5e1', font: { family: "'Plus Jakarta Sans', sans-serif" } }
+        }
+      }
+    }
+  });
+}
+

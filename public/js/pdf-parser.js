@@ -9,14 +9,17 @@ export async function extractTextFromPDF(pdfDoc) {
   const pagesText = [];
   const numPages = pdfDoc.numPages;
   let page1Items = [];
+  let page4Items = [];
 
   for (let pageNum = 1; pageNum <= numPages; pageNum++) {
     const page = await pdfDoc.getPage(pageNum);
     const content = await page.getTextContent();
 
-    // Guardar items originales de la Página 1 para análisis posicional de encabezados
+    // Guardar items originales de la Página 1 y Página 4 para análisis posicional
     if (pageNum === 1) {
       page1Items = content.items || [];
+    } else if (pageNum === 4) {
+      page4Items = content.items || [];
     }
 
     // Agrupar items por línea basándose en la posición Y
@@ -44,8 +47,9 @@ export async function extractTextFromPDF(pdfDoc) {
     pagesText.push(pageString);
   }
 
-  // Adjuntar items crudos de la página 1 para el parser
+  // Adjuntar items crudos de las páginas 1 y 4 para el parser
   pagesText.page1Items = page1Items;
+  pagesText.page4Items = page4Items;
   return pagesText;
 }
 
@@ -148,15 +152,149 @@ export function extractHeaderFromCoordinates(items) {
 }
 
 /**
+ * Extrae dinámicamente los ejercicios de simulador descritos en la Página 4
+ * analizando la columna de nombres (X < 115) y la de descripciones (X >= 115).
+ * Omite el ejercicio de 'Reconocimiento' según las especificaciones operativas.
+ */
+export function extractExercisesFromCoordinates(page4Items, p4Text = '') {
+  if (!page4Items || !page4Items.length) {
+    return extractExercisesFromTextFallback(p4Text);
+  }
+
+  const cleanItems = page4Items
+    .filter(i => i.str && i.str.trim().length > 0)
+    .map(i => ({
+      text: i.str.trim(),
+      raw: i.str,
+      x: i.transform[4],
+      y: i.transform[5]
+    }));
+
+  // Buscar el título de la sección de ejercicios
+  const titleItem = cleanItems.find(i =>
+    /ejercicios\s+de\s+simulador/i.test(i.text) ||
+    /describen\s+a\s+continuacion/i.test(i.text)
+  );
+  const titleY = titleItem ? titleItem.y : 325;
+
+  // Filtrar elementos de la tabla: debajo del título y arriba del pie de página (Y > 55)
+  const tableItems = cleanItems.filter(i => i.y < titleY && i.y > 55);
+
+  // Columna izquierda: Nombres (X < 115)
+  // Columna derecha: Descripciones (X >= 115)
+  const rawNameItems = tableItems.filter(i => i.x < 115);
+  const descItems = tableItems.filter(i => i.x >= 115);
+
+  // Agrupar nombres por líneas cercanas (diff Y <= 8) por si un nombre ocupa más de una línea o token
+  rawNameItems.sort((a, b) => b.y - a.y);
+  const nameGroups = [];
+  for (const item of rawNameItems) {
+    const existing = nameGroups.find(g => Math.abs(g.y - item.y) <= 8);
+    if (existing) {
+      existing.text += ' ' + item.text;
+    } else {
+      nameGroups.push({ text: item.text, y: item.y });
+    }
+  }
+
+  nameGroups.sort((a, b) => b.y - a.y);
+
+  // Filtrar y omitir "Reconocimiento"
+  const candidateExercises = [];
+  for (const g of nameGroups) {
+    const cleanName = g.text.replace(/[.:]+$/, '').trim();
+    if (/reconocimiento/i.test(cleanName)) {
+      continue; // Omitir reconocimiento según requerimiento
+    }
+    candidateExercises.push({
+      nombre: cleanName,
+      y: g.y
+    });
+  }
+
+  if (candidateExercises.length === 0) {
+    return extractExercisesFromTextFallback(p4Text);
+  }
+
+  // Asociar descripciones según rango vertical Y
+  const exercises = [];
+  candidateExercises.forEach((cand, idx) => {
+    const nextY = idx + 1 < candidateExercises.length ? candidateExercises[idx + 1].y : 55;
+    const matchingDescs = descItems.filter(d => (d.y <= cand.y + 8) && (d.y > nextY + 8));
+    matchingDescs.sort((a, b) => {
+      const diffY = b.y - a.y;
+      if (Math.abs(diffY) > 3) return diffY;
+      return a.x - b.x;
+    });
+
+    const descText = matchingDescs.map(d => d.text).join(' ').trim();
+    exercises.push({
+      numero: idx + 2, // Simulación 2, Simulación 3, Simulación 4...
+      nombre: cand.nombre,
+      descripcion: descText,
+      calificacion: null
+    });
+  });
+
+  return exercises;
+}
+
+/**
+ * Fallback de extracción de ejercicios por regex sobre el texto de la Página 4
+ */
+function extractExercisesFromTextFallback(p4Text = '') {
+  if (!p4Text) {
+    return [
+      { numero: 2, nombre: 'Montaña', descripcion: 'Conducción en Montaña con enfoque al uso de frenos auxiliares.', calificacion: null },
+      { numero: 3, nombre: 'Sierra', descripcion: 'Conducción en Sierra con condiciones adversas.', calificacion: null },
+      { numero: 4, nombre: 'Simulación 4', descripcion: 'Práctica avanzada en condiciones críticas.', calificacion: null }
+    ];
+  }
+
+  const exercises = [];
+  const knownExercises = [
+    { regex: /Monta[ñn]a[.:]?\s*([^\n\r]+)/i, name: 'Montaña' },
+    { regex: /Sierra[.:]?\s*([^\n\r]+)/i, name: 'Sierra' },
+    { regex: /Niebla[.:]?\s*([^\n\r]+)/i, name: 'Niebla' },
+    { regex: /Maniobras\s+Cr[ií]ticas[.:]?\s*([^\n\r]+)/i, name: 'Maniobras Críticas' }
+  ];
+
+  let simIndex = 2;
+  for (const item of knownExercises) {
+    const m = p4Text.match(item.regex);
+    if (m) {
+      exercises.push({
+        numero: simIndex++,
+        nombre: item.name,
+        descripcion: m[1].trim(),
+        calificacion: null
+      });
+    }
+  }
+
+  if (exercises.length === 0) {
+    return [
+      { numero: 2, nombre: 'Montaña', descripcion: 'Conducción en Montaña con enfoque al uso de frenos auxiliares.', calificacion: null },
+      { numero: 3, nombre: 'Sierra', descripcion: 'Conducción en Sierra con condiciones adversas.', calificacion: null },
+      { numero: 4, nombre: 'Simulación 4', descripcion: 'Práctica avanzada en condiciones críticas.', calificacion: null }
+    ];
+  }
+
+  return exercises;
+}
+
+/**
  * Parsea el texto extraído de las páginas del PDF y genera el objeto de evaluación
  */
-export function parseEvaluationData(pagesText, filename = '', rawPage1Items = null) {
+export function parseEvaluationData(pagesText, filename = '', rawPage1Items = null, rawPage4Items = null) {
   const p1 = pagesText[0] || '';
+  const p4 = pagesText[3] || '';
   const p5 = pagesText[pagesText.length - 1] || ''; // Última página (usualmente página 5)
   const fullText = pagesText.join('\n=== PAGINA ===\n');
 
-  // Intentar extracción de encabezado con coordenadas espaciales
+  // Intentar extracción de encabezado y ejercicios con coordenadas espaciales
   const page1Items = rawPage1Items || pagesText.page1Items || null;
+  const page4Items = rawPage4Items || pagesText.page4Items || null;
   const headerMeta = page1Items ? extractHeaderFromCoordinates(page1Items) : null;
 
   const data = {
@@ -186,6 +324,8 @@ export function parseEvaluationData(pagesText, filename = '', rawPage1Items = nu
       simulacion_3: 0,
       simulacion_4: 0
     },
+    ejercicios: [],
+    nombresSimulaciones: {},
     fatalidades: 0,
     vehiculoFueraVia: 0,
     colisiones: 0,
@@ -368,7 +508,22 @@ export function parseEvaluationData(pagesText, filename = '', rawPage1Items = nu
     }
   }
 
-  // 10. Estado y Observaciones
+  // 10. Ejercicios Dinámicos de Simulador (Página 4 - Omitiendo Reconocimiento)
+  const ejercicios = extractExercisesFromCoordinates(page4Items, p4);
+  ejercicios.forEach(e => {
+    const key = `simulacion_${e.numero}`;
+    if (data.simulacionesDetalle[key] != null) {
+      e.calificacion = data.simulacionesDetalle[key];
+    }
+  });
+
+  data.ejercicios = ejercicios;
+  data.nombresSimulaciones = {};
+  ejercicios.forEach(e => {
+    data.nombresSimulaciones[e.numero] = e.nombre;
+  });
+
+  // 11. Estado y Observaciones
   const score = data.evaluacionFinalPuntos || data.calificacionExacta || 0;
   if (score >= 8.0) {
     data.estado = 'Sobresaliente';
@@ -419,7 +574,7 @@ export async function parsePDFFile(fileOrBuffer, filename = '') {
   const pagesText = await extractTextFromPDF(pdfDoc);
 
   // Parsear campos
-  const parsedData = parseEvaluationData(pagesText, name, pagesText.page1Items);
+  const parsedData = parseEvaluationData(pagesText, name, pagesText.page1Items, pagesText.page4Items);
   return parsedData;
 }
 

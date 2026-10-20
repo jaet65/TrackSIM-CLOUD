@@ -26,7 +26,11 @@ import {
   getEvaluations,
   saveEvaluation,
   saveBatchEvaluations,
+  deleteEvaluation,
+  clearAllEvaluations,
+  clearLocalCache,
   processDriverSummaries,
+  processCompanySummaries,
   slugify
 } from './db.js';
 
@@ -37,7 +41,9 @@ import {
 import {
   renderEvolutionChart,
   renderComparisonRadarChart,
-  renderDistributionChart
+  renderDistributionChart,
+  renderCompanyRankingChart,
+  renderCompanySimulationsChart
 } from './charts.js';
 
 // Estado global de la aplicación
@@ -46,7 +52,9 @@ const AppState = {
   userRole: null, // 'admin' | 'viewer'
   evaluations: [],
   drivers: [],
+  companies: [],
   selectedDriver: null,
+  selectedCompany: null,
   stagingEvaluations: [],
   currentTab: 'dashboard',
   filters: {
@@ -69,6 +77,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initNavigation();
   initAuth();
   initDropzone();
+  initCompanyView();
   initDirectoryFilters();
   initModals();
 });
@@ -78,6 +87,49 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ==========================================
 function initNavigation() {
   window.switchTab = switchTab;
+  
+  window.confirmDeleteEvaluation = async (evalId, conductorName) => {
+    if (AppState.userRole !== 'admin') {
+      showToast('Acción restringida a administradores.', 'warning');
+      return;
+    }
+    const confirmed = window.confirm(`¿Estás seguro de que deseas eliminar la evaluación de "${conductorName || 'este operador'}"?\n\nEsta acción borrará el registro de Cloud Firestore y de la memoria local.`);
+    if (!confirmed) return;
+
+    try {
+      await deleteEvaluation(evalId);
+      await loadAndRefreshData();
+      showToast(`Evaluación de ${conductorName || 'operador'} eliminada exitosamente.`, 'info');
+    } catch (err) {
+      console.error('Error eliminando evaluación:', err);
+      showToast('Error al eliminar la evaluación.', 'error');
+    }
+  };
+
+  window.confirmClearAllEvaluations = async () => {
+    if (AppState.userRole !== 'admin') {
+      showToast('Acción restringida a administradores.', 'warning');
+      return;
+    }
+    const count = AppState.evaluations.length;
+    const confirmed = window.confirm(`⚠️ ADVERTENCIA: ¿Estás seguro de que deseas eliminar TODAS las evaluaciones (${count} registros)?\n\nSe borrarán permanentemente de Cloud Firestore y de la memoria local. Esta acción NO se puede deshacer.`);
+    if (!confirmed) return;
+
+    try {
+      await clearAllEvaluations();
+      await loadAndRefreshData();
+      showToast('Se han eliminado todas las evaluaciones del sistema.', 'info');
+    } catch (err) {
+      console.error('Error vaciando evaluaciones:', err);
+      showToast('Error al vaciar evaluaciones.', 'error');
+    }
+  };
+
+  window.clearLocalCache = async () => {
+    clearLocalCache();
+    await loadAndRefreshData();
+    showToast('Caché local limpiada.', 'info');
+  };
   const navItems = document.querySelectorAll('.nav-item[data-tab]');
   navItems.forEach(item => {
     item.addEventListener('click', () => {
@@ -122,6 +174,8 @@ export function switchTab(tabId) {
     renderEvolutionView();
   } else if (tabId === 'comparativa') {
     renderComparisonView();
+  } else if (tabId === 'empresas') {
+    renderCompanyView();
   } else if (tabId === 'directorio') {
     renderDirectoryTable();
   }
@@ -335,15 +389,30 @@ async function loadAndRefreshData() {
   try {
     AppState.evaluations = await getEvaluations();
     AppState.drivers = processDriverSummaries(AppState.evaluations);
+    AppState.companies = processCompanySummaries(AppState.evaluations);
 
-    // Si aún no hay conductor seleccionado, seleccionar el primero
-    if (!AppState.selectedDriver && AppState.drivers.length > 0) {
-      AppState.selectedDriver = AppState.drivers[0];
+    // Actualizar selección activa de conductor
+    if (AppState.drivers.length > 0) {
+      if (!AppState.selectedDriver || !AppState.drivers.find(d => d.nombre === AppState.selectedDriver.nombre)) {
+        AppState.selectedDriver = AppState.drivers[0];
+      }
+    } else {
+      AppState.selectedDriver = null;
+    }
+
+    // Actualizar selección activa de empresa
+    if (AppState.companies.length > 0) {
+      if (!AppState.selectedCompany || !AppState.companies.find(c => c.nombre === AppState.selectedCompany.nombre)) {
+        AppState.selectedCompany = AppState.companies[0];
+      }
+    } else {
+      AppState.selectedCompany = null;
     }
 
     renderDashboard();
     renderEvolutionView();
     renderComparisonView();
+    renderCompanyView();
     renderDirectoryTable();
   } catch (e) {
     console.error('Error cargando datos principales:', e);
@@ -416,9 +485,15 @@ function renderDashboard() {
             <span class="badge badge-${e.badgeColor || 'info'}">${e.estado || 'Procesado'}</span>
           </td>
           <td>
-            <button class="btn btn-secondary btn-sm" onclick="window.viewEvaluationDetail('${e.id}')">
-              Detalle
-            </button>
+            <div style="display: flex; gap: 0.4rem; align-items: center;">
+              <button class="btn btn-secondary btn-sm" onclick="window.viewEvaluationDetail('${e.id}')">
+                Detalle
+              </button>
+              ${AppState.userRole === 'admin' ? `
+                <button class="btn btn-secondary btn-sm" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35); padding: 0.25rem 0.5rem;" onclick="window.confirmDeleteEvaluation('${e.id}', '${(e.conductor || '').replace(/'/g, "\\'")}')" title="Eliminar evaluación">
+                  🗑️
+                </button>` : ''}
+            </div>
           </td>
         </tr>
       `).join('');
@@ -566,10 +641,13 @@ function displayStagingEvaluations(items) {
       <td>
         <strong>${(item.practicaSimuladorPuntos || 0).toFixed(2)}</strong> / 7.0
         <div style="font-size: 0.7rem; color: var(--text-muted);">${item.practicaSimuladorPct || 0}%</div>
-        ${item.simulacionesDetalle?.simulacion_2 != null ? `
+        ${Array.isArray(item.ejercicios) && item.ejercicios.length > 0 ? `
+          <div style="font-size: 0.68rem; color: #a855f7; margin-top: 0.2rem; font-weight: 500;" title="Ejercicios evaluados: ${item.ejercicios.map(e => `S${e.numero} (${e.nombre}): ${e.calificacion ?? '-'}`).join(' | ')}">
+            ${item.ejercicios.map(e => `S${e.numero} (${e.nombre}): <strong>${e.calificacion != null ? e.calificacion : '-'}</strong>`).join(' · ')}
+          </div>` : (item.simulacionesDetalle?.simulacion_2 != null ? `
           <div style="font-size: 0.68rem; color: #a855f7; margin-top: 0.2rem; font-weight: 500;" title="Calificaciones obtenidas en simulaciones individuales">
             S2: ${item.simulacionesDetalle.simulacion_2} | S3: ${item.simulacionesDetalle.simulacion_3 ?? '-'} | S4: ${item.simulacionesDetalle.simulacion_4 ?? '-'}
-          </div>` : ''}
+          </div>` : '')}
       </td>
       <td>
         <span class="score-pill" style="color: var(--primary);">
@@ -806,6 +884,188 @@ function renderComparisonCards(driverA, driverB) {
 }
 
 // ==========================================
+// VISTA: INSPECCIÓN DE FLOTAS POR EMPRESA
+// ==========================================
+function initCompanyView() {
+  const select = document.getElementById('companySelect');
+  const searchInput = document.getElementById('companyDriverSearch');
+
+  if (select) {
+    select.addEventListener('change', (e) => {
+      const selectedName = e.target.value;
+      AppState.selectedCompany = AppState.companies.find(c => c.nombre === selectedName) || null;
+      renderCompanyView();
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      renderCompanyDriversTable(e.target.value.toLowerCase().trim());
+    });
+  }
+
+  // Permite saltar directamente a la trazabilidad del conductor desde la empresa
+  window.inspectDriverEvolucion = (driverName) => {
+    const driver = AppState.drivers.find(d => d.nombre === driverName);
+    if (driver) {
+      AppState.selectedDriver = driver;
+      const driverSelect = document.getElementById('driverSelect');
+      if (driverSelect) driverSelect.value = driver.slug;
+      switchTab('evolucion');
+    }
+  };
+}
+
+function renderCompanyView() {
+  const companies = AppState.companies;
+  const emptyState = document.getElementById('companyEmptyState');
+  const content = document.getElementById('companyContent');
+  const countBadge = document.getElementById('companyCountBadge');
+  const select = document.getElementById('companySelect');
+
+  if (countBadge) countBadge.textContent = `${companies.length} Empresa${companies.length === 1 ? '' : 's'}`;
+
+  if (!companies || companies.length === 0) {
+    if (emptyState) emptyState.style.display = 'block';
+    if (content) content.style.display = 'none';
+    return;
+  }
+
+  if (emptyState) emptyState.style.display = 'none';
+  if (content) content.style.display = 'block';
+
+  // Si no hay empresa seleccionada o la actual ya no existe en el listado, seleccionar la primera
+  if (!AppState.selectedCompany || !companies.some(c => c.nombre === AppState.selectedCompany.nombre)) {
+    AppState.selectedCompany = companies[0];
+  }
+
+  // Actualizar opciones del select
+  if (select) {
+    const currentVal = AppState.selectedCompany ? AppState.selectedCompany.nombre : '';
+    select.innerHTML = companies.map(c => `
+      <option value="${c.nombre}" ${c.nombre === currentVal ? 'selected' : ''}>
+        🏢 ${c.nombre} (${c.totalConductores} operadores - ${c.totalEvaluaciones} reportes)
+      </option>
+    `).join('');
+  }
+
+  const comp = AppState.selectedCompany;
+  if (!comp) return;
+
+  // 1. Resumen Hero
+  const titleEl = document.getElementById('companyNameTitle');
+  if (titleEl) titleEl.textContent = comp.nombre;
+
+  const totalDriversEl = document.getElementById('companyStatTotalDrivers');
+  if (totalDriversEl) totalDriversEl.textContent = `${comp.totalConductores} operadores`;
+
+  const totalEvalsEl = document.getElementById('companyStatTotalEvals');
+  if (totalEvalsEl) totalEvalsEl.textContent = `${comp.totalEvaluaciones} reportes`;
+
+  const avgScoreEl = document.getElementById('companyStatAvgScore');
+  if (avgScoreEl) avgScoreEl.textContent = `${comp.promedioFinal.toFixed(2)} / 10`;
+
+  const approvalRateEl = document.getElementById('companyStatApprovalRate');
+  if (approvalRateEl) approvalRateEl.textContent = `${comp.tasaAprobacion.toFixed(1)}%`;
+
+  // 2. Gráficos de la Empresa
+  renderCompanyRankingChart('companyRankingChartCanvas', comp.conductores);
+  renderCompanySimulationsChart('companySimulationsChartCanvas', comp);
+
+  // 3. Tabla / Roster de Operadores de la Empresa
+  const searchInput = document.getElementById('companyDriverSearch');
+  const currentSearch = searchInput ? searchInput.value.toLowerCase().trim() : '';
+  renderCompanyDriversTable(currentSearch);
+}
+
+function renderCompanyDriversTable(filterSearch = '') {
+  const comp = AppState.selectedCompany;
+  const tbody = document.getElementById('companyDriversTableBody');
+  const countBadge = document.getElementById('companyDriversCountBadge');
+  if (!comp || !tbody) return;
+
+  let list = comp.conductores || [];
+  if (filterSearch) {
+    list = list.filter(c => c.nombre.toLowerCase().includes(filterSearch));
+  }
+
+  if (countBadge) countBadge.textContent = `${list.length} operador${list.length === 1 ? '' : 'es'}`;
+
+  if (list.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+          No se encontraron operadores que coincidan con la búsqueda.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = list.map((c, idx) => {
+    const n2 = (c.simulacionesNombres && c.simulacionesNombres[2]) || 'Montaña';
+    const n3 = (c.simulacionesNombres && c.simulacionesNombres[3]) || 'Sierra';
+    const n4 = (c.simulacionesNombres && c.simulacionesNombres[4]) || 'S4';
+    const s2 = c.simulaciones.simulacion_2 != null ? c.simulaciones.simulacion_2 : '-';
+    const s3 = c.simulaciones.simulacion_3 != null ? c.simulaciones.simulacion_3 : '-';
+    const s4 = c.simulaciones.simulacion_4 != null ? c.simulaciones.simulacion_4 : '-';
+
+    return `
+      <tr>
+        <td>
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div style="width: 28px; height: 28px; border-radius: 50%; background: rgba(56, 189, 248, 0.15); color: #38bdf8; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700;">
+              ${idx + 1}
+            </div>
+            <div>
+              <div style="font-weight: 600; color: #ffffff;">${c.nombre}</div>
+              <div style="font-size: 0.72rem; color: var(--text-muted);">ID: ${c.latestEvalId ? c.latestEvalId.substring(0, 16) : 'N/A'}</div>
+            </div>
+          </div>
+        </td>
+        <td>
+          <span style="font-weight: 600;">${c.totalEvaluaciones}</span> <small style="color: var(--text-muted);">sesion${c.totalEvaluaciones > 1 ? 'es' : ''}</small>
+        </td>
+        <td style="font-size: 0.82rem; color: var(--text-secondary);">${c.ultimaFecha || 'N/A'}</td>
+        <td>
+          <span class="score-pill" style="color: #38bdf8; font-weight: 700;">
+            ${c.promedioScore.toFixed(2)}
+            <small style="color: var(--text-muted); font-size: 0.7rem;">/ 10</small>
+          </span>
+          <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.15rem;">Último: ${c.ultimoScore.toFixed(2)}</div>
+        </td>
+        <td>
+          <div style="font-size: 0.78rem; line-height: 1.5;">
+            <span style="color: #94a3b8;" title="S2 (${n2})">S2: <strong>${s2}</strong></span> ·
+            <span style="color: #f97316;" title="S3 (${n3})">S3: <strong>${s3}</strong></span> ·
+            <span style="color: #38bdf8;" title="S4 (${n4})">S4 (${n4}): <strong>${s4}</strong></span>
+          </div>
+        </td>
+        <td>
+          <span style="color: ${(c.colisiones + c.fatalidades) > 0 ? 'var(--danger)' : 'var(--success)'}; font-weight: 600; font-size: 0.8rem;">
+            ${c.colisiones} col / ${c.fatalidades} fat
+          </span>
+        </td>
+        <td>
+          <span class="badge badge-${c.badgeColor}">${c.estado}</span>
+        </td>
+        <td>
+          <div style="display: flex; gap: 0.4rem; align-items: center;">
+            <button class="btn btn-secondary btn-sm" onclick="window.inspectDriverEvolucion('${c.nombre.replace(/'/g, "\\'")}')" title="Ver curva de evolución y trazabilidad del conductor">
+              📈 Trazabilidad
+            </button>
+            ${c.latestEvalId ? `
+              <button class="btn btn-primary btn-sm" onclick="window.viewEvaluationDetail('${c.latestEvalId}')" title="Ver último reporte digital oficial">
+                📄 Reporte
+              </button>` : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// ==========================================
 // VISTA: DIRECTORIO & FILTROS
 // ==========================================
 function initDirectoryFilters() {
@@ -909,9 +1169,15 @@ function renderDirectoryTable() {
         <span class="badge badge-${e.badgeColor}">${e.estado}</span>
       </td>
       <td>
-        <button class="btn btn-secondary btn-sm" onclick="window.viewEvaluationDetail('${e.id}')">
-          Ver Reporte
-        </button>
+        <div style="display: flex; gap: 0.4rem; align-items: center;">
+          <button class="btn btn-secondary btn-sm" onclick="window.viewEvaluationDetail('${e.id}')">
+            Ver Reporte
+          </button>
+          ${AppState.userRole === 'admin' ? `
+            <button class="btn btn-secondary btn-sm" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35); padding: 0.25rem 0.5rem;" onclick="window.confirmDeleteEvaluation('${e.id}', '${(e.conductor || '').replace(/'/g, "\\'")}')" title="Eliminar evaluación">
+              🗑️
+            </button>` : ''}
+        </div>
       </td>
     </tr>
   `).join('');
@@ -975,11 +1241,24 @@ function initModals() {
   const modal = document.getElementById('evaluationModal');
   const closeBtn = document.getElementById('modalCloseBtn');
   const closeFooterBtn = document.getElementById('modalCloseFooterBtn');
+  const modalDeleteBtn = document.getElementById('modalDeleteBtn');
+  let currentModalItem = null;
 
-  const hide = () => modal.classList.remove('active');
+  const hide = () => {
+    modal.classList.remove('active');
+    currentModalItem = null;
+  };
 
   if (closeBtn) closeBtn.addEventListener('click', hide);
   if (closeFooterBtn) closeFooterBtn.addEventListener('click', hide);
+
+  if (modalDeleteBtn) {
+    modalDeleteBtn.addEventListener('click', async () => {
+      if (!currentModalItem) return;
+      await window.confirmDeleteEvaluation(currentModalItem.id, currentModalItem.conductor);
+      hide();
+    });
+  }
 
   modal.addEventListener('click', (e) => {
     if (e.target === modal) hide();
@@ -989,6 +1268,7 @@ function initModals() {
   window.viewEvaluationDetail = (evalId) => {
     const item = AppState.evaluations.find(e => e.id === evalId);
     if (!item) return;
+    currentModalItem = item;
 
     document.getElementById('modalTitle').textContent = `Reporte de Evaluación - ${item.conductor}`;
     document.getElementById('modalDriver').textContent = item.conductor;
@@ -1004,10 +1284,61 @@ function initModals() {
     document.getElementById('modalScoreFinal').textContent = `${(item.evaluacionFinalPuntos || 0).toFixed(2)} / 10.0 (${item.evaluacionFinalPct || 0}%)`;
     document.getElementById('modalScoreExact').textContent = item.calificacionExacta || item.evaluacionFinalPuntos || '0.00';
 
-    // Simulaciones
-    document.getElementById('modalSim2').textContent = item.simulacionesDetalle?.simulacion_2 != null ? `${item.simulacionesDetalle.simulacion_2} / 10` : 'N/A';
-    document.getElementById('modalSim3').textContent = item.simulacionesDetalle?.simulacion_3 != null ? `${item.simulacionesDetalle.simulacion_3} / 10` : 'N/A';
-    document.getElementById('modalSim4').textContent = item.simulacionesDetalle?.simulacion_4 != null ? `${item.simulacionesDetalle.simulacion_4} / 10` : 'N/A';
+    // Renderizado dinámico de los ejercicios evaluados en simulador (Página 4 y 5)
+    const simContainer = document.getElementById('modalSimulationsContainer');
+    if (simContainer) {
+      let ejerciciosToRender = [];
+      if (Array.isArray(item.ejercicios) && item.ejercicios.length > 0) {
+        ejerciciosToRender = item.ejercicios;
+      } else {
+        // Fallback para evaluaciones históricas anteriores
+        ejerciciosToRender = [
+          { numero: 2, nombre: 'Montaña', descripcion: 'Conducción en Montaña con uso de frenos auxiliares.', calificacion: item.simulacionesDetalle?.simulacion_2 },
+          { numero: 3, nombre: 'Sierra', descripcion: 'Conducción en Sierra con condiciones adversas de baja tracción.', calificacion: item.simulacionesDetalle?.simulacion_3 },
+          { numero: 4, nombre: 'Maniobras / Niebla', descripcion: 'Conducción bajo condiciones críticas o adversas.', calificacion: item.simulacionesDetalle?.simulacion_4 }
+        ];
+      }
+
+      const getIcon = (name) => {
+        const n = (name || '').toLowerCase();
+        if (n.includes('montaña') || n.includes('montana')) return '🏔️';
+        if (n.includes('sierra')) return '🌲';
+        if (n.includes('niebla') || n.includes('neblina')) return '🌫️';
+        if (n.includes('maniobra')) return '🏙️';
+        return '🎯';
+      };
+
+      const getScoreColor = (score) => {
+        if (score == null) return '#94a3b8';
+        if (score >= 9.0) return '#10b981';
+        if (score >= 8.0) return '#38bdf8';
+        if (score >= 6.0) return '#f59e0b';
+        return '#ef4444';
+      };
+
+      simContainer.innerHTML = ejerciciosToRender.map(e => {
+        const icon = getIcon(e.nombre);
+        const scoreVal = e.calificacion != null ? e.calificacion : (item.simulacionesDetalle?.[`simulacion_${e.numero}`] ?? null);
+        const scoreColor = getScoreColor(scoreVal);
+        const scoreText = scoreVal != null ? `${scoreVal} <small style="font-size: 0.68rem; color: var(--text-muted);">/ 10</small>` : '<span style="color: var(--text-muted); font-size: 0.75rem;">Pendiente</span>';
+
+        return `
+          <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-sm); padding: 0.65rem 0.85rem; transition: background 0.2s ease;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
+              <span style="font-weight: 600; font-size: 0.82rem; color: #f8fafc; display: flex; align-items: center; gap: 0.35rem;">
+                <span>${icon}</span>
+                <span>Simulación ${e.numero}:</span>
+                <strong style="color: #38bdf8;">${e.nombre}</strong>
+              </span>
+              <span style="font-size: 0.85rem; font-weight: 700; color: ${scoreColor}; background: rgba(0, 0, 0, 0.25); padding: 0.15rem 0.5rem; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                ${scoreText}
+              </span>
+            </div>
+            ${e.descripcion ? `<p style="font-size: 0.73rem; color: var(--text-muted); margin: 0; line-height: 1.35; padding-left: 1.4rem;">${e.descripcion}</p>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
 
     // Incidentes
     document.getElementById('modalCollisions').textContent = item.colisiones || 0;

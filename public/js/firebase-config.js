@@ -10,12 +10,14 @@ import {
   createUserWithEmailAndPassword
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { 
+  initializeFirestore,
   getFirestore, 
   collection, 
   doc, 
   setDoc, 
   getDoc, 
   getDocs, 
+  deleteDoc,
   query, 
   where, 
   orderBy, 
@@ -35,7 +37,10 @@ export const firebaseConfig = {
 // Initialize Primary Firebase App
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+// Configurar Firestore con experimentalForceLongPolling para evitar que el canal WebChannel stream (Listen/channel) sea bloqueado o abortado por el navegador/red
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true
+});
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
@@ -55,6 +60,7 @@ export {
   setDoc, 
   getDoc, 
   getDocs, 
+  deleteDoc,
   query, 
   where, 
   orderBy, 

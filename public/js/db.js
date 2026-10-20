@@ -9,6 +9,7 @@ import {
   doc,
   setDoc,
   getDocs,
+  deleteDoc,
   query,
   orderBy
 } from './firebase-config.js';
@@ -43,28 +44,61 @@ export async function getEvaluations() {
       evaluations.push({ id: docSnap.id, ...docSnap.data() });
     });
 
-    if (evaluations.length > 0) {
-      // Guardar respaldo local actualizado
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(evaluations));
-      return evaluations;
-    }
+    // Firestore es la fuente primaria de la verdad cuando la consulta tiene éxito.
+    // Si la colección se vació o se eliminaron registros en Firestore, actualizamos el almacenamiento local inmediatamente.
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(evaluations));
+    return evaluations;
   } catch (error) {
     console.warn('No se pudo consultar Firestore directamente (posible regla o conexión offline). Usando almacenamiento local.', error);
-  }
 
-  // Respaldo en localStorage
-  const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
-  if (localData) {
-    try {
-      evaluations = JSON.parse(localData);
-      if (evaluations.length > 0) return evaluations;
-    } catch (e) {
-      console.error('Error parseando datos locales:', e);
+    // Respaldo en localStorage SOLO si falló la conexión con Firestore (modo offline)
+    const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (localData) {
+      try {
+        const parsed = JSON.parse(localData);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {
+        console.error('Error parseando datos locales:', e);
+      }
     }
+    return [];
+  }
+}
+
+/**
+ * Elimina una evaluación específica de Firestore y del almacenamiento local
+ */
+export async function deleteEvaluation(evalId) {
+  try {
+    await deleteDoc(doc(db, COLLECTION_NAME, evalId));
+  } catch (e) {
+    console.warn('Error eliminando evaluación de Firestore:', e);
   }
 
-  // Si no hay datos en Firestore ni en localStorage, retornar arreglo vacío
-  return evaluations;
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (raw) {
+      const list = JSON.parse(raw);
+      const filtered = list.filter(e => e.id !== evalId);
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(filtered));
+    }
+  } catch (e) {
+    console.error('Error actualizando almacenamiento local tras borrado:', e);
+  }
+}
+
+/**
+ * Elimina todas las evaluaciones en Firestore y vacía el almacenamiento local
+ */
+export async function clearAllEvaluations() {
+  try {
+    const snapshot = await getDocs(collection(db, COLLECTION_NAME));
+    const deletePromises = snapshot.docs.map(d => deleteDoc(d.ref));
+    await Promise.all(deletePromises);
+  } catch (e) {
+    console.warn('Error vaciando colección en Firestore:', e);
+  }
+  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([]));
 }
 
 /**
@@ -242,3 +276,143 @@ export function processDriverSummaries(evaluations) {
   summaries.sort((a, b) => a.nombre.localeCompare(b.nombre));
   return summaries;
 }
+
+/**
+ * Agrupa y consolida las evaluaciones por Empresa para inspección de flotas
+ */
+export function processCompanySummaries(evaluations) {
+  const map = new Map();
+
+  for (const ev of evaluations) {
+    const rawEmp = (ev.empresa || '').trim();
+    if (!rawEmp) continue;
+
+    if (!map.has(rawEmp)) {
+      map.set(rawEmp, {
+        nombre: rawEmp,
+        slug: slugify(rawEmp),
+        evaluaciones: [],
+        conductoresMap: new Map()
+      });
+    }
+
+    const companyData = map.get(rawEmp);
+    companyData.evaluaciones.push(ev);
+
+    const condName = (ev.conductor || 'Sin Asignar').trim();
+    if (!companyData.conductoresMap.has(condName)) {
+      companyData.conductoresMap.set(condName, []);
+    }
+    companyData.conductoresMap.get(condName).push(ev);
+  }
+
+  const summaries = [];
+
+  for (const [name, data] of map.entries()) {
+    const totalEvals = data.evaluaciones.length;
+    let sumFinal = 0;
+    let sumHab = 0;
+    let sumSim = 0;
+    let sumSim2 = 0;
+    let countSim2 = 0;
+    let sumSim3 = 0;
+    let countSim3 = 0;
+    let sumSim4 = 0;
+    let countSim4 = 0;
+    let totalCollisions = 0;
+    let totalFatalities = 0;
+    let totalOffRoad = 0;
+    let approvedCount = 0;
+    const nombresSimulaciones = {};
+
+    data.evaluaciones.forEach(ev => {
+      const finalScore = ev.evaluacionFinalPuntos || ev.calificacionExacta || 0;
+      sumFinal += finalScore;
+      sumHab += (ev.habilidadesManejoPuntos || 0);
+      sumSim += (ev.practicaSimuladorPuntos || 0);
+      totalCollisions += (ev.colisiones || 0);
+      totalFatalities += (ev.fatalidades || 0);
+      totalOffRoad += (ev.vehiculoFueraVia || 0);
+      if (finalScore >= 6.0) approvedCount++;
+
+      // Recopilar nombres dinámicos de los ejercicios evaluados
+      if (Array.isArray(ev.ejercicios)) {
+        ev.ejercicios.forEach(e => {
+          if (e.numero && e.nombre && !nombresSimulaciones[e.numero]) {
+            nombresSimulaciones[e.numero] = e.nombre;
+          }
+        });
+      } else if (ev.nombresSimulaciones) {
+        Object.assign(nombresSimulaciones, ev.nombresSimulaciones);
+      }
+
+      if (ev.simulacionesDetalle?.simulacion_2) {
+        sumSim2 += ev.simulacionesDetalle.simulacion_2;
+        countSim2++;
+      }
+      if (ev.simulacionesDetalle?.simulacion_3) {
+        sumSim3 += ev.simulacionesDetalle.simulacion_3;
+        countSim3++;
+      }
+      if (ev.simulacionesDetalle?.simulacion_4) {
+        sumSim4 += ev.simulacionesDetalle.simulacion_4;
+        countSim4++;
+      }
+    });
+
+    const conductores = [];
+    for (const [condName, evals] of data.conductoresMap.entries()) {
+      evals.sort((a, b) => {
+        const da = a.fechaCapacitacion || a.fechaReporte || '';
+        const db = b.fechaCapacitacion || b.fechaReporte || '';
+        return da.localeCompare(db);
+      });
+
+      const latest = evals[evals.length - 1];
+      const avgScore = evals.reduce((acc, e) => acc + (e.evaluacionFinalPuntos || e.calificacionExacta || 0), 0) / evals.length;
+      const latestScore = latest.evaluacionFinalPuntos || latest.calificacionExacta || 0;
+
+      conductores.push({
+        nombre: condName,
+        totalEvaluaciones: evals.length,
+        ultimaFecha: latest.fechaCapacitacionFormato || latest.fechaCapacitacion || latest.fechaReporte,
+        ultimoScore: latestScore,
+        promedioScore: avgScore,
+        simulaciones: latest.simulacionesDetalle || {},
+        simulacionesNombres: latest.nombresSimulaciones || nombresSimulaciones,
+        ejercicios: latest.ejercicios || [],
+        colisiones: evals.reduce((a, b) => a + (b.colisiones || 0), 0),
+        fatalidades: evals.reduce((a, b) => a + (b.fatalidades || 0), 0),
+        estado: latest.estado || 'Procesado',
+        badgeColor: latest.badgeColor || 'info',
+        latestEvalId: latest.id
+      });
+    }
+
+    // Ordenar conductores por puntaje promedio descendente (ranking)
+    conductores.sort((a, b) => b.promedioScore - a.promedioScore);
+
+    summaries.push({
+      nombre: name,
+      slug: data.slug,
+      totalConductores: conductores.length,
+      totalEvaluaciones: totalEvals,
+      promedioFinal: totalEvals > 0 ? (sumFinal / totalEvals) : 0,
+      promedioHabilidades: totalEvals > 0 ? (sumHab / totalEvals) : 0,
+      promedioSimulador: totalEvals > 0 ? (sumSim / totalEvals) : 0,
+      tasaAprobacion: totalEvals > 0 ? ((approvedCount / totalEvals) * 100) : 0,
+      totalColisiones: totalCollisions,
+      totalFatalidades: totalFatalities,
+      totalFueraVia: totalOffRoad,
+      promedioSim2: countSim2 > 0 ? (sumSim2 / countSim2) : 0,
+      promedioSim3: countSim3 > 0 ? (sumSim3 / countSim3) : 0,
+      promedioSim4: countSim4 > 0 ? (sumSim4 / countSim4) : 0,
+      nombresSimulaciones: nombresSimulaciones,
+      conductores: conductores
+    });
+  }
+
+  summaries.sort((a, b) => a.nombre.localeCompare(b.nombre));
+  return summaries;
+}
+
