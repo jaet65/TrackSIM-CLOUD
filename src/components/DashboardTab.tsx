@@ -25,8 +25,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
     companies,
     selectedCompany,
     setSelectedCompany,
-    searchFilter,
-    setSearchFilter,
     companiesSummaries,
     loading
   } = useData();
