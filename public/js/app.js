@@ -17,6 +17,8 @@ import {
   collection,
   doc,
   setDoc,
+  getDoc,
+  updateDoc,
   getDocs,
   query,
   orderBy
@@ -58,6 +60,7 @@ import {
 const AppState = {
   user: null,
   userRole: null, // 'admin' | 'viewer'
+  allowedCompanies: [], // Empresas permitidas para lectores (vacío o ['all'] = todas)
   evaluations: [],
   drivers: [],
   companies: [],
@@ -264,9 +267,30 @@ function initAuth() {
         return;
       }
       AppState.userRole = 'admin';
+      AppState.allowedCompanies = ['all'];
     } else {
       // Usuario autenticado por Correo y Contraseña -> Rol Lector
       AppState.userRole = 'viewer';
+      try {
+        const userDocRef = doc(db, 'usuarios', user.uid);
+        const userSnap = await getDoc(userDocRef);
+        if (userSnap.exists()) {
+          const uData = userSnap.data();
+          if (uData.empresaPermitida) {
+            AppState.allowedCompanies = [uData.empresaPermitida];
+          } else if (Array.isArray(uData.empresasPermitidas)) {
+            AppState.allowedCompanies = uData.empresasPermitidas;
+          } else {
+            AppState.allowedCompanies = ['all'];
+          }
+        } else {
+          // Si no existe aún registro específico, por defecto tiene acceso a todas
+          AppState.allowedCompanies = ['all'];
+        }
+      } catch (err) {
+        console.warn('No se pudo consultar el documento de usuario en Firestore:', err);
+        AppState.allowedCompanies = ['all'];
+      }
     }
 
     AppState.user = user;
@@ -417,7 +441,18 @@ function applyRolePermissions(user, role) {
 // ==========================================
 async function loadAndRefreshData() {
   try {
-    AppState.evaluations = await getEvaluations();
+    let allEvals = await getEvaluations();
+
+    // Si el usuario es lector y tiene empresas restringidas, filtrar evaluaciones únicamente a sus empresas autorizadas
+    if (AppState.userRole !== 'admin' && AppState.allowedCompanies && !AppState.allowedCompanies.includes('all')) {
+      const allowedSet = new Set(AppState.allowedCompanies.map(c => (c || '').trim().toLowerCase()));
+      allEvals = allEvals.filter(e => {
+        const emp = (e.empresa || '').trim().toLowerCase();
+        return allowedSet.has(emp);
+      });
+    }
+
+    AppState.evaluations = allEvals;
     AppState.drivers = processDriverSummaries(AppState.evaluations);
     AppState.companies = processCompanySummaries(AppState.evaluations);
 
@@ -3220,14 +3255,69 @@ function initModals() {
 }
 
 /**
- * Gestión de Usuarios Lectores (Creación por Administrador con SecondaryAuth)
+ * Obtiene la lista completa de todas las empresas conocidas en el sistema
+ */
+function getAllKnownCompanies() {
+  const compSet = new Set();
+  // Desde evaluaciones activas
+  if (AppState.evaluations && AppState.evaluations.length > 0) {
+    AppState.evaluations.forEach(e => {
+      const emp = (e.empresa || '').trim();
+      if (emp) compSet.add(emp);
+    });
+  }
+  // También desde localStorage o catálogo por si el usuario actual es un lector restringido
+  try {
+    const local = localStorage.getItem('tracksim_cloud_evaluaciones');
+    if (local) {
+      const parsed = JSON.parse(local);
+      if (Array.isArray(parsed)) {
+        parsed.forEach(e => {
+          const emp = (e.empresa || '').trim();
+          if (emp) compSet.add(emp);
+        });
+      }
+    }
+  } catch (err) {
+    console.debug('Error reading local evaluations for companies', err);
+  }
+  return Array.from(compSet).sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Llena un elemento select con la lista de empresas registradas
+ */
+function populateCompanyDropdown(selectId, selectedCompany = '') {
+  const select = document.getElementById(selectId);
+  if (!select) return;
+
+  const companies = getAllKnownCompanies();
+
+  let html = `<option value="">-- Seleccionar Empresa --</option>`;
+  html += `<option value="all" ${selectedCompany === 'all' ? 'selected' : ''}>🌐 Todas las Empresas (Sin restricción)</option>`;
+  
+  companies.forEach(emp => {
+    html += `<option value="${emp}" ${emp === selectedCompany ? 'selected' : ''}>🏢 ${emp}</option>`;
+  });
+
+  select.innerHTML = html;
+}
+
+/**
+ * Gestión de Usuarios Lectores (Creación por Administrador con SecondaryAuth y Edición)
  */
 function initUserManagement() {
   const mgmtModal = document.getElementById('userMgmtModal');
   const openBtn = document.getElementById('openUserMgmtBtn');
   const closeBtn = document.getElementById('closeUserMgmtBtn');
   const closeFooterBtn = document.getElementById('closeUserMgmtFooterBtn');
-  const form = document.getElementById('adminCreateUserForm');
+  const createForm = document.getElementById('adminCreateUserForm');
+
+  // Modal de edición
+  const editModal = document.getElementById('editUserModal');
+  const closeEditBtn = document.getElementById('closeEditUserBtn');
+  const cancelEditBtn = document.getElementById('cancelEditUserBtn');
+  const editForm = document.getElementById('editUserForm');
 
   if (!mgmtModal) return;
 
@@ -3236,12 +3326,17 @@ function initUserManagement() {
       showToast('Acceso restringido: Exclusivo para administradores.', 'warning');
       return;
     }
+    populateCompanyDropdown('newViewerCompanySelect', '');
     mgmtModal.classList.add('active');
     await loadRegisteredUsers();
   };
 
   const hideModal = () => {
     mgmtModal.classList.remove('active');
+  };
+
+  const hideEditModal = () => {
+    if (editModal) editModal.classList.remove('active');
   };
 
   if (openBtn) openBtn.addEventListener('click', showModal);
@@ -3252,18 +3347,34 @@ function initUserManagement() {
     if (e.target === mgmtModal) hideModal();
   });
 
-  if (form) {
-    form.addEventListener('submit', async (e) => {
+  if (closeEditBtn) closeEditBtn.addEventListener('click', hideEditModal);
+  if (cancelEditBtn) cancelEditBtn.addEventListener('click', hideEditModal);
+  if (editModal) {
+    editModal.addEventListener('click', (e) => {
+      if (e.target === editModal) hideEditModal();
+    });
+  }
+
+  // Creación de nuevo usuario
+  if (createForm) {
+    createForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const emailInput = document.getElementById('newViewerEmail');
       const passInput = document.getElementById('newViewerPassword');
+      const companySelect = document.getElementById('newViewerCompanySelect');
       const submitBtn = document.getElementById('btnSubmitCreateUser');
 
       const email = emailInput.value.trim().toLowerCase();
       const password = passInput.value;
+      const empresaPermitida = companySelect ? companySelect.value.trim() : '';
 
       if (!email || !password || password.length < 6) {
         showToast('La contraseña debe tener al menos 6 caracteres.', 'warning');
+        return;
+      }
+
+      if (!empresaPermitida) {
+        showToast('Por favor seleccione una empresa para el usuario.', 'warning');
         return;
       }
 
@@ -3275,18 +3386,21 @@ function initUserManagement() {
         const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
         await signOut(secondaryAuth);
 
-        // Guardar registro en colección usuarios de Firestore
+        // Guardar registro en colección usuarios de Firestore con empresa permitida
         const userDocRef = doc(db, 'usuarios', cred.user.uid);
         await setDoc(userDocRef, {
           uid: cred.user.uid,
           email: email,
           role: 'viewer',
+          empresaPermitida: empresaPermitida,
+          empresasPermitidas: [empresaPermitida],
           creadoPor: auth.currentUser?.email || 'admin@corporativomaf.com',
           fechaAlta: new Date().toISOString()
         });
 
-        showToast(`Usuario lector ${email} creado exitosamente.`, 'success');
-        form.reset();
+        showToast(`Usuario lector ${email} creado para la empresa ${empresaPermitida}.`, 'success');
+        createForm.reset();
+        populateCompanyDropdown('newViewerCompanySelect', '');
         await loadRegisteredUsers();
       } catch (err) {
         console.error('Error al crear usuario lector:', err);
@@ -3305,7 +3419,77 @@ function initUserManagement() {
       }
     });
   }
+
+  // Guardar cambios al editar usuario
+  if (editForm) {
+    editForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const uid = document.getElementById('editUserUid').value;
+      const email = document.getElementById('editUserEmail').value;
+      const companySelect = document.getElementById('editUserCompanySelect');
+      const saveBtn = document.getElementById('saveEditUserBtn');
+      const empresaPermitida = companySelect ? companySelect.value.trim() : '';
+
+      if (!uid) {
+        showToast('No se identificó el usuario a editar.', 'error');
+        return;
+      }
+
+      if (!empresaPermitida) {
+        showToast('Por favor seleccione una empresa.', 'warning');
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Guardando...';
+
+      try {
+        const userDocRef = doc(db, 'usuarios', uid);
+        await updateDoc(userDocRef, {
+          empresaPermitida: empresaPermitida,
+          empresasPermitidas: [empresaPermitida]
+        });
+
+        showToast(`Empresa actualizada a "${empresaPermitida}" para ${email}.`, 'success');
+        hideEditModal();
+        await loadRegisteredUsers();
+      } catch (err) {
+        console.error('Error al actualizar permisos de usuario:', err);
+        showToast('Error al actualizar la empresa del usuario.', 'error');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = '💾 Guardar Cambios';
+      }
+    });
+  }
 }
+
+// Ventana flotante de edición de usuario
+window.openEditUserModal = function(userJsonStr) {
+  try {
+    const user = JSON.parse(decodeURIComponent(userJsonStr));
+    const editModal = document.getElementById('editUserModal');
+    const uidInput = document.getElementById('editUserUid');
+    const emailInput = document.getElementById('editUserEmail');
+    const subtitle = document.getElementById('editUserSubtitle');
+
+    if (!editModal || !uidInput || !emailInput) return;
+
+    uidInput.value = user.uid;
+    emailInput.value = user.email;
+    if (subtitle) {
+      subtitle.textContent = `Asignación de empresa para ${user.email}`;
+    }
+
+    const assignedCompany = user.empresaPermitida || (Array.isArray(user.empresasPermitidas) ? user.empresasPermitidas[0] : 'all') || 'all';
+    populateCompanyDropdown('editUserCompanySelect', assignedCompany);
+
+    editModal.classList.add('active');
+  } catch (err) {
+    console.error('Error abriendo modal de edición:', err);
+    showToast('Error al abrir el editor de usuario.', 'error');
+  }
+};
 
 /**
  * Consulta y lista los usuarios creados en Firestore
@@ -3321,7 +3505,7 @@ async function loadRegisteredUsers() {
     if (snapshot.empty) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+          <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
             No se han registrado usuarios lectores aún.
           </td>
         </tr>
@@ -3330,21 +3514,39 @@ async function loadRegisteredUsers() {
     }
 
     const users = [];
-    snapshot.forEach(docSnap => users.push(docSnap.data()));
+    snapshot.forEach(docSnap => users.push({ uid: docSnap.id, ...docSnap.data() }));
 
-    tbody.innerHTML = users.map(u => `
-      <tr>
-        <td><strong>${u.email}</strong></td>
-        <td><span class="role-badge viewer">👁️ Lector</span></td>
-        <td style="font-size: 0.8rem; color: var(--text-muted);">${u.creadoPor || 'Admin'}</td>
-        <td style="font-size: 0.8rem;">${u.fechaAlta ? new Date(u.fechaAlta).toLocaleDateString() : 'N/A'}</td>
-      </tr>
-    `).join('');
+    tbody.innerHTML = users.map(u => {
+      const assigned = u.empresaPermitida || (Array.isArray(u.empresasPermitidas) ? u.empresasPermitidas[0] : 'all') || 'all';
+      let companyBadgeHtml = '';
+      if (assigned === 'all' || !assigned) {
+        companyBadgeHtml = `<span class="badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.3); font-size: 0.75rem; padding: 3px 8px;">🌐 Todas</span>`;
+      } else {
+        companyBadgeHtml = `<span class="badge" style="background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); font-size: 0.75rem; padding: 3px 8px; font-weight: 600;">🏢 ${assigned}</span>`;
+      }
+
+      const encodedUser = encodeURIComponent(JSON.stringify(u));
+
+      return `
+        <tr>
+          <td><strong>${u.email}</strong></td>
+          <td><span class="role-badge viewer">👁️ Lector</span></td>
+          <td>${companyBadgeHtml}</td>
+          <td style="font-size: 0.8rem; color: var(--text-muted);">${u.creadoPor || 'Admin'}</td>
+          <td style="font-size: 0.8rem;">${u.fechaAlta ? new Date(u.fechaAlta).toLocaleDateString() : 'N/A'}</td>
+          <td style="text-align: center;">
+            <button class="btn btn-secondary btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="window.openEditUserModal('${encodedUser}')" title="Editar empresa autorizada">
+              ✏️ Editar
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
   } catch (err) {
     console.warn('No se pudo cargar la lista de usuarios:', err);
     tbody.innerHTML = `
       <tr>
-        <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+        <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
           Sin registros disponibles o modo local.
         </td>
       </tr>
