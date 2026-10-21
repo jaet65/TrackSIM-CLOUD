@@ -1389,20 +1389,42 @@ function updateCompanyEvolutionDetails(company) {
     }
 
     tbody.innerHTML = evolucionAnual.map((item, index) => {
-      let tendenciaHTML = '<span style="color: var(--text-muted); font-size: 0.8rem;">Año Base</span>';
+      const col = item.totalColisiones || 0;
+      const off = item.totalFueraVia || 0;
+      const fat = item.totalFatalidades || 0;
+      const incidents = col + off + fat;
+      const tasaAccidentes = item.totalConductores > 0 
+        ? Number((incidents / item.totalConductores).toFixed(2)) 
+        : 0;
+
+      let comparativaTexto = '';
       if (index > 0) {
         const prev = evolucionAnual[index - 1];
-        const diff = Number((item.promedioFinal - prev.promedioFinal).toFixed(2));
-        if (diff > 0) {
-          tendenciaHTML = `<span class="badge badge-success" style="font-size: 0.78rem;">▲ +${diff} pts</span>`;
-        } else if (diff < 0) {
-          tendenciaHTML = `<span class="badge badge-danger" style="font-size: 0.78rem;">▼ ${diff} pts</span>`;
+        const prevIncidents = (prev.totalColisiones || 0) + (prev.totalFueraVia || 0) + (prev.totalFatalidades || 0);
+        const prevTasa = prev.totalConductores > 0 ? (prevIncidents / prev.totalConductores) : 0;
+        const diffTasa = Number((tasaAccidentes - prevTasa).toFixed(2));
+
+        if (diffTasa < 0) {
+          // Menos accidentes por conductor es una mejora (verde)
+          comparativaTexto = `<div style="font-size: 0.72rem; color: #10b981; margin-top: 2px;">▼ ${Math.abs(diffTasa).toFixed(2)} vs año prev.</div>`;
+        } else if (diffTasa > 0) {
+          // Más accidentes por conductor es un retroceso (rojo)
+          comparativaTexto = `<div style="font-size: 0.72rem; color: #ef4444; margin-top: 2px;">▲ +${diffTasa.toFixed(2)} vs año prev.</div>`;
         } else {
-          tendenciaHTML = `<span class="badge badge-info" style="font-size: 0.78rem;">= Sin cambio</span>`;
+          comparativaTexto = `<div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">= Sin cambio</div>`;
         }
       }
 
-      const incidents = (item.totalColisiones || 0) + (item.totalFatalidades || 0);
+      // Badge principal de tasa por conductor
+      const badgeClass = tasaAccidentes === 0 ? 'badge-success' : tasaAccidentes <= 0.5 ? 'badge-info' : 'badge-danger';
+      const tasaHTML = `
+        <div>
+          <span class="badge ${badgeClass}" style="font-size: 0.8rem; font-weight: 700;">
+            ${tasaAccidentes.toFixed(2)} acc/op
+          </span>
+          ${comparativaTexto}
+        </div>
+      `;
 
       return `
         <tr>
@@ -1422,11 +1444,26 @@ function updateCompanyEvolutionDetails(company) {
             </span>
           </td>
           <td>
-            <span style="font-weight: 600; color: ${incidents > 0 ? 'var(--danger)' : 'var(--success)'};">
-              ${incidents} (${item.totalColisiones} col. / ${item.totalFatalidades} fat.)
-            </span>
+            <div style="display: inline-flex; flex-direction: column; font-size: 0.78rem; line-height: 1.35; min-width: 135px; padding: 0.15rem 0;">
+              <div style="display: flex; justify-content: space-between; color: #f87171;">
+                <span>Colisiones:</span>
+                <strong>${col}</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; color: #fbbf24;">
+                <span>+ Fuera de vía:</span>
+                <strong>${off}</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; color: #f43f5e; padding-bottom: 3px; border-bottom: 1px dashed rgba(255, 255, 255, 0.2);">
+                <span>+ Fatalidades:</span>
+                <strong>${fat}</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-top: 3px; font-weight: 700; color: ${incidents > 0 ? '#ef4444' : '#10b981'};">
+                <span>= Total:</span>
+                <span style="font-size: 0.85rem;">${incidents}</span>
+              </div>
+            </div>
           </td>
-          <td>${tendenciaHTML}</td>
+          <td>${tasaHTML}</td>
         </tr>
       `;
     }).join('');
