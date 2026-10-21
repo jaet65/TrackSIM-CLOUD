@@ -241,7 +241,7 @@ export function renderDistributionChart(canvasId, evaluations) {
   chartInstances[canvasId] = new window.Chart(ctx, {
     type: 'doughnut',
     data: {
-      labels: ['Sobresaliente (8-10)', 'Aprobado (6-7.9)', 'Requiere Refuerzo (5-5.9)', 'No Aprobado (<5)'],
+      labels: ['Sobresaliente (8-10)', 'Aprobado (6-7.9)', 'Reforzar (5-5.9)', 'No Aprobado (<5)'],
       datasets: [
         {
           data: [sobresalientes, aprobados, refuerzo, noAprobados],
@@ -1005,3 +1005,289 @@ export function renderCompanyExercisesAnnualChart(canvasId, evolucionAnual) {
     }
   });
 }
+
+/**
+ * Gráfico de Línea Temporal: Conteo de Accidentes e Incidentes del Operador
+ * Grafica los 3 parámetros registrados:
+ * 💥 Colisiones en Conducción
+ * 💀 Fatalidades en Simulaciones
+ * 🛑 Vehículo Fuera de la Vía
+ * Además del Total de Incidentes acumulados por sesión.
+ */
+export function renderDriverAccidentsChart(canvasId, evaluations) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx || !window.Chart) return;
+
+  destroyChart(canvasId);
+
+  if (!evaluations || evaluations.length === 0) return;
+
+  const sorted = evaluations.slice().sort((a, b) => {
+    const da = a.fechaCapacitacion || a.fechaReporte || '';
+    const db = b.fechaCapacitacion || b.fechaReporte || '';
+    return da.localeCompare(db);
+  });
+
+  const labels = sorted.map((e, idx) => {
+    return e.fechaCapacitacionFormato || e.fechaCapacitacion || `Sesión ${idx + 1}`;
+  });
+
+  const collisions = sorted.map(e => e.colisiones || 0);
+  const fatalities = sorted.map(e => e.fatalidades || 0);
+  const offRoad = sorted.map(e => e.vehiculoFueraVia || 0);
+  const totalIncidents = sorted.map(e => (e.colisiones || 0) + (e.fatalidades || 0) + (e.vehiculoFueraVia || 0));
+
+  const maxVal = Math.max(3, ...totalIncidents, ...collisions, ...fatalities, ...offRoad);
+
+  chartInstances[canvasId] = new window.Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Total Incidentes (Suma)',
+          data: totalIncidents,
+          borderColor: '#ef4444',
+          backgroundColor: 'rgba(239, 68, 68, 0.12)',
+          fill: true,
+          tension: 0.3,
+          borderWidth: 3,
+          pointBackgroundColor: '#ef4444',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2,
+          pointRadius: 6,
+          pointHoverRadius: 8
+        },
+        {
+          label: '💥 Colisiones en Conducción',
+          data: collisions,
+          borderColor: '#f59e0b',
+          backgroundColor: 'transparent',
+          tension: 0.3,
+          borderWidth: 2,
+          pointBackgroundColor: '#f59e0b',
+          pointRadius: 5
+        },
+        {
+          label: '💀 Fatalidades en Simulaciones',
+          data: fatalities,
+          borderColor: '#dc2626',
+          backgroundColor: 'transparent',
+          borderDash: [4, 4],
+          tension: 0.3,
+          borderWidth: 2,
+          pointBackgroundColor: '#dc2626',
+          pointRadius: 5
+        },
+        {
+          label: '🛑 Vehículo Fuera de la Vía',
+          data: offRoad,
+          borderColor: '#e11d48',
+          backgroundColor: 'transparent',
+          borderDash: [2, 2],
+          tension: 0.3,
+          borderWidth: 2,
+          pointBackgroundColor: '#e11d48',
+          pointRadius: 5
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          labels: {
+            color: '#94a3b8',
+            font: { family: "'Plus Jakarta Sans', sans-serif", size: 12 },
+            boxWidth: 16
+          }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          titleColor: '#f8fafc',
+          bodyColor: '#cbd5e1',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          borderWidth: 1,
+          padding: 12,
+          boxPadding: 6,
+          callbacks: {
+            afterBody: function (context) {
+              const idx = context[0].dataIndex;
+              const ev = sorted[idx];
+              const score = ev.evaluacionFinalPuntos || ev.calificacionExacta || 0;
+              return [
+                '',
+                `💥 Colisiones: ${ev.colisiones || 0}`,
+                `💀 Fatalidades: ${ev.fatalidades || 0}`,
+                `🛑 Fuera de Vía: ${ev.vehiculoFueraVia || 0}`,
+                `⭐ Calificación Final: ${score.toFixed(2)} / 10`,
+                `📋 Estado: ${ev.estado || 'N/A'}`
+              ].join('\n');
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          min: 0,
+          suggestedMax: maxVal + 1,
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: {
+            stepSize: 1,
+            precision: 0,
+            color: '#64748b',
+            font: { family: "'Plus Jakarta Sans', sans-serif" }
+          }
+        },
+        x: {
+          grid: { color: 'rgba(255, 255, 255, 0.03)' },
+          ticks: { color: '#94a3b8', font: { family: "'Plus Jakarta Sans', sans-serif" } }
+        }
+      }
+    }
+  });
+}
+
+/**
+ * Gráfico de Línea Temporal: Curva de Conteo Anual de Accidentes de la Empresa
+ * Grafica los 3 parámetros consolidados para toda la flota:
+ * 💥 Colisiones en Conducción
+ * 💀 Fatalidades en Simulaciones
+ * 🛑 Vehículo Fuera de la Vía
+ * Más el total de incidentes acumulados.
+ */
+export function renderCompanyAccidentsChart(canvasId, evolucionAnual) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx || !window.Chart) return;
+
+  destroyChart(canvasId);
+
+  if (!evolucionAnual || evolucionAnual.length === 0) return;
+
+  const labels = evolucionAnual.map(item => `Año ${item.year}`);
+  const collisions = evolucionAnual.map(item => item.totalColisiones || 0);
+  const fatalities = evolucionAnual.map(item => item.totalFatalidades || 0);
+  const offRoad = evolucionAnual.map(item => item.totalFueraVia || 0);
+  const totalIncidents = evolucionAnual.map(
+    item => (item.totalColisiones || 0) + (item.totalFatalidades || 0) + (item.totalFueraVia || 0)
+  );
+
+  const maxVal = Math.max(3, ...totalIncidents, ...collisions, ...fatalities, ...offRoad);
+
+  chartInstances[canvasId] = new window.Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Total Incidentes Flota',
+          data: totalIncidents,
+          borderColor: '#ef4444',
+          backgroundColor: 'rgba(239, 68, 68, 0.12)',
+          fill: true,
+          tension: 0.35,
+          borderWidth: 3,
+          pointBackgroundColor: '#ef4444',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2,
+          pointRadius: 6,
+          pointHoverRadius: 8
+        },
+        {
+          label: '💥 Colisiones en Conducción',
+          data: collisions,
+          borderColor: '#f59e0b',
+          backgroundColor: 'transparent',
+          tension: 0.35,
+          borderWidth: 2,
+          pointBackgroundColor: '#f59e0b',
+          pointRadius: 5
+        },
+        {
+          label: '💀 Fatalidades en Simulaciones',
+          data: fatalities,
+          borderColor: '#dc2626',
+          backgroundColor: 'transparent',
+          borderDash: [4, 4],
+          tension: 0.35,
+          borderWidth: 2,
+          pointBackgroundColor: '#dc2626',
+          pointRadius: 5
+        },
+        {
+          label: '🛑 Vehículo Fuera de la Vía',
+          data: offRoad,
+          borderColor: '#e11d48',
+          backgroundColor: 'transparent',
+          borderDash: [2, 2],
+          tension: 0.35,
+          borderWidth: 2,
+          pointBackgroundColor: '#e11d48',
+          pointRadius: 5
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          labels: {
+            color: '#94a3b8',
+            font: { family: "'Plus Jakarta Sans', sans-serif", size: 12 },
+            boxWidth: 16
+          }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          titleColor: '#f8fafc',
+          bodyColor: '#cbd5e1',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          borderWidth: 1,
+          padding: 12,
+          boxPadding: 6,
+          callbacks: {
+            afterBody: function (items) {
+              const idx = items[0].dataIndex;
+              const yData = evolucionAnual[idx];
+              if (!yData) return '';
+              const sumIncidents = (yData.totalColisiones || 0) + (yData.totalFatalidades || 0) + (yData.totalFueraVia || 0);
+              const perDriver = yData.totalConductores > 0
+                ? (sumIncidents / yData.totalConductores).toFixed(2)
+                : '0.00';
+              return [
+                '',
+                `👥 Operadores Evaluados: ${yData.totalConductores}`,
+                `📑 Reportes / Evaluaciones: ${yData.totalEvaluaciones}`,
+                `💥 Colisiones Totales: ${yData.totalColisiones || 0}`,
+                `💀 Fatalidades Totales: ${yData.totalFatalidades || 0}`,
+                `🛑 Vehículo Fuera de Vía: ${yData.totalFueraVia || 0}`,
+                `📊 Tasa de Incidentes: ${perDriver} por operador`,
+                `🎯 Tasa de Aprobación: ${yData.tasaAprobacion}%`
+              ].join('\n');
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          min: 0,
+          suggestedMax: maxVal + 1,
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: {
+            stepSize: 1,
+            precision: 0,
+            color: '#64748b',
+            font: { family: "'Plus Jakarta Sans', sans-serif" }
+          }
+        },
+        x: {
+          grid: { color: 'rgba(255, 255, 255, 0.03)' },
+          ticks: { color: '#94a3b8', font: { family: "'Plus Jakarta Sans', sans-serif", weight: '600' } }
+        }
+      }
+    }
+  });
+}
+

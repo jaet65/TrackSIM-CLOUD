@@ -49,7 +49,9 @@ import {
   renderCompanyRankingChart,
   renderCompanySimulationsChart,
   renderCompanyEvolutionChart,
-  renderCompanyExercisesAnnualChart
+  renderCompanyExercisesAnnualChart,
+  renderDriverAccidentsChart,
+  renderCompanyAccidentsChart
 } from './charts.js';
 
 import {
@@ -86,6 +88,7 @@ const AppState = {
     estado: 'all'
   }
 };
+window.AppState = AppState;
 
 // ==========================================
 // INICIALIZACIÓN
@@ -1360,7 +1363,10 @@ function updateCompanyEvolutionDetails(company) {
   // 2. Gráfico de evolución temporal anual
   renderCompanyEvolutionChart('companyAnnualEvolutionChartCanvas', evolucionAnual);
 
-  // 3. Gráfico de comparativa de ejercicios a través de los años
+  // 3. Gráfico de curva de conteo de accidentes e incidentes anual
+  renderCompanyAccidentsChart('companyAnnualAccidentsChartCanvas', evolucionAnual);
+
+  // 4. Gráfico de comparativa de ejercicios a través de los años
   renderCompanyExercisesAnnualChart('companyAnnualExercisesChartCanvas', evolucionAnual);
 
   const exSubtitle = document.getElementById('companyAnnualExercisesSubtitle');
@@ -1368,7 +1374,7 @@ function updateCompanyEvolutionDetails(company) {
     exSubtitle.textContent = `Contraste anual del desempeño medio de la flota en ${company.ejerciciosPromedio?.length || 0} ejercicio(s) impartido(s).`;
   }
 
-  // 4. Tabla de desglose anual comparativa
+  // 5. Tabla de desglose anual comparativa
   const tbody = document.getElementById('companyAnnualTableBody');
   if (tbody) {
     if (evolucionAnual.length === 0) {
@@ -1453,6 +1459,9 @@ function updateDriverDetails(driver) {
 
   // Gráfico de línea temporal
   renderEvolutionChart('driverEvolutionChartCanvas', driver.evaluaciones);
+
+  // Gráfico de curva de conteo de accidentes e incidentes
+  renderDriverAccidentsChart('driverAccidentsChartCanvas', driver.evaluaciones);
 
   // Timeline cronológico
   const timelineContainer = document.getElementById('driverTimelineContainer');
@@ -1694,12 +1703,100 @@ function initCompanyView() {
 
   // Permite saltar directamente a la trazabilidad anual de la empresa
   window.inspectCompanyEvolucion = (companyName) => {
-    const company = AppState.companies.find(c => c.nombre === companyName);
+    let company = null;
+    if (companyName) {
+      company = AppState.companies.find(c => c.nombre === companyName);
+    }
+    if (!company) {
+      company = AppState.selectedCompany || (AppState.companies && AppState.companies[0]);
+    }
     if (!company) return;
 
     AppState.selectedCompany = company;
-    switchEvolutionSubtab('company');
     switchTab('evolucion');
+    switchEvolutionSubtab('company');
+
+    const companySelect = document.getElementById('companyEvolutionSelect');
+    if (companySelect) {
+      companySelect.value = company.nombre;
+    }
+    updateCompanyEvolutionDetails(company);
+  };
+
+  // Permite abrir directamente el reporte o preguntar cuál ver si el conductor tiene múltiples evaluaciones
+  window.openDriverReportsPrompt = (driverName) => {
+    if (!driverName) return;
+
+    // Buscar todas las evaluaciones del operador (coincidencia por nombre exacto o slug)
+    const driverEvals = (AppState.evaluations || [])
+      .filter(e => (e.conductor || '').trim().toLowerCase() === driverName.trim().toLowerCase())
+      .sort((a, b) => {
+        const da = a.fechaCapacitacion || a.fechaReporte || '';
+        const db = b.fechaCapacitacion || b.fechaReporte || '';
+        return db.localeCompare(da); // Más reciente primero
+      });
+
+    if (driverEvals.length === 0) {
+      showToast(`No se encontraron reportes registrados para ${driverName}.`, 'warning');
+      return;
+    }
+
+    // Si solo tiene 1 evaluación registrada, abrir directamente su reporte digital
+    if (driverEvals.length === 1) {
+      window.viewEvaluationDetail(driverEvals[0].id);
+      return;
+    }
+
+    // Si tiene más de 1 conducción/evaluación, abrir el modal de selección
+    const pickerModal = document.getElementById('driverReportPickerModal');
+    const titleEl = document.getElementById('pickerModalTitle');
+    const subtitleEl = document.getElementById('pickerModalSubtitle');
+    const listEl = document.getElementById('pickerReportsList');
+
+    if (titleEl) titleEl.textContent = `📄 Reportes de ${driverName}`;
+    if (subtitleEl) subtitleEl.textContent = `${driverEvals.length} evaluaciones registradas en el sistema`;
+
+    if (listEl) {
+      listEl.innerHTML = driverEvals.map((ev, idx) => {
+        const dateStr = ev.fechaCapacitacionFormato || ev.fechaCapacitacion || ev.fechaReporte || 'Fecha no especificada';
+        const score = (ev.evaluacionFinalPuntos || ev.calificacionExacta || 0).toFixed(2);
+        const incidents = (ev.colisiones || 0) + (ev.fatalidades || 0) + (ev.vehiculoFueraVia || 0);
+        const isLatest = idx === 0;
+
+        return `
+          <button type="button" class="btn btn-secondary picker-report-item"
+            onclick="window.viewEvaluationDetail('${ev.id}'); document.getElementById('driverReportPickerModal').classList.remove('active');"
+            style="width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 0.85rem 1rem; border-radius: 8px; text-align: left; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-subtle); transition: all 0.2s ease;">
+            <div>
+              <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                <strong style="color: #ffffff; font-size: 0.95rem;">📅 ${dateStr}</strong>
+                ${isLatest ? '<span class="badge badge-info" style="font-size: 0.7rem;">Más Reciente</span>' : ''}
+              </div>
+              <div style="font-size: 0.78rem; color: var(--text-muted);">
+                Curso: ${ev.cursoCodigo || 'N/A'} ${ev.cursoNombre ? `- ${ev.cursoNombre}` : ''}
+              </div>
+              <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.15rem;">
+                💥 ${ev.colisiones || 0} col. · 💀 ${ev.fatalidades || 0} fat. · 🛑 ${ev.vehiculoFueraVia || 0} fuera vía
+              </div>
+            </div>
+            <div style="text-align: right; min-width: 90px;">
+              <span class="score-pill" style="font-size: 0.95rem; font-weight: 700; color: #38bdf8;">
+                ${score} / 10
+              </span>
+              <div style="margin-top: 0.25rem;">
+                <span class="badge badge-${ev.badgeColor || 'info'}" style="font-size: 0.72rem;">
+                  ${ev.estado || 'Procesado'}
+                </span>
+              </div>
+            </div>
+          </button>
+        `;
+      }).join('');
+    }
+
+    if (pickerModal) {
+      pickerModal.classList.add('active');
+    }
   };
 }
 
@@ -1976,6 +2073,7 @@ function renderCompanyDriversTable(filterSearch = '') {
         const rank = {
           'Sobresaliente': 4,
           'Aprobado': 3,
+          'Reforzar': 2,
           'Requiere Refuerzo': 2,
           'No Aprobado': 1
         };
@@ -2042,25 +2140,49 @@ function renderCompanyDriversTable(filterSearch = '') {
           <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.15rem;">Último: ${c.ultimoScore.toFixed(2)}</div>
         </td>
         <td>
-          <div style="font-size: 0.76rem; display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap; max-width: 250px;">
+          <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.8rem; line-height: 1.35; max-width: 260px;">
             ${(() => {
         if (c.promediosEjercicios && Object.keys(c.promediosEjercicios).length > 0) {
           const exKeys = Object.keys(c.promediosEjercicios);
           return exKeys.map((k, i) => {
             const ex = c.promediosEjercicios[k];
-            const prefix = ex.numero != null ? `S${ex.numero}:` : `${ex.nombre.substring(0, 7)}:`;
-            const repText = ex.totalVeces > 1 ? ` (${ex.totalVeces}x prom)` : '';
-            const color = ['#38bdf8', '#f97316', '#a855f7', '#22c55e', '#eab308'][i % 5];
-            return `<span style="color: ${color};" title="${ex.nombre}${repText}">${prefix} <strong>${ex.promedio}</strong></span>`;
-          }).join(' · ');
+            const repText = ex.totalVeces > 1 ? ` (${ex.totalVeces} sesiones)` : '';
+            const bulletColor = ['#38bdf8', '#f97316', '#a855f7', '#22c55e', '#eab308'][i % 5];
+            return `<li style="display: flex; align-items: baseline; gap: 0.4rem; color: #f1f5f9;" title="Ejercicio: ${ex.nombre}${repText} (Calificación: ${ex.promedio}/10)">
+              <span style="color: ${bulletColor}; font-size: 0.65rem; line-height: 1;">●</span>
+              <span>${ex.nombre}</span>
+            </li>`;
+          }).join('');
         }
+
+        // Si existen ejercicios registrados en el objeto del conductor
+        if (Array.isArray(c.ejercicios) && c.ejercicios.length > 0) {
+          return c.ejercicios.map((ex, i) => {
+            const bulletColor = ['#38bdf8', '#f97316', '#a855f7', '#22c55e', '#eab308'][i % 5];
+            return `<li style="display: flex; align-items: baseline; gap: 0.4rem; color: #f1f5f9;" title="${ex.nombre} (Calificación: ${ex.calificacion ?? '-'})">
+              <span style="color: ${bulletColor}; font-size: 0.65rem; line-height: 1;">●</span>
+              <span>${ex.nombre}</span>
+            </li>`;
+          }).join('');
+        }
+
+        // Fallback para simulaciones genéricas históricas
         return `
-                <span style="color: #94a3b8;" title="S2: ${n2}">S2: <strong>${s2}</strong></span> ·
-                <span style="color: #f97316;" title="S3: ${n3}">S3: <strong>${s3}</strong></span> ·
-                <span style="color: #38bdf8;" title="S4: ${n4}">S4: <strong>${s4}</strong></span>
-              `;
+          <li style="display: flex; align-items: baseline; gap: 0.4rem; color: #f1f5f9;" title="Simulación: ${n2} (Calificación: ${s2})">
+            <span style="color: #38bdf8; font-size: 0.65rem; line-height: 1;">●</span>
+            <span>${n2}</span>
+          </li>
+          <li style="display: flex; align-items: baseline; gap: 0.4rem; color: #f1f5f9;" title="Simulación: ${n3} (Calificación: ${s3})">
+            <span style="color: #f97316; font-size: 0.65rem; line-height: 1;">●</span>
+            <span>${n3}</span>
+          </li>
+          <li style="display: flex; align-items: baseline; gap: 0.4rem; color: #f1f5f9;" title="Simulación: ${n4} (Calificación: ${s4})">
+            <span style="color: #a855f7; font-size: 0.65rem; line-height: 1;">●</span>
+            <span>${n4}</span>
+          </li>
+        `;
       })()}
-          </div>
+          </ul>
         </td>
         <td>
           <span style="color: ${(c.colisiones + c.fatalidades) > 0 ? 'var(--danger)' : 'var(--success)'}; font-weight: 600; font-size: 0.8rem;">
@@ -2072,6 +2194,9 @@ function renderCompanyDriversTable(filterSearch = '') {
         </td>
         <td class="actions-col">
           <div class="table-actions">
+            <button class="btn btn-secondary btn-sm" onclick="window.openDriverReportsPrompt('${c.nombre.replace(/'/g, "\\'")}')" title="Ver reporte individual de evaluación (${c.totalEvaluaciones} registrado${c.totalEvaluaciones === 1 ? '' : 's'})">
+              📄 Reporte${c.totalEvaluaciones > 1 ? `s (${c.totalEvaluaciones})` : ''}
+            </button>
             ${c.totalEvaluaciones > 1 ? `
               <button class="btn btn-secondary btn-sm" onclick="window.inspectDriverEvolucion('${c.nombre.replace(/'/g, "\\'")}')" title="Ver curva de evolución y trazabilidad del conductor">
                 📈 Trazabilidad
@@ -2248,7 +2373,7 @@ function initDirectoryFilters() {
     let est = 'No Aprobado';
     if (total >= 8.0) est = 'Sobresaliente';
     else if (total >= 6.0) est = 'Aprobado';
-    else if (total >= 5.0) est = 'Requiere Refuerzo';
+    else if (total >= 5.0) est = 'Reforzar';
     const estadoEl = document.getElementById('editEvalEstado');
     if (estadoEl) estadoEl.value = est;
   };
@@ -2269,7 +2394,7 @@ function initDirectoryFilters() {
         let est = 'No Aprobado';
         if (val >= 8.0) est = 'Sobresaliente';
         else if (val >= 6.0) est = 'Aprobado';
-        else if (val >= 5.0) est = 'Requiere Refuerzo';
+        else if (val >= 5.0) est = 'Reforzar';
         const estadoEl = document.getElementById('editEvalEstado');
         if (estadoEl) estadoEl.value = est;
       }
@@ -2358,6 +2483,7 @@ function getFilteredDirectoryEvaluations() {
         const rank = {
           'Sobresaliente': 4,
           'Aprobado': 3,
+          'Reforzar': 2,
           'Requiere Refuerzo': 2,
           'No Aprobado': 1
         };
@@ -2496,6 +2622,7 @@ function getBadgeColorForEstado(estado) {
   switch (estado) {
     case 'Sobresaliente': return 'success';
     case 'Aprobado': return 'info';
+    case 'Reforzar':
     case 'Requiere Refuerzo': return 'warning';
     case 'No Aprobado': return 'danger';
     default: return 'info';
@@ -2689,7 +2816,7 @@ function recalculateEditScores() {
   let est = 'No Aprobado';
   if (finalPts >= 8.0) est = 'Sobresaliente';
   else if (finalPts >= 6.0) est = 'Aprobado';
-  else if (finalPts >= 5.0) est = 'Requiere Refuerzo';
+  else if (finalPts >= 5.0) est = 'Reforzar';
   const estadoEl = document.getElementById('editEvalEstado');
   if (estadoEl) estadoEl.value = est;
 }
@@ -2746,7 +2873,7 @@ async function handleEditIndividualEvaluationSubmit(e) {
     } else if (finalPts >= 6.0) {
       estado = 'Aprobado';
     } else if (finalPts >= 5.0) {
-      estado = 'Requiere Refuerzo';
+      estado = 'Reforzar';
     } else {
       estado = 'No Aprobado';
     }
@@ -3280,7 +3407,7 @@ async function importEvaluationsFromCSV(file) {
       f.evaluacionFinalPuntos = finalPts;
       f.evaluacionFinalPct = Math.round((finalPts / 10.0) * 10000) / 100;
       f.calificacionExacta = Number(finalPts.toFixed(4));
-      f.estado = finalPts >= 8 ? 'Sobresaliente' : finalPts >= 6 ? 'Aprobado' : finalPts >= 5 ? 'Requiere Refuerzo' : 'No Aprobado';
+      f.estado = finalPts >= 8 ? 'Sobresaliente' : finalPts >= 6 ? 'Aprobado' : finalPts >= 5 ? 'Reforzar' : 'No Aprobado';
       f.badgeColor = getBadgeColorForEstado(f.estado);
       f.colisiones = parseInt(get('Colisiones'), 10) || 0;
       f.fatalidades = parseInt(get('Fatalidades'), 10) || 0;
@@ -3461,6 +3588,21 @@ function initModals() {
 
     modal.classList.add('active');
   };
+
+  // Configuración de modal de selección de reporte para operadores con múltiples evaluaciones
+  const pickerModal = document.getElementById('driverReportPickerModal');
+  const closePickerModalBtn = document.getElementById('closePickerModalBtn');
+  const cancelPickerModalBtn = document.getElementById('cancelPickerModalBtn');
+  const hidePicker = () => {
+    if (pickerModal) pickerModal.classList.remove('active');
+  };
+  if (closePickerModalBtn) closePickerModalBtn.addEventListener('click', hidePicker);
+  if (cancelPickerModalBtn) cancelPickerModalBtn.addEventListener('click', hidePicker);
+  if (pickerModal) {
+    pickerModal.addEventListener('click', (e) => {
+      if (e.target === pickerModal) hidePicker();
+    });
+  }
 
   // Inicializar modal de gestión de usuarios lectores
   initUserManagement();

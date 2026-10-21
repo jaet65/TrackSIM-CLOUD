@@ -1931,3 +1931,11 @@ body.role-viewer div.viewer-only {
   border: 1px solid rgba(56, 189, 248, 0.5);
   box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
 }
+
+/* Selector de reporte para múltiples evaluaciones */
+.picker-report-item:hover {
+  background: rgba(56, 189, 248, 0.08) !important;
+  border-color: rgba(56, 189, 248, 0.4) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}

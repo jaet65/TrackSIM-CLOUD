@@ -641,6 +641,22 @@
               </div>
             </div>
 
+            <!-- Gráfico de Conteo de Accidentes e Incidentes -->
+            <div class="glass-card" style="margin-bottom: 2rem;">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">🚨 Curva de Conteo de Incidentes y Accidentes</h3>
+                  <p style="font-size: 0.8rem; color: var(--text-muted);">
+                    Evolución temporal de 💥 Colisiones en Conducción, 💀 Fatalidades en Simulaciones y 🛑 Salidas de la
+                    Vía
+                  </p>
+                </div>
+              </div>
+              <div class="chart-container" style="height: 330px;">
+                <canvas id="driverAccidentsChartCanvas"></canvas>
+              </div>
+            </div>
+
             <!-- Línea de Tiempo de Sesiones -->
             <div class="glass-card">
               <h3 class="chart-title">Historial Cronológico de Capacitaciones</h3>
@@ -733,6 +749,22 @@
               </div>
               <div class="chart-container" style="height: 340px;">
                 <canvas id="companyAnnualEvolutionChartCanvas"></canvas>
+              </div>
+            </div>
+
+            <!-- Gráfico de Conteo de Accidentes Anual de la Empresa -->
+            <div class="glass-card" style="margin-bottom: 2rem;">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">🚨 Curva de Conteo de Incidentes y Siniestralidad de la Flota</h3>
+                  <p style="font-size: 0.8rem; color: var(--text-muted);">
+                    Evolución anual comparada de 💥 Colisiones en Conducción, 💀 Fatalidades en Simulaciones y 🛑
+                    Salidas de la Vía
+                  </p>
+                </div>
+              </div>
+              <div class="chart-container" style="height: 330px;">
+                <canvas id="companyAnnualAccidentsChartCanvas"></canvas>
               </div>
             </div>
 
@@ -851,7 +883,7 @@
                 Oficial de Autotransporte TrackSIM</p>
               <div style="margin-top: 0.6rem;">
                 <button class="btn btn-secondary btn-sm"
-                  onclick="if(window.AppState && AppState.selectedCompany) window.inspectCompanyEvolucion(AppState.selectedCompany.nombre);"
+                  onclick="window.inspectCompanyEvolucion && window.inspectCompanyEvolucion();"
                   title="Ver trazabilidad y evolución histórica anual de esta flota">
                   📈 Ver Trazabilidad Anual de la Empresa
                 </button>
@@ -934,11 +966,11 @@
                     </th>
                     <th class="sortable-th sorted-desc" data-sort-key="promedioScore"
                       title="Haz clic para ordenar por Calificación Promedio">
-                      Calificación Promedio <span class="sort-indicator">▼</span>
+                      Calificación <br>Promedio <span class="sort-indicator">▼</span>
                     </th>
                     <th class="sortable-th" data-sort-key="simulaciones"
-                      title="Haz clic para ordenar por Rendimiento en Simulaciones">
-                      Desglose Simulaciones <span class="sort-indicator">↕</span>
+                      title="Haz clic para ordenar por Ejercicios Evaluados">
+                      Ejercicios <span class="sort-indicator">↕</span>
                     </th>
                     <th class="sortable-th" data-sort-key="incidentes"
                       title="Haz clic para ordenar por Total de Incidentes">
@@ -947,7 +979,7 @@
                     <th class="sortable-th" data-sort-key="estado" title="Haz clic para ordenar por Estado">
                       Estado <span class="sort-indicator">↕</span>
                     </th>
-                    <th class="actions-col">Acciones</th>
+                    <th class="actions-col" style="text-align: left;">Acciones</th>
                   </tr>
                 </thead>
                 <tbody id="companyDriversTableBody">
@@ -1014,7 +1046,7 @@
             <option value="all">Todos los Estatus</option>
             <option value="Sobresaliente">Sobresaliente</option>
             <option value="Aprobado">Aprobado</option>
-            <option value="Requiere Refuerzo">Requiere Refuerzo</option>
+            <option value="Reforzar">Reforzar</option>
             <option value="No Aprobado">No Aprobado</option>
           </select>
         </div>
@@ -1373,6 +1405,38 @@
             </button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- ========================================================
+       MODAL: SELECCIÓN DE REPORTE POR OPERADOR
+       ======================================================== -->
+    <div id="driverReportPickerModal" class="modal-overlay">
+      <div class="modal-dialog" style="max-width: 520px;">
+        <div class="modal-header">
+          <div>
+            <h3 id="pickerModalTitle" style="font-size: 1.25rem;">📄 Seleccionar Reporte de Evaluación</h3>
+            <span id="pickerModalSubtitle" style="font-size: 0.78rem; color: var(--text-muted);">
+              Este operador cuenta con múltiples capacitaciones registradas
+            </span>
+          </div>
+          <button id="closePickerModalBtn" class="close-btn">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem;">
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+            Elige qué fecha o reporte de evaluación deseas consultar:
+          </p>
+          <div id="pickerReportsList" class="picker-reports-list"
+            style="display: flex; flex-direction: column; gap: 0.65rem; max-height: 380px; overflow-y: auto;">
+            <!-- Opciones renderizadas dinámicamente -->
+          </div>
+        </div>
+        <div
+          style="display: flex; justify-content: flex-end; padding: 1rem 1.25rem; border-top: 1px solid var(--border-subtle); background: rgba(0,0,0,0.15);">
+          <button type="button" id="cancelPickerModalBtn" class="btn btn-secondary">
+            Cerrar
+          </button>
+        </div>
       </div>
     </div>
 

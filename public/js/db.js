@@ -274,7 +274,7 @@ export function processDriverSummaries(evaluations) {
         totalFueraVia: 0,
         cambioPorcentual: 0,
         tendencia: 'neutral', // 'mejora', 'retroceso', 'neutral'
-        estadoGeneral: 'Requiere Refuerzo'
+        estadoGeneral: 'Reforzar'
       });
     }
 
@@ -339,7 +339,7 @@ export function processDriverSummaries(evaluations) {
       summary.estadoGeneral = 'Aprobado';
       summary.badgeColor = 'info';
     } else if (summary.ultimaCalificacion >= 5.0) {
-      summary.estadoGeneral = 'Requiere Refuerzo';
+      summary.estadoGeneral = 'Reforzar';
       summary.badgeColor = 'warning';
     } else {
       summary.estadoGeneral = 'No Aprobado';

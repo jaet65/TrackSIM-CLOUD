@@ -568,7 +568,7 @@ export function parseEvaluationData(pagesText, filename = '', rawPage1Items = nu
     vehiculoFueraVia: 0,
     colisiones: 0,
     firmaDigital: '',
-    estado: 'Requiere Refuerzo',
+    estado: 'Reforzar',
     badgeColor: 'warning',
     observaciones: '',
     createdAt: new Date().toISOString()
@@ -768,7 +768,7 @@ export function parseEvaluationData(pagesText, filename = '', rawPage1Items = nu
     data.badgeColor = 'info';
     data.observaciones = 'Aprobado satisfactoriamente. Mantener buenas prácticas y monitorear hábitos de frenado.';
   } else if (score >= 5.0) {
-    data.estado = 'Requiere Refuerzo';
+    data.estado = 'Reforzar';
     data.badgeColor = 'warning';
     data.observaciones = 'Requiere sesión de refuerzo en simulador para corregir errores críticos y disminuir colisiones.';
   } else {
