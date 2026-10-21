@@ -33,8 +33,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <!-- Estilos del Sistema de Diseño -->
-  <script type="module" crossorigin src="/assets/index-Bdg_b_s5.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-D1ZlysJy.css">
+  <script type="module" crossorigin src="/assets/index-B8ECBa_B.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-Cbo7U9eO.css">
 </head>
 
 <body>
@@ -152,17 +152,7 @@
                 stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
               </svg>
-              Trazabilidad y Evolución
-            </li>
-            <li class="nav-item" data-tab="comparativa">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
-                <circle cx="9" cy="7" r="4"></circle>
-                <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
-                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-              </svg>
-              Comparador
+              Trazabilidad
             </li>
             <li class="nav-item" data-tab="empresas">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -170,9 +160,9 @@
                 <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
                 <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
               </svg>
-              Empresas
+              Métricas
             </li>
-            <li class="nav-item" data-tab="directorio">
+            <li id="navTabDirectorio" class="nav-item admin-only" data-tab="directorio">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round">
                 <line x1="8" y1="6" x2="21" y2="6"></line>
@@ -283,7 +273,7 @@
         </div>
 
         <!-- Gráficos Principales -->
-        <div class="charts-grid">
+        <div class="charts-grid charts-grid-single">
           <!-- Gráfico de distribución de rendimiento -->
           <div class="glass-card">
             <div class="chart-header">
@@ -297,37 +287,13 @@
               <canvas id="distributionChartCanvas"></canvas>
             </div>
           </div>
-
-          <!-- Banner de Ingesta Rápida -->
-          <div class="glass-card" style="display: flex; flex-direction: column; justify-content: space-between;">
-            <div>
-              <div class="badge badge-info" style="margin-bottom: 0.8rem;">MOTOR DE ANÁLISIS</div>
-              <h3 style="font-size: 1.3rem; margin-bottom: 0.5rem;">Extracción Inteligente de PDF</h3>
-              <p style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.6;">
-                Lee automáticamente hojas de resultados de simulador TrackSIM, extrayendo Conductor, Empresa, Fechas,
-                Habilidades (3 pts), Práctica (7 pts) y Firma Digital en segundos.
-              </p>
-            </div>
-            <div style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 0.75rem;">
-              <button id="dashboardGoIngestaBtn" class="btn btn-primary admin-only"
-                onclick="window.switchTab('ingesta')">
-                ⚡ Ir a Ingesta de Reportes
-              </button>
-              <button class="btn btn-primary viewer-only" onclick="window.switchTab('directorio')">
-                📋 Explorar Directorio de Evaluaciones
-              </button>
-              <button class="btn btn-secondary" onclick="window.switchTab('evolucion')">
-                📈 Ver Curva de Evolución
-              </button>
-            </div>
-          </div>
         </div>
 
         <!-- Tabla de Evaluaciones Recientes -->
         <div class="glass-card">
           <div class="chart-header">
             <h3 class="chart-title">Últimas Evaluaciones Procesadas</h3>
-            <button class="btn btn-secondary btn-sm" onclick="window.switchTab('directorio')">Ver todas</button>
+            <button class="btn btn-secondary btn-sm admin-only" onclick="window.switchTab('directorio')">Ver todas</button>
           </div>
           <div class="table-responsive">
             <table class="custom-table">
@@ -369,7 +335,7 @@
           <div>
             <strong>Modo Solo Lectura:</strong> La carga y extracción de reportes PDF está reservada exclusivamente para
             Administradores de <em>Corporativo MAF</em> (cuentas <code>@corporativomaf.com</code>). Tu cuenta tiene
-            acceso completo para consultar Dashboard, Trazabilidad, Comparador y Directorio.
+            acceso completo para consultar Dashboard, Trazabilidad, Empresas y Directorio.
           </div>
         </div>
 
@@ -536,7 +502,8 @@
         <div class="section-header">
           <div>
             <h2>📈 Trazabilidad y Evolución Histórica</h2>
-            <p>Sigue el progreso de cada conductor a través del tiempo y analiza la evolución consolidada de cada empresa a través de los años.</p>
+            <p>Sigue el progreso de cada conductor a través del tiempo y analiza la evolución consolidada de cada
+              empresa a través de los años.</p>
           </div>
         </div>
 
@@ -665,11 +632,13 @@
           </div>
 
           <!-- Estado Vacío Evolución Empresa -->
-          <div id="companyEvolutionEmpty" class="glass-card" style="display: block; text-align: center; padding: 4rem 2rem;">
+          <div id="companyEvolutionEmpty" class="glass-card"
+            style="display: block; text-align: center; padding: 4rem 2rem;">
             <div style="font-size: 3.5rem; margin-bottom: 1rem;">🏢</div>
             <h3 style="font-size: 1.5rem; margin-bottom: 0.5rem; color: #ffffff;">Sin Flotas Registradas</h3>
             <p style="color: var(--text-secondary); max-width: 500px; margin: 0 auto 1.5rem; line-height: 1.6;">
-              No hay reportes ni empresas registradas para evaluar su progreso temporal a través de los años. Sube archivos en Ingesta para comenzar.
+              No hay reportes ni empresas registradas para evaluar su progreso temporal a través de los años. Sube
+              archivos en Ingesta para comenzar.
             </p>
             <button class="btn btn-primary admin-only" onclick="window.switchTab('ingesta')">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -685,10 +654,12 @@
           <div id="companyEvolutionContent" style="display: none;">
             <!-- Ficha Resumen Hero de la Empresa -->
             <div class="glass-card driver-hero-card">
-              <div id="companyEvolutionInitialsAvatar" class="driver-avatar-huge" style="background: linear-gradient(135deg, #0284c7, #38bdf8); color: #fff;">🏢</div>
+              <div id="companyEvolutionInitialsAvatar" class="driver-avatar-huge"
+                style="background: linear-gradient(135deg, #0284c7, #38bdf8); color: #fff;">🏢</div>
               <div>
                 <h3 id="companyEvolutionNameTitle" style="font-size: 1.8rem; margin-bottom: 0.2rem;">-</h3>
-                <p id="companyEvolutionSedesSubtitle" style="color: var(--primary); font-size: 0.95rem; font-weight: 600;">Flota Oficial</p>
+                <p id="companyEvolutionSedesSubtitle"
+                  style="color: var(--primary); font-size: 0.95rem; font-weight: 600;">Flota Oficial</p>
               </div>
               <div class="driver-stats-strip">
                 <div class="stat-metric-box">
@@ -715,7 +686,8 @@
               <div class="chart-header">
                 <div>
                   <h3 class="chart-title">Curva de Evolución Anual de la Flota</h3>
-                  <p style="font-size: 0.8rem; color: var(--text-muted);">Calificación Final Promedio, Simulador y Habilidades de manejo comparados por año</p>
+                  <p style="font-size: 0.8rem; color: var(--text-muted);">Calificación Final Promedio, Simulador y
+                    Habilidades de manejo comparados por año</p>
                 </div>
               </div>
               <div class="chart-container" style="height: 340px;">
@@ -728,7 +700,8 @@
               <div class="chart-header">
                 <div>
                   <h3 class="chart-title">Evolución de Rendimiento por Ejercicio / Simulación a través de los Años</h3>
-                  <p id="companyAnnualExercisesSubtitle" style="font-size: 0.8rem; color: var(--text-muted);">Contraste anual del desempeño medio de la flota en cada módulo y maniobra impartida</p>
+                  <p id="companyAnnualExercisesSubtitle" style="font-size: 0.8rem; color: var(--text-muted);">Contraste
+                    anual del desempeño medio de la flota en cada módulo y maniobra impartida</p>
                 </div>
               </div>
               <div class="chart-container" style="height: 340px;">
@@ -772,73 +745,7 @@
       </section>
 
       <!-- ========================================================
-         VISTA 4: COMPARADOR CABEZA A CABEZA
-         ======================================================== -->
-      <section id="view-comparativa" class="view-section">
-        <div class="section-header">
-          <div>
-            <h2>⚖️ Comparador de Conductores</h2>
-            <p>Compara el perfil de habilidades, rendimiento en simulador y seguridad vial entre 2 operadores.</p>
-          </div>
-        </div>
-
-        <!-- Estado Vacío Comparativa -->
-        <div id="compareEmptyState" class="glass-card" style="display: block; text-align: center; padding: 4rem 2rem;">
-          <div style="font-size: 3.5rem; margin-bottom: 1rem;">⚖️</div>
-          <h3 style="font-size: 1.5rem; margin-bottom: 0.5rem; color: #ffffff;">Comparativa No Disponible</h3>
-          <p style="color: var(--text-secondary); max-width: 520px; margin: 0 auto 1.5rem; line-height: 1.6;">
-            Se requieren al menos 2 conductores evaluados en el sistema para contrastar métricas, generar el radar
-            multidimensional y analizar diferencias de desempeño.
-          </p>
-          <button id="compareEmptyUploadBtn" class="btn btn-primary admin-only" onclick="window.switchTab('ingesta')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="17 8 12 3 7 8"></polyline>
-              <line x1="12" y1="3" x2="12" y2="15"></line>
-            </svg>
-            Subir PDFs de Evaluación
-          </button>
-          <p class="viewer-only" style="color: var(--text-muted); font-size: 0.88rem; margin-top: 1rem;">
-            ℹ️ Modo Lectura: Se requieren al menos 2 conductores registrados para habilitar el comparador.
-          </p>
-        </div>
-
-        <div id="compareContent" style="display: none;">
-          <div class="driver-selector-bar" style="justify-content: space-between;">
-            <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
-              <label style="font-weight: 600; color: #38bdf8;">Conductor A:</label>
-              <select id="compareDriverA" class="custom-select"></select>
-            </div>
-            <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
-              <label style="font-weight: 600; color: #f59e0b;">Conductor B:</label>
-              <select id="compareDriverB" class="custom-select"></select>
-            </div>
-          </div>
-
-          <!-- Tarjetas Comparativas Lado a Lado -->
-          <div class="comparison-grid">
-            <div id="compareCardA" class="glass-card"></div>
-            <div id="compareCardB" class="glass-card"></div>
-          </div>
-
-          <!-- Gráfico de Radar Comparativo -->
-          <div class="glass-card">
-            <div class="chart-header">
-              <div>
-                <h3 class="chart-title">Radar de Competencias Multidimensional</h3>
-                <p style="font-size: 0.8rem; color: var(--text-muted);">Habilidades de manejo, simulación de
-                  montaña/sierra y seguridad vial</p>
-              </div>
-            </div>
-            <div class="chart-container" style="height: 380px;">
-              <canvas id="comparisonRadarCanvas"></canvas>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ========================================================
-         VISTA 5: FLOTAS POR EMPRESA
+         VISTA: FLOTAS POR EMPRESA
          ======================================================== -->
       <section id="view-empresas" class="view-section">
         <div class="section-header">
@@ -873,7 +780,7 @@
         <div id="companyContent" style="display: none;">
           <!-- Barra de Selección de Empresa y Búsqueda -->
           <div class="driver-selector-bar" style="justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
-            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+            <div id="companySelectWrapper" style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
               <label for="companySelect"
                 style="font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 0.4rem;">
                 🏢 Seleccionar Empresa:
@@ -902,7 +809,9 @@
               <p id="companySedesSubtitle" style="color: var(--primary); font-size: 0.95rem; font-weight: 600;">Flota
                 Oficial de Autotransporte TrackSIM</p>
               <div style="margin-top: 0.6rem;">
-                <button class="btn btn-secondary btn-sm" onclick="if(window.AppState && AppState.selectedCompany) window.inspectCompanyEvolucion(AppState.selectedCompany.nombre);" title="Ver trazabilidad y evolución histórica anual de esta flota">
+                <button class="btn btn-secondary btn-sm"
+                  onclick="if(window.AppState && AppState.selectedCompany) window.inspectCompanyEvolucion(AppState.selectedCompany.nombre);"
+                  title="Ver trazabilidad y evolución histórica anual de esta flota">
                   📈 Ver Trazabilidad Anual de la Empresa
                 </button>
               </div>
@@ -1574,7 +1483,8 @@
         <div class="modal-header">
           <div>
             <h3 style="font-size: 1.25rem;">👥 Gestión de Usuarios Lectores</h3>
-            <span style="font-size: 0.75rem; color: var(--text-muted);">Creación de cuentas autorizadas y asignación de empresas permitidas</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Creación de cuentas autorizadas y asignación de
+              empresas permitidas</span>
           </div>
           <button id="closeUserMgmtBtn" class="close-btn">&times;</button>
         </div>
@@ -1604,11 +1514,16 @@
 
             <!-- Asignación de Empresa Permitida (Selección Única) -->
             <div style="margin-bottom: 1rem;">
-              <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.35rem; font-weight: 600;">🏢 Empresa Asignada (Acceso Exclusivo):</label>
-              <select id="newViewerCompanySelect" class="form-control" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-subtle); color: var(--text-primary);" required>
+              <label
+                style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.35rem; font-weight: 600;">🏢
+                Empresa Asignada (Acceso Exclusivo):</label>
+              <select id="newViewerCompanySelect" class="form-control"
+                style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-subtle); color: var(--text-primary);"
+                required>
                 <option value="">Seleccione una empresa...</option>
               </select>
-              <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 0.3rem;">El usuario lector únicamente podrá ver los resultados de la empresa seleccionada.</span>
+              <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 0.3rem;">El usuario
+                lector únicamente podrá ver los resultados de la empresa seleccionada.</span>
             </div>
 
             <button id="btnSubmitCreateUser" type="submit" class="btn btn-success btn-sm">
@@ -1653,7 +1568,8 @@
         <div class="modal-header">
           <div>
             <h3 style="font-size: 1.15rem;">✏️ Editar Empresa de Usuario</h3>
-            <span id="editUserSubtitle" style="font-size: 0.75rem; color: var(--text-muted);">Asignación de empresa exclusiva para el usuario</span>
+            <span id="editUserSubtitle" style="font-size: 0.75rem; color: var(--text-muted);">Asignación de empresa
+              exclusiva para el usuario</span>
           </div>
           <button id="closeEditUserBtn" class="close-btn">&times;</button>
         </div>
@@ -1663,16 +1579,24 @@
             <input type="hidden" id="editUserUid">
 
             <div style="margin-bottom: 1rem;">
-              <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">Correo electrónico:</label>
-              <input type="email" id="editUserEmail" class="form-control" readonly style="opacity: 0.8; background: rgba(255,255,255,0.05); cursor: not-allowed;">
+              <label
+                style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">Correo
+                electrónico:</label>
+              <input type="email" id="editUserEmail" class="form-control" readonly
+                style="opacity: 0.8; background: rgba(255,255,255,0.05); cursor: not-allowed;">
             </div>
 
             <div style="margin-bottom: 1.25rem;">
-              <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.35rem; font-weight: 600;">🏢 Empresa Autorizada:</label>
-              <select id="editUserCompanySelect" class="form-control" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-subtle); color: var(--text-primary);" required>
+              <label
+                style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.35rem; font-weight: 600;">🏢
+                Empresa Autorizada:</label>
+              <select id="editUserCompanySelect" class="form-control"
+                style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-subtle); color: var(--text-primary);"
+                required>
                 <option value="">Seleccione una empresa...</option>
               </select>
-              <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 0.35rem;">El usuario solo podrá visualizar los resultados y evaluaciones pertenecientes a esta empresa.</span>
+              <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 0.35rem;">El
+                usuario solo podrá visualizar los resultados y evaluaciones pertenecientes a esta empresa.</span>
             </div>
 
             <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">

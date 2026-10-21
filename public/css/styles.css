@@ -492,6 +492,10 @@ textarea {
   max-width: 100%;
 }
 
+.charts-grid.charts-grid-single {
+  grid-template-columns: 1fr;
+}
+
 .charts-grid>* {
   min-width: 0;
   overflow: hidden;

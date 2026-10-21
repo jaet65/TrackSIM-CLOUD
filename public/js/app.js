@@ -181,9 +181,10 @@ function initNavigation() {
 
 export function switchTab(tabId) {
   // Protección de acceso estricta para usuarios limitados
-  if (tabId === 'ingesta' && AppState.userRole !== 'admin') {
-    showToast('Acceso denegado: La sección de Ingesta de reportes está reservada para Administradores.', 'warning');
-    if (AppState.currentTab === 'ingesta' || !AppState.currentTab) {
+  if ((tabId === 'ingesta' || tabId === 'directorio') && AppState.userRole !== 'admin') {
+    const sectionName = tabId === 'ingesta' ? 'Ingesta de reportes' : 'Directorio de Evaluaciones';
+    showToast(`Acceso denegado: La sección de ${sectionName} está reservada para Administradores.`, 'warning');
+    if (AppState.currentTab === tabId || !AppState.currentTab) {
       tabId = 'dashboard';
     } else {
       return;
@@ -212,8 +213,6 @@ export function switchTab(tabId) {
     renderDashboard();
   } else if (tabId === 'evolucion') {
     renderEvolutionView();
-  } else if (tabId === 'comparativa') {
-    renderComparisonView();
   } else if (tabId === 'empresas') {
     renderCompanyView();
   } else if (tabId === 'directorio') {
@@ -387,6 +386,7 @@ function applyRolePermissions(user, role) {
   if (roleBadgeEl) roleBadgeEl.remove();
   const openMgmtBtn = document.getElementById('openUserMgmtBtn');
   const navTabIngesta = document.getElementById('navTabIngesta');
+  const navTabDirectorio = document.getElementById('navTabDirectorio');
   const dashboardNewEvalBtn = document.getElementById('dashboardNewEvalBtn');
   const dashboardGoIngestaBtn = document.getElementById('dashboardGoIngestaBtn');
   const driverEmptyUploadBtn = document.getElementById('driverEmptyUploadBtn');
@@ -411,6 +411,7 @@ function applyRolePermissions(user, role) {
   if (role === 'admin') {
     if (openMgmtBtn) openMgmtBtn.style.display = 'inline-flex';
     if (navTabIngesta) navTabIngesta.style.display = 'flex';
+    if (navTabDirectorio) navTabDirectorio.style.display = 'flex';
     if (dashboardNewEvalBtn) dashboardNewEvalBtn.style.display = 'inline-flex';
     if (dashboardGoIngestaBtn) dashboardGoIngestaBtn.style.display = 'inline-flex';
     if (driverEmptyUploadBtn) driverEmptyUploadBtn.style.display = 'inline-flex';
@@ -419,9 +420,10 @@ function applyRolePermissions(user, role) {
     if (uploadZoneWrapper) uploadZoneWrapper.style.display = 'block';
   } else {
     // Rol: Lector (Usuario Limitado / Solo Lectura)
-    // Ocultar completamente Ingesta de PDFs y cualquier función administrativa
+    // Ocultar completamente Ingesta de PDFs, Directorio y cualquier función administrativa
     if (openMgmtBtn) openMgmtBtn.style.display = 'none';
     if (navTabIngesta) navTabIngesta.style.display = 'none';
+    if (navTabDirectorio) navTabDirectorio.style.display = 'none';
     if (dashboardNewEvalBtn) dashboardNewEvalBtn.style.display = 'none';
     if (dashboardGoIngestaBtn) dashboardGoIngestaBtn.style.display = 'none';
     if (driverEmptyUploadBtn) driverEmptyUploadBtn.style.display = 'none';
@@ -429,8 +431,8 @@ function applyRolePermissions(user, role) {
     if (ingestaLockedAlert) ingestaLockedAlert.style.display = 'none';
     if (uploadZoneWrapper) uploadZoneWrapper.style.display = 'none';
 
-    // Si el usuario limitado se encuentra en la vista de ingesta, redirigir al Dashboard
-    if (AppState.currentTab === 'ingesta') {
+    // Si el usuario limitado se encuentra en la vista de ingesta o directorio, redirigir al Dashboard
+    if (AppState.currentTab === 'ingesta' || AppState.currentTab === 'directorio') {
       switchTab('dashboard');
     }
   }
@@ -476,7 +478,6 @@ async function loadAndRefreshData() {
 
     renderDashboard();
     renderEvolutionView();
-    renderComparisonView();
     renderCompanyView();
     renderDirectoryTable();
   } catch (e) {
@@ -1101,7 +1102,8 @@ function renderCompanyEvolutionView() {
 
   if (emptyEl) emptyEl.style.display = 'none';
   if (contentEl) contentEl.style.display = 'block';
-  if (selectorBar) selectorBar.style.display = 'flex';
+  // Ocultar la barra de selección si sólo hay una empresa disponible para el usuario
+  if (selectorBar) selectorBar.style.display = companies.length > 1 ? 'flex' : 'none';
 
   // Si no hay empresa seleccionada o la actual ya no existe, seleccionar la primera
   if (!AppState.selectedCompany || !companies.some(c => c.nombre === AppState.selectedCompany.nombre)) {
@@ -1663,6 +1665,12 @@ function renderCompanyView() {
   // Si no hay empresa seleccionada o la actual ya no existe en el listado, seleccionar la primera
   if (!AppState.selectedCompany || !companies.some(c => c.nombre === AppState.selectedCompany.nombre)) {
     AppState.selectedCompany = companies[0];
+  }
+
+  // Controlar visibilidad del selector de empresa si sólo hay una empresa disponible
+  const selectWrapper = document.getElementById('companySelectWrapper');
+  if (selectWrapper) {
+    selectWrapper.style.display = companies.length > 1 ? 'flex' : 'none';
   }
 
   // Actualizar opciones del select
@@ -2707,6 +2715,13 @@ function populateDirectoryCompanyFilter() {
   if (currentVal !== 'all' && !companies.includes(currentVal)) {
     currentVal = 'all';
     AppState.filters.empresa = 'all';
+  }
+
+  // Si sólo hay una empresa disponible (o ninguna), ocultar el filtro de empresa ya que es redundante
+  if (companies.length <= 1) {
+    companySelect.style.display = 'none';
+  } else {
+    companySelect.style.display = '';
   }
 
   companySelect.innerHTML = `
