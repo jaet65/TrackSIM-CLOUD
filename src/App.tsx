@@ -12,8 +12,17 @@ import { UserManagementTab } from './components/UserManagementTab';
 import { TabType } from './types';
 
 export const App: React.FC = () => {
-  const { user, loading } = useAuth();
+  const { user, userRole, loading } = useAuth();
   const [currentTab, setCurrentTab] = useState<TabType>('dashboard');
+
+  // Si un usuario no admin intenta entrar a una pestaña restringida, redirigir a dashboard
+  const handleTabChange = (tab: TabType) => {
+    if (userRole !== 'admin' && (tab === 'directorio' || tab === 'ingesta' || tab === 'usuarios')) {
+      setCurrentTab('dashboard');
+      return;
+    }
+    setCurrentTab(tab);
+  };
 
   if (loading) {
     return (
@@ -49,14 +58,14 @@ export const App: React.FC = () => {
   return (
     <DataProvider>
       <div id="appContainer">
-        <Navbar currentTab={currentTab} onTabChange={setCurrentTab} />
+        <Navbar currentTab={currentTab} onTabChange={handleTabChange} />
         <main className="main-content">
-          {currentTab === 'dashboard' && <DashboardTab />}
+          {currentTab === 'dashboard' && <DashboardTab onNavigate={handleTabChange} />}
           {currentTab === 'evolucion' && <EvolutionTab />}
           {currentTab === 'empresas' && <CompanyTab />}
-          {currentTab === 'directorio' && <DirectoryTab />}
-          {currentTab === 'ingesta' && <IngestaTab />}
-          {currentTab === 'usuarios' && <UserManagementTab />}
+          {currentTab === 'directorio' && (userRole === 'admin' ? <DirectoryTab /> : <DashboardTab onNavigate={handleTabChange} />)}
+          {currentTab === 'ingesta' && (userRole === 'admin' ? <IngestaTab /> : <DashboardTab onNavigate={handleTabChange} />)}
+          {currentTab === 'usuarios' && (userRole === 'admin' ? <UserManagementTab /> : <DashboardTab onNavigate={handleTabChange} />)}
         </main>
       </div>
     </DataProvider>

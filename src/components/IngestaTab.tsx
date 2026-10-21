@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { Evaluation } from '../types';
 
@@ -10,7 +11,20 @@ declare global {
 }
 
 export const IngestaTab: React.FC = () => {
+  const { userRole } = useAuth();
   const { reloadEvaluations } = useData();
+
+  if (userRole !== 'admin') {
+    return (
+      <div className="glass-card" style={{ padding: '3rem', textAlign: 'center', margin: '2rem auto', maxWidth: '600px' }}>
+        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔒</div>
+        <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#ef4444' }}>Acceso Restringido</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
+          La ingesta y carga de reportes PDF es una función exclusiva para administradores.
+        </p>
+      </div>
+    );
+  }
 
   const [isDragging, setIsDragging] = useState(false);
   const [stagingFiles, setStagingFiles] = useState<any[]>([]);

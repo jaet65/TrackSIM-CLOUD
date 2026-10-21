@@ -19,6 +19,7 @@ export interface Evaluation {
   operador?: string;
   empresa: string;
   sede?: string;
+  ciudad?: string;
   fecha?: string;
   fechaReporte?: string;
   fechaCapacitacion?: string;

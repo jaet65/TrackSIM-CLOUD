@@ -1,8 +1,10 @@
 import React, { useState, useMemo } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { Evaluation } from '../types';
 
 export const DirectoryTab: React.FC = () => {
+  const { userRole } = useAuth();
   const {
     filteredEvaluations,
     companies,
@@ -10,6 +12,18 @@ export const DirectoryTab: React.FC = () => {
     updateEvaluation,
     loading
   } = useData();
+
+  if (userRole !== 'admin') {
+    return (
+      <div className="glass-card" style={{ padding: '3rem', textAlign: 'center', margin: '2rem auto', maxWidth: '600px' }}>
+        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔒</div>
+        <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#ef4444' }}>Acceso Restringido</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
+          El Directorio de Evaluaciones y edición de registros es exclusivo para personal administrativo. No tienes permisos para visualizar esta sección.
+        </p>
+      </div>
+    );
+  }
 
   const [search, setSearch] = useState('');
   const [selectedEmpresa, setSelectedEmpresa] = useState('all');
@@ -120,22 +134,24 @@ export const DirectoryTab: React.FC = () => {
               style={{ width: '100%', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#fff' }}
             />
           </div>
-          <div>
-            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Empresa</label>
-            <select
-              value={selectedEmpresa}
-              onChange={(e) => {
-                setSelectedEmpresa(e.target.value);
-                setCurrentPage(1);
-              }}
-              style={{ width: '100%', padding: '0.5rem 0.75rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#fff' }}
-            >
-              <option value="all">Todas las Empresas</option>
-              {companies.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
+          {companies.length > 1 && (
+            <div>
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Empresa</label>
+              <select
+                value={selectedEmpresa}
+                onChange={(e) => {
+                  setSelectedEmpresa(e.target.value);
+                  setCurrentPage(1);
+                }}
+                style={{ width: '100%', padding: '0.5rem 0.75rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#fff' }}
+              >
+                <option value="all">Todas las Empresas</option>
+                {companies.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Sede</label>
             <select

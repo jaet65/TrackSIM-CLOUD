@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { TabType } from '../types';
 
 interface NavbarProps {
@@ -8,7 +9,71 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
-  const { user, userRole, logout } = useAuth();
+  const { user, userRole, allowedCompanies, profile, logout } = useAuth();
+  const { selectedCompany } = useData();
+
+  // Calcular el texto y estilo del badge de empresa/rol
+  const renderStatusBadge = () => {
+    if (userRole === 'admin') {
+      const activeCompanyName = selectedCompany === 'all' ? 'Todas las Empresas' : selectedCompany;
+      return (
+        <div
+          className="badge"
+          title={`Sesión de Administrador Global • Viendo: ${activeCompanyName}`}
+          style={{
+            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(217, 119, 6, 0.2))',
+            border: '1px solid rgba(245, 158, 11, 0.45)',
+            color: '#fbbf24',
+            padding: '0.4rem 0.85rem',
+            borderRadius: '9999px',
+            fontSize: '0.8rem',
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.45rem',
+            boxShadow: '0 0 12px rgba(245, 158, 11, 0.15)'
+          }}
+        >
+          <span>👑</span>
+          <span>ADMINISTRADOR</span>
+          {selectedCompany && selectedCompany !== 'all' && (
+            <span style={{ color: '#fff', fontWeight: 500, opacity: 0.9 }}>
+              • {selectedCompany}
+            </span>
+          )}
+        </div>
+      );
+    }
+
+    // Usuario Lector (limitado a una empresa o sus empresas permitidas)
+    const limitedCompany =
+      profile?.empresaPermitida ||
+      (allowedCompanies && allowedCompanies.length > 0 && allowedCompanies[0] !== 'all' ? allowedCompanies[0] : null) ||
+      (selectedCompany !== 'all' ? selectedCompany : 'Flota Asignada');
+
+    return (
+      <div
+        className="badge"
+        title={`Flota asignada: ${limitedCompany}`}
+        style={{
+          background: 'rgba(56, 189, 248, 0.12)',
+          border: '1px solid rgba(56, 189, 248, 0.35)',
+          color: '#38bdf8',
+          padding: '0.4rem 0.85rem',
+          borderRadius: '9999px',
+          fontSize: '0.8rem',
+          fontWeight: 700,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.45rem',
+          boxShadow: '0 0 12px rgba(56, 189, 248, 0.15)'
+        }}
+      >
+        <span>🏢</span>
+        <span>{limitedCompany}</span>
+      </div>
+    );
+  };
 
   return (
     <header className="navbar">
@@ -74,16 +139,14 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
           </button>
         )}
 
-        <div className="cloud-status">
-          <span className="status-dot"></span>
-          <span>Online</span>
-        </div>
+        {/* Badge contextual de Empresa o Administrador */}
+        {renderStatusBadge()}
 
         <div className="user-profile">
           <div className="user-info">
             <div className="user-name">{user?.displayName || user?.email?.split('@')[0]}</div>
-            <div className="user-role">
-              <span className={`role-badge ${userRole}`}>{userRole === 'admin' ? 'Administrador' : 'Lector'}</span>
+            <div className="user-role" style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+              {user?.email}
             </div>
           </div>
         </div>

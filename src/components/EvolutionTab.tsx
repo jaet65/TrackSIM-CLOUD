@@ -326,23 +326,25 @@ export const EvolutionTab: React.FC = () => {
       ) : (
         /* Vista Flota Empresa */
         <div className="card" style={{ padding: '1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
-            <span style={{ fontSize: '1.2rem' }}>🏢</span>
-            <div>
-              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Seleccionar Flota / Empresa</label>
-              <select
-                value={currentCompany?.nombre || ''}
-                onChange={(e) => setSelectedCompanyName(e.target.value)}
-                style={{ minWidth: '260px', padding: '0.5rem 0.75rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#fff' }}
-              >
-                {companiesSummaries.map((c) => (
-                  <option key={c.nombre} value={c.nombre}>
-                    {c.nombre} ({c.totalConductores} operadores)
-                  </option>
-                ))}
-              </select>
+          {companiesSummaries.length > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+              <span style={{ fontSize: '1.2rem' }}>🏢</span>
+              <div>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Seleccionar Flota / Empresa</label>
+                <select
+                  value={currentCompany?.nombre || ''}
+                  onChange={(e) => setSelectedCompanyName(e.target.value)}
+                  style={{ minWidth: '260px', padding: '0.5rem 0.75rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#fff' }}
+                >
+                  {companiesSummaries.map((c) => (
+                    <option key={c.nombre} value={c.nombre}>
+                      {c.nombre} ({c.totalConductores} operadores)
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-          </div>
+          )}
 
           {currentCompany && (
             <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>

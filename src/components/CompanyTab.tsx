@@ -185,25 +185,27 @@ export const CompanyTab: React.FC = () => {
               : 'Flota Oficial de Autotransporte TrackSIM'}
           </p>
         </div>
-        <div>
-          <select
-            className="filter-select"
-            value={selectedCompany}
-            onChange={(e) => {
-              setSelectedCompany(e.target.value);
-              setRankingPage(1);
-              setDriversPage(1);
-            }}
-            style={{ minWidth: '240px', padding: '0.55rem 1rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', color: '#fff', borderRadius: '8px' }}
-          >
-            <option value="all">🏢 Todas las Empresas (Consolidado)</option>
-            {companies.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </div>
+        {companies.length > 1 && (
+          <div>
+            <select
+              className="filter-select"
+              value={selectedCompany}
+              onChange={(e) => {
+                setSelectedCompany(e.target.value);
+                setRankingPage(1);
+                setDriversPage(1);
+              }}
+              style={{ minWidth: '240px', padding: '0.55rem 1rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', color: '#fff', borderRadius: '8px' }}
+            >
+              <option value="all">🏢 Todas las Empresas (Consolidado)</option>
+              {companies.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* KPI Cards */}

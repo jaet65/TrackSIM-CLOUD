@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { UserProfile } from '../types';
 import { db, collection, getDocs, doc, setDoc, deleteDoc } from '../services/firebase';
@@ -11,7 +12,20 @@ interface DomainRecord {
 }
 
 export const UserManagementTab: React.FC = () => {
+  const { userRole } = useAuth();
   const { companies } = useData();
+
+  if (userRole !== 'admin') {
+    return (
+      <div className="glass-card" style={{ padding: '3rem', textAlign: 'center', margin: '2rem auto', maxWidth: '600px' }}>
+        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔒</div>
+        <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#ef4444' }}>Acceso Restringido</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
+          La gestión de accesos y usuarios de la plataforma es una función exclusiva para administradores.
+        </p>
+      </div>
+    );
+  }
 
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [domains, setDomains] = useState<DomainRecord[]>([]);
