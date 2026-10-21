@@ -58,7 +58,7 @@ export async function getEvaluations() {
       try {
         const parsed = JSON.parse(localData);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (e) {
+      } catch {
         console.error('Error parseando datos locales:', e);
       }
     }
@@ -72,7 +72,7 @@ export async function getEvaluations() {
 export async function deleteEvaluation(evalId) {
   try {
     await deleteDoc(doc(db, COLLECTION_NAME, evalId));
-  } catch (e) {
+  } catch {
     console.warn('Error eliminando evaluación de Firestore:', e);
   }
 
@@ -83,7 +83,7 @@ export async function deleteEvaluation(evalId) {
       const filtered = list.filter(e => e.id !== evalId);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(filtered));
     }
-  } catch (e) {
+  } catch {
     console.error('Error actualizando almacenamiento local tras borrado:', e);
   }
 }
@@ -96,7 +96,7 @@ export async function clearAllEvaluations() {
     const snapshot = await getDocs(collection(db, COLLECTION_NAME));
     const deletePromises = snapshot.docs.map(d => deleteDoc(d.ref));
     await Promise.all(deletePromises);
-  } catch (e) {
+  } catch {
     console.warn('Error vaciando colección en Firestore:', e);
   }
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([]));
@@ -119,7 +119,7 @@ export async function updateEvaluationsBatchEmpresaSede(evalIds, newEmpresa, new
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     list = raw ? JSON.parse(raw) : [];
-  } catch (e) {
+  } catch {
     list = [];
   }
 
@@ -172,7 +172,7 @@ export async function updateSingleEvaluation(evalId, updatedData) {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     list = raw ? JSON.parse(raw) : [];
-  } catch (e) {
+  } catch {
     list = [];
   }
 
@@ -210,7 +210,7 @@ export async function saveEvaluation(evaluationData) {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     list = raw ? JSON.parse(raw) : [];
-  } catch (e) {
+  } catch {
     list = [];
   }
 
@@ -246,19 +246,6 @@ export async function saveBatchEvaluations(evaluationsArray) {
   return results;
 }
 
-/**
- * Intenta sincronizar array completo a Firestore
- */
-async function syncToFirestore(evals) {
-  for (const item of evals) {
-    try {
-      const docRef = doc(db, COLLECTION_NAME, item.id);
-      await setDoc(docRef, item, { merge: true });
-    } catch (e) {
-      // Ignorar errores silenciosamente en background
-    }
-  }
-}
 
 /**
  * Agrupa las evaluaciones por Conductor y calcula su evolución y estadísticas
@@ -295,7 +282,7 @@ export function processDriverSummaries(evaluations) {
   }
 
   const summaries = [];
-  for (const [name, summary] of map.entries()) {
+  for (const [, summary] of map.entries()) {
     // Ordenar cronológicamente (más antiguo al más reciente)
     summary.evaluaciones.sort((a, b) => {
       const dateA = a.fechaCapacitacion || a.fechaReporte || '';
@@ -580,6 +567,159 @@ export function processCompanySummaries(evaluations) {
       return a.nombre.localeCompare(b.nombre);
     });
 
+    // ==========================================
+    // TRAZABILIDAD Y EVOLUCIÓN ANUAL DE LA EMPRESA
+    // ==========================================
+    const annualMap = new Map(); // año (string) -> acumulador
+
+    data.evaluaciones.forEach(ev => {
+      // Extraer año de fechaCapacitacion (YYYY-MM-DD), fechaCapacitacionFormato (DD/MM/YYYY) o fechaReporte
+      let year = null;
+      if (ev.fechaCapacitacion && /^\d{4}/.test(ev.fechaCapacitacion)) {
+        year = ev.fechaCapacitacion.substring(0, 4);
+      } else if (ev.fechaCapacitacionFormato && /\d{4}/.test(ev.fechaCapacitacionFormato)) {
+        const m = ev.fechaCapacitacionFormato.match(/(\d{4})/);
+        if (m) year = m[1];
+      } else if (ev.fechaReporte && /\d{4}/.test(ev.fechaReporte)) {
+        const m = ev.fechaReporte.match(/(\d{4})/);
+        if (m) year = m[1];
+      }
+
+      if (!year) year = 'S/F';
+
+      if (!annualMap.has(year)) {
+        annualMap.set(year, {
+          year: year,
+          evaluaciones: [],
+          conductoresSet: new Set(),
+          sumFinal: 0,
+          sumHab: 0,
+          sumSim: 0,
+          approvedCount: 0,
+          totalCollisions: 0,
+          totalFatalities: 0,
+          totalOffRoad: 0,
+          driverExercisesMap: new Map() // condName -> Map(normKey -> { scores: [], nombre, numero })
+        });
+      }
+
+      const aData = annualMap.get(year);
+      aData.evaluaciones.push(ev);
+
+      const cName = (ev.conductor || 'Sin Asignar').trim();
+      aData.conductoresSet.add(cName);
+
+      const fScore = ev.evaluacionFinalPuntos || ev.calificacionExacta || 0;
+      aData.sumFinal += fScore;
+      aData.sumHab += (ev.habilidadesManejoPuntos || 0);
+      aData.sumSim += (ev.practicaSimuladorPuntos || 0);
+      aData.totalCollisions += (ev.colisiones || 0);
+      aData.totalFatalities += (ev.fatalidades || 0);
+      aData.totalOffRoad += (ev.vehiculoFueraVia || 0);
+      if (fScore >= 6.0) aData.approvedCount++;
+
+      // Registrar ejercicios para el conductor en este año
+      if (!aData.driverExercisesMap.has(cName)) {
+        aData.driverExercisesMap.set(cName, new Map());
+      }
+      const cExMap = aData.driverExercisesMap.get(cName);
+
+      if (Array.isArray(ev.ejercicios) && ev.ejercicios.length > 0) {
+        ev.ejercicios.forEach(ex => {
+          if (!ex) return;
+          const rawName = (ex.nombre || (ex.numero ? (nombresSimulaciones[ex.numero] || `Ejercicio ${ex.numero}`) : '')).trim();
+          if (!rawName) return;
+          const normKey = normalizeExerciseName(rawName) || rawName.toLowerCase();
+          const score = typeof ex.calificacion === 'number' ? ex.calificacion : parseFloat(ex.calificacion);
+          if (!isNaN(score)) {
+            if (!cExMap.has(normKey)) {
+              cExMap.set(normKey, { nombreDisplay: rawName, scores: [], numero: ex.numero });
+            }
+            cExMap.get(normKey).scores.push(score);
+          }
+        });
+      } else if (ev.simulacionesDetalle && typeof ev.simulacionesDetalle === 'object') {
+        Object.keys(ev.simulacionesDetalle).forEach(k => {
+          const score = ev.simulacionesDetalle[k];
+          if (typeof score !== 'number' || isNaN(score)) return;
+          const num = parseInt(k.replace('simulacion_', ''), 10);
+          const rawName = (ev.nombresSimulaciones?.[num] || nombresSimulaciones[num] || `Simulación ${num}`).trim();
+          const normKey = normalizeExerciseName(rawName) || rawName.toLowerCase();
+          if (!cExMap.has(normKey)) {
+            cExMap.set(normKey, { nombreDisplay: rawName, scores: [], numero: num });
+          }
+          cExMap.get(normKey).scores.push(score);
+        });
+      }
+    });
+
+    const evolucionAnual = [];
+    const sortedYears = Array.from(annualMap.keys()).sort((a, b) => a.localeCompare(b));
+
+    sortedYears.forEach(year => {
+      const a = annualMap.get(year);
+      const totalEv = a.evaluaciones.length;
+      const totalCond = a.conductoresSet.size;
+
+      // Calcular ejercicios consolidados de este año
+      const annualExerciseFleet = new Map();
+      a.driverExercisesMap.forEach((cExMap) => {
+        cExMap.forEach((val, normKey) => {
+          const sum = val.scores.reduce((p, c) => p + c, 0);
+          const avg = sum / val.scores.length;
+
+          if (!annualExerciseFleet.has(normKey)) {
+            annualExerciseFleet.set(normKey, {
+              key: normKey,
+              nombre: val.nombreDisplay,
+              numero: val.numero,
+              sumDriverAvg: 0,
+              driverCount: 0,
+              totalRealizaciones: 0
+            });
+          }
+          const fEx = annualExerciseFleet.get(normKey);
+          fEx.sumDriverAvg += avg;
+          fEx.driverCount += 1;
+          fEx.totalRealizaciones += val.scores.length;
+        });
+      });
+
+      const ejerciciosAnuales = [];
+      annualExerciseFleet.forEach(fEx => {
+        const avg = fEx.driverCount > 0 ? (fEx.sumDriverAvg / fEx.driverCount) : 0;
+        ejerciciosAnuales.push({
+          key: fEx.key,
+          nombre: fEx.nombre,
+          numero: fEx.numero,
+          promedio: parseFloat(avg.toFixed(2)),
+          totalConductores: fEx.driverCount,
+          totalRealizaciones: fEx.totalRealizaciones
+        });
+      });
+
+      ejerciciosAnuales.sort((x, y) => {
+        if (x.numero && y.numero) return x.numero - y.numero;
+        if (x.numero) return -1;
+        if (y.numero) return 1;
+        return x.nombre.localeCompare(y.nombre);
+      });
+
+      evolucionAnual.push({
+        year: year,
+        totalEvaluaciones: totalEv,
+        totalConductores: totalCond,
+        promedioFinal: totalEv > 0 ? parseFloat((a.sumFinal / totalEv).toFixed(2)) : 0,
+        promedioHabilidades: totalEv > 0 ? parseFloat((a.sumHab / totalEv).toFixed(2)) : 0,
+        promedioSimulador: totalEv > 0 ? parseFloat((a.sumSim / totalEv).toFixed(2)) : 0,
+        tasaAprobacion: totalEv > 0 ? parseFloat(((a.approvedCount / totalEv) * 100).toFixed(1)) : 0,
+        totalColisiones: a.totalCollisions,
+        totalFatalidades: a.totalFatalities,
+        totalFueraVia: a.totalOffRoad,
+        ejercicios: ejerciciosAnuales
+      });
+    });
+
     summaries.push({
       nombre: name,
       slug: data.slug,
@@ -598,7 +738,8 @@ export function processCompanySummaries(evaluations) {
       promedioSim4: countSim4 > 0 ? (sumSim4 / countSim4) : 0,
       nombresSimulaciones: nombresSimulaciones,
       ejerciciosPromedio: ejerciciosPromedio,
-      conductores: conductores
+      conductores: conductores,
+      evolucionAnual: evolucionAnual
     });
   }
 

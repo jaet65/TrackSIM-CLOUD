@@ -33,8 +33,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <!-- Estilos del Sistema de Diseño -->
-  <script type="module" crossorigin src="/assets/index-2TLzIgL4.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-B5MUTxlM.css">
+  <script type="module" crossorigin src="/assets/index-DDNIwUsd.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-D1ZlysJy.css">
 </head>
 
 <body>
@@ -536,98 +536,236 @@
         <div class="section-header">
           <div>
             <h2>📈 Trazabilidad y Evolución Histórica</h2>
-            <p>Sigue el progreso de cada conductor a través del tiempo, comparando su evolución técnica y reducción de
-              errores.</p>
+            <p>Sigue el progreso de cada conductor a través del tiempo y analiza la evolución consolidada de cada empresa a través de los años.</p>
           </div>
         </div>
 
-        <!-- Barra de Selección de Conductor -->
-        <!-- Barra de Selección de Conductor -->
-        <div id="driverSelectorBar" class="driver-selector-bar" style="display: none;">
-          <label for="driverSelect"
-            style="font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="7" r="4"></circle>
-              <path d="M5.5 21a8.38 8.38 0 0 1 13 0"></path>
-            </svg>
-            Seleccionar Conductor:
-          </label>
-          <select id="driverSelect" class="custom-select">
-            <!-- Opciones pobladas dinámicamente -->
-          </select>
-        </div>
-
-        <!-- Estado Vacío Evolución -->
-        <div id="driverHeroEmpty" class="glass-card" style="display: block; text-align: center; padding: 4rem 2rem;">
-          <div style="font-size: 3.5rem; margin-bottom: 1rem;">🚛</div>
-          <h3 style="font-size: 1.5rem; margin-bottom: 0.5rem; color: #ffffff;">Sin Evaluaciones Registradas</h3>
-          <p style="color: var(--text-secondary); max-width: 500px; margin: 0 auto 1.5rem; line-height: 1.6;">
-            Aún no se han cargado reportes PDF en el sistema. Sube los archivos de tus operadores en la sección de
-            Ingesta para comenzar a visualizar el historial y trazabilidad.
-          </p>
-          <button id="driverEmptyUploadBtn" class="btn btn-primary admin-only" onclick="window.switchTab('ingesta')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="17 8 12 3 7 8"></polyline>
-              <line x1="12" y1="3" x2="12" y2="15"></line>
-            </svg>
-            Cargar PDFs de Evaluación
+        <!-- Sub-navegación: Por Operador vs Por Empresa -->
+        <div class="subnav-tabs" role="tablist">
+          <button id="subnavEvolucionDriverBtn" class="subnav-btn active" type="button" role="tab" aria-selected="true">
+            👤 Evolución por Operador
           </button>
-          <p class="viewer-only" style="color: var(--text-muted); font-size: 0.88rem; margin-top: 1rem;">
-            ℹ️ Modo Lectura: Las evaluaciones son cargadas y gestionadas por los Administradores de la plataforma.
-          </p>
+          <button id="subnavEvolucionCompanyBtn" class="subnav-btn" type="button" role="tab" aria-selected="false">
+            🏢 Evolución por Empresa (Histórico Anual)
+          </button>
         </div>
 
-        <!-- Contenido del Conductor -->
-        <div id="driverHeroContent" style="display: none;">
-          <!-- Ficha Resumen del Conductor -->
-          <div class="glass-card driver-hero-card">
-            <div id="driverInitialsAvatar" class="driver-avatar-huge">-</div>
-            <div>
-              <h3 id="driverNameTitle" style="font-size: 1.8rem; margin-bottom: 0.2rem;">-</h3>
-              <p id="driverCompanySubtitle" style="color: var(--primary); font-size: 0.95rem; font-weight: 600;">-</p>
-            </div>
-            <div class="driver-stats-strip">
-              <div class="stat-metric-box">
-                <span class="label">Evaluaciones</span>
-                <span id="statTotalEvals" class="val">0</span>
-              </div>
-              <div class="stat-metric-box">
-                <span class="label">Último Score</span>
-                <span id="statLatestScore" class="val" style="color: var(--primary);">0.00 / 10</span>
-              </div>
-              <div class="stat-metric-box">
-                <span class="label">Promedio</span>
-                <span id="statAvgScore" class="val">0.00</span>
-              </div>
-              <div class="stat-metric-box">
-                <span class="label">Evolución</span>
-                <span id="statEvolutionChange" class="val" style="color: var(--text-muted);">-</span>
-              </div>
-            </div>
+        <!-- ====================================================
+             PANEL 1: EVOLUCIÓN POR OPERADOR ESPECÍFICO
+             ==================================================== -->
+        <div id="panelEvolucionDriver">
+          <!-- Barra de Selección de Conductor -->
+          <div id="driverSelectorBar" class="driver-selector-bar" style="display: none;">
+            <label for="driverSelect"
+              style="font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="7" r="4"></circle>
+                <path d="M5.5 21a8.38 8.38 0 0 1 13 0"></path>
+              </svg>
+              Seleccionar Conductor:
+            </label>
+            <select id="driverSelect" class="custom-select">
+              <!-- Opciones pobladas dinámicamente -->
+            </select>
           </div>
 
-          <!-- Gráfico de Evolución Temporal -->
-          <div class="glass-card" style="margin-bottom: 2rem;">
-            <div class="chart-header">
+          <!-- Estado Vacío Evolución Operador -->
+          <div id="driverHeroEmpty" class="glass-card" style="display: block; text-align: center; padding: 4rem 2rem;">
+            <div style="font-size: 3.5rem; margin-bottom: 1rem;">🚛</div>
+            <h3 style="font-size: 1.5rem; margin-bottom: 0.5rem; color: #ffffff;">Sin Evaluaciones Registradas</h3>
+            <p style="color: var(--text-secondary); max-width: 500px; margin: 0 auto 1.5rem; line-height: 1.6;">
+              Aún no se han cargado reportes PDF en el sistema. Sube los archivos de tus operadores en la sección de
+              Ingesta para comenzar a visualizar el historial y trazabilidad.
+            </p>
+            <button id="driverEmptyUploadBtn" class="btn btn-primary admin-only" onclick="window.switchTab('ingesta')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              Cargar PDFs de Evaluación
+            </button>
+            <p class="viewer-only" style="color: var(--text-muted); font-size: 0.88rem; margin-top: 1rem;">
+              ℹ️ Modo Lectura: Las evaluaciones son cargadas y gestionadas por los Administradores de la plataforma.
+            </p>
+          </div>
+
+          <!-- Contenido del Conductor -->
+          <div id="driverHeroContent" style="display: none;">
+            <!-- Ficha Resumen del Conductor -->
+            <div class="glass-card driver-hero-card">
+              <div id="driverInitialsAvatar" class="driver-avatar-huge">-</div>
               <div>
-                <h3 class="chart-title">Curva de Evolución Temporal del Operador</h3>
-                <p style="font-size: 0.8rem; color: var(--text-muted);">Progreso de Calificación Final, Simulador y
-                  Habilidades en cada capacitación</p>
+                <h3 id="driverNameTitle" style="font-size: 1.8rem; margin-bottom: 0.2rem;">-</h3>
+                <p id="driverCompanySubtitle" style="color: var(--primary); font-size: 0.95rem; font-weight: 600;">-</p>
+              </div>
+              <div class="driver-stats-strip">
+                <div class="stat-metric-box">
+                  <span class="label">Evaluaciones</span>
+                  <span id="statTotalEvals" class="val">0</span>
+                </div>
+                <div class="stat-metric-box">
+                  <span class="label">Último Score</span>
+                  <span id="statLatestScore" class="val" style="color: var(--primary);">0.00 / 10</span>
+                </div>
+                <div class="stat-metric-box">
+                  <span class="label">Promedio</span>
+                  <span id="statAvgScore" class="val">0.00</span>
+                </div>
+                <div class="stat-metric-box">
+                  <span class="label">Evolución</span>
+                  <span id="statEvolutionChange" class="val" style="color: var(--text-muted);">-</span>
+                </div>
               </div>
             </div>
-            <div class="chart-container" style="height: 340px;">
-              <canvas id="driverEvolutionChartCanvas"></canvas>
+
+            <!-- Gráfico de Evolución Temporal -->
+            <div class="glass-card" style="margin-bottom: 2rem;">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Curva de Evolución Temporal del Operador</h3>
+                  <p style="font-size: 0.8rem; color: var(--text-muted);">Progreso de Calificación Final, Simulador y
+                    Habilidades en cada capacitación</p>
+                </div>
+              </div>
+              <div class="chart-container" style="height: 340px;">
+                <canvas id="driverEvolutionChartCanvas"></canvas>
+              </div>
+            </div>
+
+            <!-- Línea de Tiempo de Sesiones -->
+            <div class="glass-card">
+              <h3 class="chart-title">Historial Cronológico de Capacitaciones</h3>
+              <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">Detalle de cada curso
+                tomado y resultados específicos obtenidos.</p>
+              <div id="driverTimelineContainer" class="timeline-list">
+                <!-- Items de timeline con JS -->
+              </div>
             </div>
           </div>
+        </div>
 
-          <!-- Línea de Tiempo de Sesiones -->
-          <div class="glass-card">
-            <h3 class="chart-title">Historial Cronológico de Capacitaciones</h3>
-            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">Detalle de cada curso
-              tomado y resultados específicos obtenidos.</p>
-            <div id="driverTimelineContainer" class="timeline-list">
-              <!-- Items de timeline con JS -->
+        <!-- ====================================================
+             PANEL 2: EVOLUCIÓN HISTÓRICA POR EMPRESA (POR AÑOS)
+             ==================================================== -->
+        <div id="panelEvolucionCompany" style="display: none;">
+          <!-- Barra de Selección de Empresa para Evolución Anual -->
+          <div id="companyEvolutionSelectorBar" class="driver-selector-bar" style="display: none;">
+            <label for="companyEvolutionSelect"
+              style="font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+              </svg>
+              Seleccionar Empresa:
+            </label>
+            <select id="companyEvolutionSelect" class="custom-select">
+              <!-- Opciones pobladas dinámicamente -->
+            </select>
+          </div>
+
+          <!-- Estado Vacío Evolución Empresa -->
+          <div id="companyEvolutionEmpty" class="glass-card" style="display: block; text-align: center; padding: 4rem 2rem;">
+            <div style="font-size: 3.5rem; margin-bottom: 1rem;">🏢</div>
+            <h3 style="font-size: 1.5rem; margin-bottom: 0.5rem; color: #ffffff;">Sin Flotas Registradas</h3>
+            <p style="color: var(--text-secondary); max-width: 500px; margin: 0 auto 1.5rem; line-height: 1.6;">
+              No hay reportes ni empresas registradas para evaluar su progreso temporal a través de los años. Sube archivos en Ingesta para comenzar.
+            </p>
+            <button class="btn btn-primary admin-only" onclick="window.switchTab('ingesta')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              Cargar PDFs de Evaluación
+            </button>
+          </div>
+
+          <!-- Contenido de Evolución de la Empresa -->
+          <div id="companyEvolutionContent" style="display: none;">
+            <!-- Ficha Resumen Hero de la Empresa -->
+            <div class="glass-card driver-hero-card">
+              <div id="companyEvolutionInitialsAvatar" class="driver-avatar-huge" style="background: linear-gradient(135deg, #0284c7, #38bdf8); color: #fff;">🏢</div>
+              <div>
+                <h3 id="companyEvolutionNameTitle" style="font-size: 1.8rem; margin-bottom: 0.2rem;">-</h3>
+                <p id="companyEvolutionSedesSubtitle" style="color: var(--primary); font-size: 0.95rem; font-weight: 600;">Flota Oficial</p>
+              </div>
+              <div class="driver-stats-strip">
+                <div class="stat-metric-box">
+                  <span class="label">Años Evaluados</span>
+                  <span id="companyStatTotalYears" class="val" style="color: #38bdf8;">0</span>
+                </div>
+                <div class="stat-metric-box">
+                  <span class="label">Total Operadores</span>
+                  <span id="companyEvolutionStatTotalDrivers" class="val">0</span>
+                </div>
+                <div class="stat-metric-box">
+                  <span class="label">Total Evaluaciones</span>
+                  <span id="companyEvolutionStatTotalEvals" class="val">0</span>
+                </div>
+                <div class="stat-metric-box">
+                  <span class="label">Promedio Histórico</span>
+                  <span id="companyEvolutionStatAvgScore" class="val" style="color: var(--success);">0.00</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Gráfico 1: Curva de Evolución Temporal de la Empresa (Promedio por Año) -->
+            <div class="glass-card" style="margin-bottom: 2rem;">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Curva de Evolución Anual de la Flota</h3>
+                  <p style="font-size: 0.8rem; color: var(--text-muted);">Calificación Final Promedio, Simulador y Habilidades de manejo comparados por año</p>
+                </div>
+              </div>
+              <div class="chart-container" style="height: 340px;">
+                <canvas id="companyAnnualEvolutionChartCanvas"></canvas>
+              </div>
+            </div>
+
+            <!-- Gráfico 2: Comparativa de Rendimiento por Ejercicio a través de los Años -->
+            <div class="glass-card" style="margin-bottom: 2rem;">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Evolución de Rendimiento por Ejercicio / Simulación a través de los Años</h3>
+                  <p id="companyAnnualExercisesSubtitle" style="font-size: 0.8rem; color: var(--text-muted);">Contraste anual del desempeño medio de la flota en cada módulo y maniobra impartida</p>
+                </div>
+              </div>
+              <div class="chart-container" style="height: 340px;">
+                <canvas id="companyAnnualExercisesChartCanvas"></canvas>
+              </div>
+            </div>
+
+            <!-- Tabla Resumen Anual Comparativa -->
+            <div class="glass-card">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Desglose Anual Consolidado de la Empresa</h3>
+                  <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
+                    Resumen de métricas globales, índice de siniestralidad e incremento de rendimiento año con año.
+                  </p>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="custom-table" id="companyAnnualTable">
+                  <thead>
+                    <tr>
+                      <th>Año</th>
+                      <th>Operadores Evaluados</th>
+                      <th>Evaluaciones Realizadas</th>
+                      <th>Calificación Promedio</th>
+                      <th>Habilidades (3 pts)</th>
+                      <th>Simulador (7 pts)</th>
+                      <th>Tasa de Aprobación</th>
+                      <th>Incidentes Totales</th>
+                      <th>Tendencia vs Año Previo</th>
+                    </tr>
+                  </thead>
+                  <tbody id="companyAnnualTableBody">
+                    <!-- Filas generadas dinámicamente con JS -->
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -763,6 +901,11 @@
               <h3 id="companyNameTitle" style="font-size: 1.8rem; margin-bottom: 0.2rem; color: #ffffff;">-</h3>
               <p id="companySedesSubtitle" style="color: var(--primary); font-size: 0.95rem; font-weight: 600;">Flota
                 Oficial de Autotransporte TrackSIM</p>
+              <div style="margin-top: 0.6rem;">
+                <button class="btn btn-secondary btn-sm" onclick="if(window.AppState && AppState.selectedCompany) window.inspectCompanyEvolucion(AppState.selectedCompany.nombre);" title="Ver trazabilidad y evolución histórica anual de esta flota">
+                  📈 Ver Trazabilidad Anual de la Empresa
+                </button>
+              </div>
             </div>
             <div class="driver-stats-strip">
               <div class="stat-metric-box">

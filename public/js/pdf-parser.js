@@ -239,7 +239,7 @@ export function extractExercisesFromCoordinates(page4Items, p4Text = '', allPage
     const clean = items.filter(i => i.str && i.str.trim().length > 0);
     const title = clean.find(i =>
       /ejercicios\s+de\s+simulador/i.test(i.str) ||
-      /describen\s+a\s+continuaci[oó\u0301]n/i.test(i.str)
+      /describen\s+a\s+continuaci[oó]n/i.test(i.str)
     );
     return title ? { titleY: title.transform[5], clean } : null;
   };
@@ -389,7 +389,7 @@ export function extractSimulationsFromItems(page5Items, allPagesItems = [], p5Te
 
     for (const item of cleanItems) {
       // Caso A: Todo en el mismo item, ej: "Simulación 2: 8.63", "Simulación 2., 6.86", "SIMULACIÓN 2: 8.63", "Simulación 2 - 8.63"
-      const mCombined = item.str.match(/(?:Simulaci[oó\u0301]n|Sim\.?|S)\s*(\d+)[\s.:,\-—–=]+([0-9]+(?:[.,][0-9]+)?)/i);
+      const mCombined = item.str.match(/(?:Simulaci[oó]n|Sim\.?|S)\s*(\d+)[\s.:,\-—–=]+([0-9]+(?:[.,][0-9]+)?)/i);
       if (mCombined) {
         const num = parseInt(mCombined[1], 10);
         const score = parseFloat(mCombined[2].replace(',', '.'));
@@ -400,7 +400,7 @@ export function extractSimulationsFromItems(page5Items, allPagesItems = [], p5Te
       }
 
       // Caso B: "Simulación X" en un item y el número al lado en la misma fila horizontal
-      const mLabel = item.str.match(/(?:Simulaci[oó\u0301]n|Sim\.?|S)\s*(\d+)[:.\s\-—–=]*$/i);
+      const mLabel = item.str.match(/(?:Simulaci[oó]n|Sim\.?|S)\s*(\d+)[:.\s\-—–=]*$/i);
       if (mLabel) {
         const num = parseInt(mLabel[1], 10);
         const key = `simulacion_${num}`;
@@ -429,7 +429,7 @@ export function extractSimulationsFromItems(page5Items, allPagesItems = [], p5Te
   // 2. Buscar mediante regex exclusivamente sobre el texto de la Página 5 (donde reside la gráfica)
   if ((result.simulacion_2 == null || result.simulacion_3 == null || result.simulacion_4 == null) && p5Text) {
     const normalizedP5 = p5Text.normalize('NFC');
-    const simRegex = /(?:Simulaci[oó\u0301]n|Sim\.?)\s*(\d+)[\s.:,\-—–=]+([0-9]+(?:[.,][0-9]+)?)/gi;
+    const simRegex = /(?:Simulaci[oó]n|Sim\.?)\s*(\d+)[\s.:,\-—–=]+([0-9]+(?:[.,][0-9]+)?)/gi;
     const matches = normalizedP5.matchAll(simRegex);
     for (const match of matches) {
       const num = parseInt(match[1], 10);
@@ -471,7 +471,7 @@ export function extractSimulationsFromItems(page5Items, allPagesItems = [], p5Te
  * Extrae las calificaciones de simulación calculando la longitud proporcional de las barras
  * cuando el simulador exportó la gráfica como imágenes/trazados sin texto seleccionable.
  */
-export function extractSimulationsFromOperatorList(opList, contentItems = []) {
+export function extractSimulationsFromOperatorList(opList, _contentItems = []) {
   if (!opList || !opList.fnArray) return null;
 
   const pdfjs = (typeof window !== 'undefined' && window.pdfjsLib) ? window.pdfjsLib : null;
@@ -600,7 +600,7 @@ export function parseEvaluationData(pagesText, filename = '', rawPage1Items = nu
     const p1Head = fechaIdx !== -1 ? p1.substring(0, fechaIdx) : p1.substring(0, 450);
     const mEmp = p1Head.match(/Empresa[^\n]*\n+([\s\S]*?)(?=\n\s*(?:CUR-|Fecha|Curso))/i);
     if (mEmp && mEmp[1].trim()) {
-      let candidate = mEmp[1].replace(/CUR-[A-Z0-9\-]+/gi, '').replace(/Curso avanzado[^\n]*/gi, '').trim();
+      let candidate = mEmp[1].replace(/CUR-[A-Z0-9-]+/gi, '').replace(/Curso avanzado[^\n]*/gi, '').trim();
       candidate = candidate.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
       if (candidate.length > 2) {
         rawEmpresa = candidate;
@@ -626,7 +626,7 @@ export function parseEvaluationData(pagesText, filename = '', rawPage1Items = nu
   if (headerMeta && headerMeta.cursoCodigo) {
     data.cursoCodigo = headerMeta.cursoCodigo;
   } else {
-    const mCursoCod = p5.match(/Curso:\s*([A-Z0-9\-]+)/i) || p1.match(/(CUR-[A-Z0-9\-]+)/i);
+    const mCursoCod = p5.match(/Curso:\s*([A-Z0-9-]+)/i) || p1.match(/(CUR-[A-Z0-9-]+)/i);
     if (mCursoCod) {
       data.cursoCodigo = mCursoCod[1].trim();
     }

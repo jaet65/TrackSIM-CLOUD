@@ -24,7 +24,6 @@ import {
 
 import {
   getEvaluations,
-  saveEvaluation,
   saveBatchEvaluations,
   deleteEvaluation,
   clearAllEvaluations,
@@ -32,8 +31,7 @@ import {
   updateEvaluationsBatchEmpresaSede,
   updateSingleEvaluation,
   processDriverSummaries,
-  processCompanySummaries,
-  slugify
+  processCompanySummaries
 } from './db.js';
 
 import {
@@ -46,7 +44,9 @@ import {
   renderComparisonRadarChart,
   renderDistributionChart,
   renderCompanyRankingChart,
-  renderCompanySimulationsChart
+  renderCompanySimulationsChart,
+  renderCompanyEvolutionChart,
+  renderCompanyExercisesAnnualChart
 } from './charts.js';
 
 import {
@@ -543,7 +543,6 @@ function renderDashboard() {
 function initDropzone() {
   const dropzone = document.getElementById('pdfDropzone');
   const fileInput = document.getElementById('pdfFileInput');
-  const loadSamplesBtn = document.getElementById('loadSamplePdfsBtn');
   const saveBatchBtn = document.getElementById('saveBatchBtn');
 
   if (!dropzone || !fileInput) return;
@@ -922,7 +921,75 @@ function renderStagingTableRows(items) {
 // ==========================================
 // VISTA: TRAZABILIDAD Y EVOLUCIÓN
 // ==========================================
+let currentEvolutionSubtab = 'driver'; // 'driver' | 'company'
+
+function initEvolutionViewControls() {
+  const driverBtn = document.getElementById('subnavEvolucionDriverBtn');
+  const companyBtn = document.getElementById('subnavEvolucionCompanyBtn');
+
+  if (driverBtn && !driverBtn.dataset.bound) {
+    driverBtn.dataset.bound = 'true';
+    driverBtn.addEventListener('click', () => {
+      switchEvolutionSubtab('driver');
+    });
+  }
+
+  if (companyBtn && !companyBtn.dataset.bound) {
+    companyBtn.dataset.bound = 'true';
+    companyBtn.addEventListener('click', () => {
+      switchEvolutionSubtab('company');
+    });
+  }
+
+  const companySelect = document.getElementById('companyEvolutionSelect');
+  if (companySelect && !companySelect.dataset.bound) {
+    companySelect.dataset.bound = 'true';
+    companySelect.addEventListener('change', (e) => {
+      const selectedName = e.target.value;
+      const found = AppState.companies.find(c => c.nombre === selectedName);
+      if (found) {
+        AppState.selectedCompany = found;
+        updateCompanyEvolutionDetails(found);
+      }
+    });
+  }
+}
+
+function switchEvolutionSubtab(subtab) {
+  currentEvolutionSubtab = subtab;
+  const driverBtn = document.getElementById('subnavEvolucionDriverBtn');
+  const companyBtn = document.getElementById('subnavEvolucionCompanyBtn');
+  const panelDriver = document.getElementById('panelEvolucionDriver');
+  const panelCompany = document.getElementById('panelEvolucionCompany');
+
+  if (driverBtn) {
+    driverBtn.classList.toggle('active', subtab === 'driver');
+    driverBtn.setAttribute('aria-selected', subtab === 'driver' ? 'true' : 'false');
+  }
+  if (companyBtn) {
+    companyBtn.classList.toggle('active', subtab === 'company');
+    companyBtn.setAttribute('aria-selected', subtab === 'company' ? 'true' : 'false');
+  }
+
+  if (subtab === 'driver') {
+    if (panelDriver) panelDriver.style.display = 'block';
+    if (panelCompany) panelCompany.style.display = 'none';
+    renderEvolutionView();
+  } else {
+    if (panelDriver) panelDriver.style.display = 'none';
+    if (panelCompany) panelCompany.style.display = 'block';
+    renderCompanyEvolutionView();
+  }
+}
+
 function renderEvolutionView() {
+  initEvolutionViewControls();
+
+  if (currentEvolutionSubtab === 'company') {
+    renderCompanyEvolutionView();
+    return;
+  }
+
   const select = document.getElementById('driverSelect');
   const selectorBar = document.getElementById('driverSelectorBar');
   const emptyEl = document.getElementById('driverHeroEmpty');
@@ -979,6 +1046,149 @@ function renderEvolutionView() {
   select.value = AppState.selectedDriver.slug;
   updateDriverDetails(AppState.selectedDriver);
 }
+
+// Renderizar la trazabilidad y evolución anual por empresa
+function renderCompanyEvolutionView() {
+  initEvolutionViewControls();
+
+  const companies = AppState.companies || [];
+  const selectorBar = document.getElementById('companyEvolutionSelectorBar');
+  const select = document.getElementById('companyEvolutionSelect');
+  const emptyEl = document.getElementById('companyEvolutionEmpty');
+  const contentEl = document.getElementById('companyEvolutionContent');
+
+  if (!companies || companies.length === 0) {
+    if (emptyEl) emptyEl.style.display = 'block';
+    if (contentEl) contentEl.style.display = 'none';
+    if (selectorBar) selectorBar.style.display = 'none';
+    return;
+  }
+
+  if (emptyEl) emptyEl.style.display = 'none';
+  if (contentEl) contentEl.style.display = 'block';
+  if (selectorBar) selectorBar.style.display = 'flex';
+
+  // Si no hay empresa seleccionada o la actual ya no existe, seleccionar la primera
+  if (!AppState.selectedCompany || !companies.some(c => c.nombre === AppState.selectedCompany.nombre)) {
+    AppState.selectedCompany = companies[0];
+  }
+
+  if (select) {
+    const currentVal = AppState.selectedCompany ? AppState.selectedCompany.nombre : '';
+    select.innerHTML = companies.map(c => {
+      const yearsCount = (c.evolucionAnual || []).length;
+      return `
+        <option value="${c.nombre}" ${c.nombre === currentVal ? 'selected' : ''}>
+          🏢 ${c.nombre} (${yearsCount} ${yearsCount === 1 ? 'año evaluado' : 'años evaluados'} - ${c.totalConductores} operadores)
+        </option>
+      `;
+    }).join('');
+    select.value = AppState.selectedCompany.nombre;
+  }
+
+  updateCompanyEvolutionDetails(AppState.selectedCompany);
+}
+
+function updateCompanyEvolutionDetails(company) {
+  if (!company) return;
+
+  const evolucionAnual = company.evolucionAnual || [];
+
+  // 1. Resumen Hero
+  const titleEl = document.getElementById('companyEvolutionNameTitle');
+  if (titleEl) titleEl.textContent = company.nombre;
+
+  const sedesSubtitle = document.getElementById('companyEvolutionSedesSubtitle');
+  if (sedesSubtitle) {
+    if (company.sedes && company.sedes.length > 0) {
+      sedesSubtitle.innerHTML = `📍 Sedes: <strong style="color: #38bdf8;">${company.sedes.join(', ')}</strong>`;
+    } else {
+      sedesSubtitle.textContent = 'Flota Oficial de Autotransporte TrackSIM';
+    }
+  }
+
+  const statTotalYears = document.getElementById('companyStatTotalYears');
+  if (statTotalYears) statTotalYears.textContent = `${evolucionAnual.length} ${evolucionAnual.length === 1 ? 'Año' : 'Años'}`;
+
+  const statTotalDrivers = document.getElementById('companyEvolutionStatTotalDrivers');
+  if (statTotalDrivers) statTotalDrivers.textContent = `${company.totalConductores} operadores`;
+
+  const statTotalEvals = document.getElementById('companyEvolutionStatTotalEvals');
+  if (statTotalEvals) statTotalEvals.textContent = `${company.totalEvaluaciones} reportes`;
+
+  const statAvgScore = document.getElementById('companyEvolutionStatAvgScore');
+  if (statAvgScore) statAvgScore.textContent = `${company.promedioFinal.toFixed(2)} / 10`;
+
+  // 2. Gráfico de evolución temporal anual
+  renderCompanyEvolutionChart('companyAnnualEvolutionChartCanvas', evolucionAnual);
+
+  // 3. Gráfico de comparativa de ejercicios a través de los años
+  renderCompanyExercisesAnnualChart('companyAnnualExercisesChartCanvas', evolucionAnual);
+
+  const exSubtitle = document.getElementById('companyAnnualExercisesSubtitle');
+  if (exSubtitle) {
+    exSubtitle.textContent = `Contraste anual del desempeño medio de la flota en ${company.ejerciciosPromedio?.length || 0} ejercicio(s) impartido(s).`;
+  }
+
+  // 4. Tabla de desglose anual comparativa
+  const tbody = document.getElementById('companyAnnualTableBody');
+  if (tbody) {
+    if (evolucionAnual.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+            No hay registros con año válido para esta empresa.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = evolucionAnual.map((item, index) => {
+      let tendenciaHTML = '<span style="color: var(--text-muted); font-size: 0.8rem;">Año Base</span>';
+      if (index > 0) {
+        const prev = evolucionAnual[index - 1];
+        const diff = Number((item.promedioFinal - prev.promedioFinal).toFixed(2));
+        if (diff > 0) {
+          tendenciaHTML = `<span class="badge badge-success" style="font-size: 0.78rem;">▲ +${diff} pts</span>`;
+        } else if (diff < 0) {
+          tendenciaHTML = `<span class="badge badge-danger" style="font-size: 0.78rem;">▼ ${diff} pts</span>`;
+        } else {
+          tendenciaHTML = `<span class="badge badge-info" style="font-size: 0.78rem;">= Sin cambio</span>`;
+        }
+      }
+
+      const incidents = (item.totalColisiones || 0) + (item.totalFatalidades || 0);
+
+      return `
+        <tr>
+          <td><strong style="color: #38bdf8; font-size: 0.95rem;">📅 ${item.year}</strong></td>
+          <td>${item.totalConductores} operadores</td>
+          <td>${item.totalEvaluaciones} capacitaciones</td>
+          <td>
+            <span class="score-pill" style="color: #38bdf8; font-weight: 700;">
+              ${item.promedioFinal.toFixed(2)} / 10
+            </span>
+          </td>
+          <td><strong style="color: #10b981;">${item.promedioHabilidades.toFixed(2)} pts</strong></td>
+          <td><strong style="color: #a855f7;">${item.promedioSimulador.toFixed(2)} pts</strong></td>
+          <td>
+            <span class="badge ${item.tasaAprobacion >= 80 ? 'badge-success' : item.tasaAprobacion >= 60 ? 'badge-info' : 'badge-warning'}">
+              ${item.tasaAprobacion.toFixed(1)}%
+            </span>
+          </td>
+          <td>
+            <span style="font-weight: 600; color: ${incidents > 0 ? 'var(--danger)' : 'var(--success)'};">
+              ${incidents} (${item.totalColisiones} col. / ${item.totalFatalidades} fat.)
+            </span>
+          </td>
+          <td>${tendenciaHTML}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+}
+
 
 function updateDriverDetails(driver) {
   if (!driver) return;
@@ -1240,6 +1450,17 @@ function initCompanyView() {
     AppState.selectedDriver = driver;
     const driverSelect = document.getElementById('driverSelect');
     if (driverSelect) driverSelect.value = driver.slug;
+    switchEvolutionSubtab('driver');
+    switchTab('evolucion');
+  };
+
+  // Permite saltar directamente a la trazabilidad anual de la empresa
+  window.inspectCompanyEvolucion = (companyName) => {
+    const company = AppState.companies.find(c => c.nombre === companyName);
+    if (!company) return;
+
+    AppState.selectedCompany = company;
+    switchEvolutionSubtab('company');
     switchTab('evolucion');
   };
 }
@@ -1278,11 +1499,11 @@ function initCompanyDriversTableSorting() {
 function parseDateToTimestamp(dateStr) {
   if (!dateStr || typeof dateStr !== 'string') return 0;
   const s = dateStr.trim();
-  const dmMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  const dmMatch = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
   if (dmMatch) {
     return new Date(parseInt(dmMatch[3], 10), parseInt(dmMatch[2], 10) - 1, parseInt(dmMatch[1], 10)).getTime() || 0;
   }
-  const ymMatch = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  const ymMatch = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
   if (ymMatch) {
     return new Date(parseInt(ymMatch[1], 10), parseInt(ymMatch[2], 10) - 1, parseInt(ymMatch[3], 10)).getTime() || 0;
   }

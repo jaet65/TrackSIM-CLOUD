@@ -682,3 +682,326 @@ export function renderCompanySimulationsChart(canvasId, company, searchFilter = 
   });
 }
 
+/**
+ * Gráfico de Línea Temporal: Evolución de Calificación Promedio Anual de la Empresa
+ * Compara Calificación Final, Simulador y Habilidades a través de los años.
+ */
+export function renderCompanyEvolutionChart(canvasId, evolucionAnual) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx || !window.Chart) return;
+
+  destroyChart(canvasId);
+
+  if (!evolucionAnual || evolucionAnual.length === 0) return;
+
+  const labels = evolucionAnual.map(item => `Año ${item.year}`);
+  const finalScores = evolucionAnual.map(item => item.promedioFinal);
+  const simScores = evolucionAnual.map(item => item.promedioSimulador);
+  const habScores = evolucionAnual.map(item => item.promedioHabilidades);
+
+  chartInstances[canvasId] = new window.Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Calificación Final Promedio (0 - 10)',
+          data: finalScores,
+          borderColor: '#38bdf8',
+          backgroundColor: 'rgba(56, 189, 248, 0.15)',
+          fill: true,
+          tension: 0.35,
+          borderWidth: 3,
+          pointBackgroundColor: '#38bdf8',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2,
+          pointRadius: 6,
+          pointHoverRadius: 8
+        },
+        {
+          label: 'Práctica Simulador (0 - 7 ptos)',
+          data: simScores,
+          borderColor: '#a855f7',
+          backgroundColor: 'transparent',
+          borderDash: [5, 5],
+          tension: 0.35,
+          borderWidth: 2,
+          pointBackgroundColor: '#a855f7',
+          pointRadius: 5
+        },
+        {
+          label: 'Habilidades Manejo (0 - 3 ptos)',
+          data: habScores,
+          borderColor: '#10b981',
+          backgroundColor: 'transparent',
+          borderDash: [3, 3],
+          tension: 0.35,
+          borderWidth: 2,
+          pointBackgroundColor: '#10b981',
+          pointRadius: 5
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          labels: {
+            color: '#94a3b8',
+            font: { family: "'Plus Jakarta Sans', sans-serif", size: 12 }
+          }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          titleColor: '#f8fafc',
+          bodyColor: '#cbd5e1',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          borderWidth: 1,
+          padding: 12,
+          boxPadding: 6,
+          callbacks: {
+            afterBody: function (items) {
+              const idx = items[0].dataIndex;
+              const yData = evolucionAnual[idx];
+              if (!yData) return '';
+              return [
+                '',
+                `👥 Operadores Evaluados: ${yData.totalConductores}`,
+                `📑 Reportes / Evaluaciones: ${yData.totalEvaluaciones}`,
+                `🎯 Tasa de Aprobación: ${yData.tasaAprobacion}%`,
+                `⚠️ Incidentes: ${yData.totalColisiones + yData.totalFatalidades} (${yData.totalColisiones} col. / ${yData.totalFatalidades} fat.)`
+              ].join('\n');
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          min: 0,
+          max: 10,
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: { color: '#64748b', font: { family: "'Plus Jakarta Sans', sans-serif" } }
+        },
+        x: {
+          grid: { color: 'rgba(255, 255, 255, 0.03)' },
+          ticks: { color: '#94a3b8', font: { family: "'Plus Jakarta Sans', sans-serif", weight: '600' } }
+        }
+      }
+    }
+  });
+}
+
+/**
+ * Gráfico de Barras Agrupadas por Año:
+ * Renderiza barras continuas agrupadas por año (sin espacios vacíos para ejercicios no impartidos),
+ * con el nombre de cada ejercicio escrito verticalmente dentro de la barra y el rótulo del año centrado abajo.
+ */
+export function renderCompanyExercisesAnnualChart(canvasId, evolucionAnual) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx || !window.Chart) return;
+
+  destroyChart(canvasId);
+
+  if (!evolucionAnual || evolucionAnual.length === 0) return;
+
+  // Mapa global para mantener colores consistentes por ejercicio
+  const exerciseColorMap = new Map();
+  let nextColorIdx = 0;
+
+  // Aplanar todos los ejercicios evaluados año por año (solo barras existentes)
+  const flatBars = [];
+  const yearGroupMap = new Map(); // year -> { startIndex, count }
+
+  evolucionAnual.forEach(yearItem => {
+    const validExercises = (yearItem.ejercicios || []).filter(
+      ex => typeof ex.promedio === 'number' && ex.promedio > 0
+    );
+
+    if (validExercises.length === 0) return;
+
+    const startIndex = flatBars.length;
+    validExercises.forEach(ex => {
+      if (!exerciseColorMap.has(ex.key)) {
+        exerciseColorMap.set(ex.key, EXERCISE_CHART_PALETTE[nextColorIdx % EXERCISE_CHART_PALETTE.length]);
+        nextColorIdx++;
+      }
+      const palette = exerciseColorMap.get(ex.key);
+
+      flatBars.push({
+        year: yearItem.year,
+        key: ex.key,
+        nombre: ex.nombre,
+        promedio: ex.promedio,
+        colorBg: palette.bg.replace('0.25', '0.80'),
+        colorBorder: palette.border
+      });
+    });
+
+    yearGroupMap.set(yearItem.year, {
+      startIndex: startIndex,
+      count: validExercises.length
+    });
+  });
+
+  if (flatBars.length === 0) return;
+
+  const barLabels = flatBars.map(b => b.nombre);
+  const dataScores = flatBars.map(b => b.promedio);
+  const bgColors = flatBars.map(b => b.colorBg);
+  const borderColors = flatBars.map(b => b.colorBorder);
+
+  const customAnnualBarPlugin = {
+    id: 'customAnnualBarPlugin',
+    afterDatasetsDraw(chart) {
+      const { ctx: chartCtx, chartArea } = chart;
+      const meta = chart.getDatasetMeta(0);
+      if (!meta || !meta.data) return;
+
+      chartCtx.save();
+
+      // 1. TEXTO VERTICAL AL INTERIOR DE CADA BARRA
+      meta.data.forEach((element, index) => {
+        if (!element || element.height <= 0) return;
+        const barItem = flatBars[index];
+        if (!barItem) return;
+
+        const { x, y, base, width } = element;
+        const barHeight = Math.abs(base - y);
+        if (barHeight < 24) return;
+
+        chartCtx.save();
+        chartCtx.translate(x, (y + base) / 2);
+        chartCtx.rotate(-Math.PI / 2);
+
+        const fontSize = Math.min(12, Math.max(9, Math.floor(width * 0.44)));
+        chartCtx.font = `600 ${fontSize}px 'Outfit', 'Plus Jakarta Sans', sans-serif`;
+        chartCtx.textAlign = 'center';
+        chartCtx.textBaseline = 'middle';
+        chartCtx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+        chartCtx.shadowBlur = 4;
+        chartCtx.shadowOffsetX = 1;
+        chartCtx.shadowOffsetY = 1;
+        chartCtx.fillStyle = '#ffffff';
+
+        const maxTextWidth = barHeight - 10;
+        let textToDraw = barItem.nombre;
+        if (chartCtx.measureText(textToDraw).width > maxTextWidth) {
+          while (textToDraw.length > 2 && chartCtx.measureText(textToDraw + '…').width > maxTextWidth) {
+            textToDraw = textToDraw.slice(0, -1);
+          }
+          textToDraw += '…';
+        }
+
+        chartCtx.fillText(textToDraw, 0, 0);
+        chartCtx.restore();
+      });
+
+      // 2. DIBUJAR LOS RÓTULOS DE AÑO CENTRADOS Y LÍNEAS SEPARADORAS SUAVES
+      const bottomY = chartArea.bottom + 22;
+      chartCtx.font = "bold 13px 'Plus Jakarta Sans', sans-serif";
+      chartCtx.textAlign = 'center';
+      chartCtx.textBaseline = 'middle';
+      chartCtx.fillStyle = '#cbd5e1';
+
+      yearGroupMap.forEach((grp, year) => {
+        const firstEl = meta.data[grp.startIndex];
+        const lastEl = meta.data[grp.startIndex + grp.count - 1];
+        if (!firstEl || !lastEl) return;
+
+        const groupCenterX = (firstEl.x + lastEl.x) / 2;
+        chartCtx.fillText(`Año ${year}`, groupCenterX, bottomY);
+
+        // Línea sutil divisoria entre años
+        const nextIndex = grp.startIndex + grp.count;
+        if (nextIndex < meta.data.length) {
+          const nextEl = meta.data[nextIndex];
+          if (nextEl) {
+            const separatorX = (lastEl.x + nextEl.x) / 2;
+            chartCtx.save();
+            chartCtx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+            chartCtx.lineWidth = 1;
+            chartCtx.setLineDash([4, 4]);
+            chartCtx.beginPath();
+            chartCtx.moveTo(separatorX, chartArea.top + 8);
+            chartCtx.lineTo(separatorX, chartArea.bottom + 6);
+            chartCtx.stroke();
+            chartCtx.restore();
+          }
+        }
+      });
+
+      chartCtx.restore();
+    }
+  };
+
+  if (ctx.parentElement) {
+    ctx.parentElement.style.height = '380px';
+  }
+
+  chartInstances[canvasId] = new window.Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: barLabels,
+      datasets: [
+        {
+          data: dataScores,
+          backgroundColor: bgColors,
+          borderColor: borderColors,
+          borderWidth: 1.5,
+          borderRadius: 6,
+          categoryPercentage: 0.96,
+          barPercentage: 0.94,
+          maxBarThickness: 54
+        }
+      ]
+    },
+    plugins: [customAnnualBarPlugin],
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: {
+        padding: {
+          bottom: 34
+        }
+      },
+      plugins: {
+        legend: {
+          display: false
+        },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          titleColor: '#f8fafc',
+          bodyColor: '#cbd5e1',
+          padding: 12,
+          callbacks: {
+            title: (items) => {
+              const idx = items[0]?.dataIndex;
+              const barItem = flatBars[idx];
+              return barItem ? `📅 Año ${barItem.year}` : '';
+            },
+            label: (item) => {
+              const barItem = flatBars[item.dataIndex];
+              const score = item.raw !== null ? `${item.raw} / 10` : 'Sin calificación';
+              return barItem ? `${barItem.nombre}: ${score}` : '';
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          min: 0,
+          max: 10,
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: { color: '#94a3b8' }
+        },
+        x: {
+          grid: { display: false },
+          ticks: {
+            display: false
+          }
+        }
+      }
+    }
+  });
+}
