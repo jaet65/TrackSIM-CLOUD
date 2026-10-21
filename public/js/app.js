@@ -1445,8 +1445,8 @@ function updateCompanyEvolutionDetails(company) {
       const off = item.totalFueraVia || 0;
       const fat = item.totalFatalidades || 0;
       const incidents = col + off + fat;
-      const tasaAccidentes = item.totalConductores > 0 
-        ? Number((incidents / item.totalConductores).toFixed(2)) 
+      const tasaAccidentes = item.totalConductores > 0
+        ? Number((incidents / item.totalConductores).toFixed(2))
         : 0;
 
       let comparativaTexto = '';
@@ -2093,13 +2093,9 @@ function renderCompanyDriversTable(filterSearch = '') {
         break;
       }
       case 'incidentes': {
-        const totalA = (a.colisiones || 0) + (a.fatalidades || 0);
-        const totalB = (b.colisiones || 0) + (b.fatalidades || 0);
-        if (totalA !== totalB) {
-          cmp = totalA - totalB;
-        } else {
-          cmp = (a.fatalidades || 0) - (b.fatalidades || 0);
-        }
+        const totalA = (a.colisiones || 0) + (a.fatalidades || 0) + (a.totalFueraVia || 0);
+        const totalB = (b.colisiones || 0) + (b.fatalidades || 0) + (b.totalFueraVia || 0);
+        cmp = totalA - totalB;
         break;
       }
       case 'estado': {
@@ -2184,7 +2180,7 @@ function renderCompanyDriversTable(filterSearch = '') {
             const repText = ex.totalVeces > 1 ? ` (${ex.totalVeces} sesiones)` : '';
             const bulletColor = ['#38bdf8', '#f97316', '#a855f7', '#22c55e', '#eab308'][i % 5];
             return `<li style="display: flex; align-items: baseline; gap: 0.4rem; color: #f1f5f9;" title="Ejercicio: ${ex.nombre}${repText} (Calificación: ${ex.promedio}/10)">
-              <span style="color: ${bulletColor}; font-size: 0.65rem; line-height: 1;">●</span>
+              <span style="color: ${bulletColor}; font-size: 0.55rem; line-height: 1;">●</span>
               <span>${ex.nombre}</span>
             </li>`;
           }).join('');
@@ -2220,20 +2216,27 @@ function renderCompanyDriversTable(filterSearch = '') {
           </ul>
         </td>
         <td>
-          <span style="color: ${(c.colisiones + c.fatalidades) > 0 ? 'var(--danger)' : 'var(--success)'}; font-weight: 600; font-size: 0.8rem;">
-            ${c.colisiones} col / ${c.fatalidades} fat
-          </span>
+          ${(() => {
+        const totalIncidentes = (c.colisiones || 0) + (c.fatalidades || 0) + (c.totalFueraVia || 0);
+        const isDanger = totalIncidentes > 0;
+        return `
+              <span style="color: ${isDanger ? 'var(--danger)' : 'var(--success)'}; font-size: 0.82rem; font-weight: 700; padding: 0.3rem 0.65rem; text-align: center; display: inline-block; width: 100%;"
+                    title="${c.colisiones || 0} colisiones, ${c.fatalidades || 0} fatalidades, ${c.totalFueraVia || 0} fuera de vía">
+                ${totalIncidentes}
+              </span>
+            `;
+      })()}
         </td>
         <td>
           <span class="badge badge-${c.badgeColor}">${c.estado}</span>
         </td>
         <td class="actions-col">
-          <div class="table-actions">
-            <button class="btn btn-secondary btn-sm" onclick="window.openDriverReportsPrompt('${c.nombre.replace(/'/g, "\\'")}')" title="Ver reporte individual de evaluación (${c.totalEvaluaciones} registrado${c.totalEvaluaciones === 1 ? '' : 's'})">
+          <div class="table-actions" style="display: flex; flex-direction: column; gap: 0.25rem; align-items: stretch; min-width: 50px;">
+            <button class="btn btn-primary btn-sm" onclick="window.openDriverReportsPrompt('${c.nombre.replace(/'/g, "\\'")}')" title="Ver reporte individual de evaluación (${c.totalEvaluaciones} registrado${c.totalEvaluaciones === 1 ? '' : 's'})" style="justify-content: center; width: auto; font-size: 0.72rem; padding: 0.4rem 0.35rem; line-height: 1.2;">
               📄 Reporte${c.totalEvaluaciones > 1 ? `s (${c.totalEvaluaciones})` : ''}
             </button>
             ${c.totalEvaluaciones > 1 ? `
-              <button class="btn btn-secondary btn-sm" onclick="window.inspectDriverEvolucion('${c.nombre.replace(/'/g, "\\'")}')" title="Ver curva de evolución y trazabilidad del conductor">
+              <button class="btn btn-secondary btn-sm" onclick="window.inspectDriverEvolucion('${c.nombre.replace(/'/g, "\\'")}')" title="Ver curva de evolución y trazabilidad del conductor" style="justify-content: center; width: auto; font-size: 0.72rem; padding: 0.4rem 0.35rem; line-height: 1.2;">
                 📈 Trazabilidad
               </button>
             ` : ''}

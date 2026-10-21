@@ -539,6 +539,7 @@ export function createCompanySummaryFromEvaluations(name, slug, evaluaciones, co
       promediosEjercicios: promediosEjerciciosConductor,
       colisiones: evals.reduce((a, b) => a + (b.colisiones || 0), 0),
       fatalidades: evals.reduce((a, b) => a + (b.fatalidades || 0), 0),
+      totalFueraVia: evals.reduce((a, b) => a + (b.vehiculoFueraVia || 0), 0),
       estado: latest.estado || 'Procesado',
       badgeColor: latest.badgeColor || 'info',
       latestEvalId: latest.id
