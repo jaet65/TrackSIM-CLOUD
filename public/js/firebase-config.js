@@ -7,7 +7,9 @@ import {
   signOut, 
   onAuthStateChanged,
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword
+  createUserWithEmailAndPassword,
+  browserLocalPersistence,
+  setPersistence
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { 
   initializeFirestore,
@@ -37,6 +39,13 @@ export const firebaseConfig = {
 // Initialize Primary Firebase App
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+
+// Asegurar que la sesión se guarde en almacenamiento local persistente
+try {
+  setPersistence(auth, browserLocalPersistence).catch(() => {});
+} catch {
+  // Ignorar en entornos sin IndexedDB
+}
 // Configurar Firestore con experimentalForceLongPolling para evitar que el canal WebChannel stream (Listen/channel) sea bloqueado o abortado por el navegador/red
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true

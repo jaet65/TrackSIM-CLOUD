@@ -40,7 +40,7 @@
   <!-- ========================================================
        VENTANA INICIAL DE AUTENTICACIÓN (LOGIN WALL)
        ======================================================== -->
-  <div id="loginScreen" class="login-screen-wrapper">
+  <div id="loginScreen" class="login-screen-wrapper" style="display: none;">
     <div class="login-card">
       <div class="login-header">
         <div class="login-logo">
@@ -922,6 +922,29 @@
             <div class="chart-container" style="height: 320px; width: 100%; margin-top: 1rem;">
               <canvas id="companyRankingChartCanvas"></canvas>
             </div>
+            <!-- Barra de Paginación del Ranking de Operadores -->
+            <div id="companyRankingPaginationBar" style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border-subtle); flex-wrap: wrap; gap: 0.75rem;">
+              <div style="font-size: 0.82rem; color: var(--text-muted);" id="companyRankingPaginationInfo">
+                Mostrando top 1-30 de 0
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.4rem;">
+                <button type="button" id="rankingFirstPageBtn" class="btn btn-secondary btn-sm" title="Primeros 30" style="padding: 0.35rem 0.65rem;">
+                  ««
+                </button>
+                <button type="button" id="rankingPrevPageBtn" class="btn btn-secondary btn-sm" title="Anteriores 30" style="padding: 0.35rem 0.65rem;">
+                  « Ant
+                </button>
+                <span id="rankingCurrentPageDisplay" style="font-size: 0.85rem; font-weight: 600; color: #38bdf8; padding: 0 0.5rem;">
+                  Página 1 de 1
+                </span>
+                <button type="button" id="rankingNextPageBtn" class="btn btn-secondary btn-sm" title="Siguientes 30" style="padding: 0.35rem 0.65rem;">
+                  Sig »
+                </button>
+                <button type="button" id="rankingLastPageBtn" class="btn btn-secondary btn-sm" title="Últimos 30" style="padding: 0.35rem 0.65rem;">
+                  »»
+                </button>
+              </div>
+            </div>
           </details>
 
           <!-- Desglose de Simulaciones de la Flota (colapsable) -->
@@ -986,6 +1009,29 @@
                   <!-- Se puebla dinámicamente con JS -->
                 </tbody>
               </table>
+            </div>
+            <!-- Barra de Paginación de Operadores de la Flota -->
+            <div id="companyDriversPaginationBar" style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border-subtle); flex-wrap: wrap; gap: 0.75rem;">
+              <div style="font-size: 0.82rem; color: var(--text-muted);" id="companyDriversPaginationInfo">
+                Mostrando operadores 1-30 de 0
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.4rem;">
+                <button type="button" id="companyDriversFirstPageBtn" class="btn btn-secondary btn-sm" title="Primera Página" style="padding: 0.35rem 0.65rem;">
+                  ««
+                </button>
+                <button type="button" id="companyDriversPrevPageBtn" class="btn btn-secondary btn-sm" title="Página Anterior" style="padding: 0.35rem 0.65rem;">
+                  « Ant
+                </button>
+                <span id="companyDriversCurrentPageDisplay" style="font-size: 0.85rem; font-weight: 600; color: #38bdf8; padding: 0 0.5rem;">
+                  Página 1 de 1
+                </span>
+                <button type="button" id="companyDriversNextPageBtn" class="btn btn-secondary btn-sm" title="Página Siguiente" style="padding: 0.35rem 0.65rem;">
+                  Sig »
+                </button>
+                <button type="button" id="companyDriversLastPageBtn" class="btn btn-secondary btn-sm" title="Última Página" style="padding: 0.35rem 0.65rem;">
+                  »»
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1130,6 +1176,29 @@
                 <!-- Se puebla con JS -->
               </tbody>
             </table>
+          </div>
+          <!-- Barra de Paginación del Directorio -->
+          <div id="directoryPaginationBar" style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border-subtle); flex-wrap: wrap; gap: 0.75rem;">
+            <div style="font-size: 0.82rem; color: var(--text-muted);" id="directoryPaginationInfo">
+              Mostrando registros 1-50 de 0
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.4rem;">
+              <button type="button" id="dirFirstPageBtn" class="btn btn-secondary btn-sm" title="Primera Página" style="padding: 0.35rem 0.65rem;">
+                ««
+              </button>
+              <button type="button" id="dirPrevPageBtn" class="btn btn-secondary btn-sm" title="Página Anterior" style="padding: 0.35rem 0.65rem;">
+                « Ant
+              </button>
+              <span id="dirCurrentPageDisplay" style="font-size: 0.85rem; font-weight: 600; color: #38bdf8; padding: 0 0.5rem;">
+                Página 1 de 1
+              </span>
+              <button type="button" id="dirNextPageBtn" class="btn btn-secondary btn-sm" title="Página Siguiente" style="padding: 0.35rem 0.65rem;">
+                Sig »
+              </button>
+              <button type="button" id="dirLastPageBtn" class="btn btn-secondary btn-sm" title="Última Página" style="padding: 0.35rem 0.65rem;">
+                »»
+              </button>
+            </div>
           </div>
         </div>
       </section>

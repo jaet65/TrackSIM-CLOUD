@@ -60,9 +60,46 @@ export async function extractTextFromPDF(pdfDoc) {
 }
 
 /**
- * Catálogo de Estados de la República Mexicana para identificar la Sede de evaluación
+ * Catálogo de Ciudades y Estados de la República Mexicana para identificar la Sede de evaluación
+ * Se priorizan las CIUDADES primero para que expresiones como "Irapuato" o "Morelia" no se pierdan.
  */
-export const ESTADOS_MEXICO = [
+export const SEDES_MEXICO = [
+  // Ciudades principales y corredores logísticos de transporte
+  { regex: /(?:Irapuato)(?![a-záéíóúñ])/i, name: 'Irapuato' },
+  { regex: /(?:Morelia)(?![a-záéíóúñ])/i, name: 'Morelia' },
+  { regex: /(?:Celaya)(?![a-záéíóúñ])/i, name: 'Celaya' },
+  { regex: /(?:Le[oó]n)(?![a-záéíóúñ])/i, name: 'León' },
+  { regex: /(?:Salamanca)(?![a-záéíóúñ])/i, name: 'Salamanca' },
+  { regex: /(?:Silao)(?![a-záéíóúñ])/i, name: 'Silao' },
+  { regex: /(?:Guadalajara|GDL|Zapopan|Tlaquepaque|Tonal[aá])(?![a-záéíóúñ])/i, name: 'Guadalajara' },
+  { regex: /(?:Monterrey|MTY|Apodaca|San\s+Nicol[aá]s|Guadalupe\s+NL|Santa\s+Catarina)(?![a-záéíóúñ])/i, name: 'Monterrey' },
+  { regex: /(?:Toluca|Metepec)(?![a-záéíóúñ])/i, name: 'Toluca' },
+  { regex: /(?:Tlalnepantla|Naucalpan|Cuautitl[aá]n(?:\s+Izcalli)?|Tultitl[aá]n|Tepotzotl[aá]n|Ecatepec)(?![a-záéíóúñ])/i, name: 'Estado de México' },
+  { regex: /(?:Puebla|Tehuac[aá]n)(?![a-záéíóúñ])/i, name: 'Puebla' },
+  { regex: /(?:Quer[eé]taro|San\s+Juan\s+del\s+R[ií]o)(?![a-záéíóúñ])/i, name: 'Querétaro' },
+  { regex: /(?:San\s+Luis\s+Potos[ií]|SLP)(?![a-záéíóúñ])/i, name: 'San Luis Potosí' },
+  { regex: /(?:Aguascalientes)(?![a-záéíóúñ])/i, name: 'Aguascalientes' },
+  { regex: /(?:Hermosillo|Nogales|Ciudad\s+Obreg[oó]n)(?![a-záéíóúñ])/i, name: 'Hermosillo' },
+  { regex: /(?:Tijuana|Mexicali|Ensenada)(?![a-záéíóúñ])/i, name: 'Tijuana' },
+  { regex: /(?:Ciudad\s+Ju[aá]rez|Chihuahua)(?![a-záéíóúñ])/i, name: 'Ciudad Juárez' },
+  { regex: /(?:Torre[oó]n|Saltillo|Monclova)(?![a-záéíóúñ])/i, name: 'Torreón' },
+  { regex: /(?:Veracruz|C[oó]rdoba|Orizaba|Coatzacoalcos|Xalapa|Poza\s+Rica)(?![a-záéíóúñ])/i, name: 'Veracruz' },
+  { regex: /(?:M[eé]rida)(?![a-záéíóúñ])/i, name: 'Mérida' },
+  { regex: /(?:Canc[uú]n|Playa\s+del\s+Carmen|Chetumal)(?![a-záéíóúñ])/i, name: 'Cancún' },
+  { regex: /(?:Villahermosa)(?![a-záéíóúñ])/i, name: 'Villahermosa' },
+  { regex: /(?:Tuxtla(?:\s+Guti[eé]rrez)?|Tapachula)(?![a-záéíóúñ])/i, name: 'Tuxtla Gutiérrez' },
+  { regex: /(?:Acapulco|Chilpancingo)(?![a-záéíóúñ])/i, name: 'Acapulco' },
+  { regex: /(?:Cuernavaca)(?![a-záéíóúñ])/i, name: 'Cuernavaca' },
+  { regex: /(?:Pachuca|Tula)(?![a-záéíóúñ])/i, name: 'Pachuca' },
+  { regex: /(?:Culiac[aá]n|Mazatl[aá]n|Los\s+Mochis)(?![a-záéíóúñ])/i, name: 'Culiacán' },
+  { regex: /(?:Tepic)(?![a-záéíóúñ])/i, name: 'Tepic' },
+  { regex: /(?:Colima|Manzanillo)(?![a-záéíóúñ])/i, name: 'Colima' },
+  { regex: /(?:Durango|G[oó]mez\s+Palacio)(?![a-záéíóúñ])/i, name: 'Durango' },
+  { regex: /(?:Zacatecas|Fresnillo)(?![a-záéíóúñ])/i, name: 'Zacatecas' },
+  { regex: /(?:Reynosa|Matamoros|Nuevo\s+Laredo|Tampico)(?![a-záéíóúñ])/i, name: 'Nuevo Laredo' },
+  { regex: /(?:Uruapan|L[aá]zaro\s+C[aá]rdenas|Zamora)(?![a-záéíóúñ])/i, name: 'Michoacán' },
+
+  // Estados de la República (para casos donde solo se indique la entidad federativa)
   { regex: /(?:Estado\s+de\s+M[eé]xico|Edo\.?\s*de\s*M[eé]xico|Edomex)(?![a-záéíóúñ])/i, name: 'Estado de México' },
   { regex: /(?:Ciudad\s+de\s+M[eé]xico|CDMX|Distrito\s+Federal|D\.?F\.?)(?![a-záéíóúñ])/i, name: 'Ciudad de México' },
   { regex: /(?:Baja\s+California\s+Sur)(?![a-záéíóúñ])/i, name: 'Baja California Sur' },
@@ -97,20 +134,22 @@ export const ESTADOS_MEXICO = [
   { regex: /(?:Zacatecas)(?![a-záéíóúñ])/i, name: 'Zacatecas' }
 ];
 
-export const NOMBRES_ESTADOS_MEXICO = ESTADOS_MEXICO.map(e => e.name);
+export const ESTADOS_MEXICO = SEDES_MEXICO;
+export const NOMBRES_SEDES_MEXICO = Array.from(new Set(SEDES_MEXICO.map(e => e.name))).sort((a, b) => a.localeCompare(b));
+export const NOMBRES_ESTADOS_MEXICO = NOMBRES_SEDES_MEXICO;
 
 /**
- * Separa de forma inteligente el nombre de la empresa y la sede (Estado de la República)
+ * Separa de forma inteligente el nombre de la empresa y la sede (Ciudad o Estado)
  */
 export function parseEmpresaYSede(rawText) {
   if (!rawText) return { empresa: '', sede: '' };
   let text = rawText.trim();
   let detectedSede = '';
 
-  for (const estado of ESTADOS_MEXICO) {
-    if (estado.regex.test(text)) {
-      detectedSede = estado.name;
-      text = text.replace(estado.regex, '').trim();
+  for (const item of SEDES_MEXICO) {
+    if (item.regex.test(text)) {
+      detectedSede = item.name;
+      text = text.replace(item.regex, '').trim();
       break;
     }
   }

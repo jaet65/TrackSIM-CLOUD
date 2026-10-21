@@ -34,9 +34,44 @@ export function slugify(text) {
 /**
  * Carga las evaluaciones desde Firestore o caché local de respaldo
  */
-export async function getEvaluations() {
-  let evaluations = [];
+export async function getEvaluations(forceNetwork = false) {
+  // Estrategia Stale-While-Revalidate: si hay datos en caché local, devolverlos al instante
+  const localRaw = localStorage.getItem(LOCAL_STORAGE_KEY);
+  let localData = null;
+  if (localRaw) {
+    try {
+      const parsed = JSON.parse(localRaw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        localData = parsed;
+      }
+    } catch {
+      // Ignorar error de parsing
+    }
+  }
 
+  // Si no se fuerza red y tenemos caché, devolver inmediatamente
+  if (localData && !forceNetwork) {
+    // Sincronizar en segundo plano de manera silenciosa para no bloquear el hilo de la UI
+    setTimeout(async () => {
+      try {
+        const q = query(collection(db, COLLECTION_NAME), orderBy('fechaCapacitacion', 'desc'));
+        const snapshot = await getDocs(q);
+        const fresh = [];
+        snapshot.forEach((docSnap) => {
+          fresh.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        if (fresh.length > 0 || snapshot.empty) {
+          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(fresh));
+        }
+      } catch {
+        // En background
+      }
+    }, 100);
+
+    return localData;
+  }
+
+  let evaluations = [];
   try {
     const q = query(collection(db, COLLECTION_NAME), orderBy('fechaCapacitacion', 'desc'));
     const snapshot = await getDocs(q);
@@ -45,24 +80,11 @@ export async function getEvaluations() {
       evaluations.push({ id: docSnap.id, ...docSnap.data() });
     });
 
-    // Firestore es la fuente primaria de la verdad cuando la consulta tiene éxito.
-    // Si la colección se vació o se eliminaron registros en Firestore, actualizamos el almacenamiento local inmediatamente.
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(evaluations));
     return evaluations;
   } catch (error) {
-    console.warn('No se pudo consultar Firestore directamente (posible regla o conexión offline). Usando almacenamiento local.', error);
-
-    // Respaldo en localStorage SOLO si falló la conexión con Firestore (modo offline)
-    const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (localData) {
-      try {
-        const parsed = JSON.parse(localData);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch {
-        console.error('Error parseando datos locales:', e);
-      }
-    }
-    return [];
+    console.warn('No se pudo consultar Firestore directamente. Usando almacenamiento local.', error);
+    return localData || [];
   }
 }
 

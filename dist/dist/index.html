@@ -1,0 +1,1789 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TrackSIM CLOUD - Trazabilidad y Evaluación de Conductores</title>
+  <meta name="description"
+    content="Plataforma de trazabilidad y análisis inteligente de capacitaciones de operadores de transporte con simulación y Firestore.">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/x-icon" href="/assets/favicon-De5odEMW.ico">
+
+  <!-- Google Fonts: Plus Jakarta Sans & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet">
+
+  <!-- PDF.js para lectura client-side de PDFs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (window.pdfjsLib) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      // Silenciar advertencias internas de TrueType font no esenciales del worker (ej: Warning: TT: undefined function: 21)
+      window.pdfjsLib.verbosity = 0; // 0 = ERRORS only
+    }
+  </script>
+
+  <!-- Chart.js para visualización de métricas y gráficos de evolución -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Estilos del Sistema de Diseño -->
+  <script type="module" crossorigin src="/assets/index-CM2fzoyc.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-Bu7tO977.css">
+</head>
+
+<body>
+
+  <!-- ========================================================
+       VENTANA INICIAL DE AUTENTICACIÓN (LOGIN WALL)
+       ======================================================== -->
+  <div id="loginScreen" class="login-screen-wrapper">
+    <div class="login-card">
+      <div class="login-header">
+        <div class="login-logo">
+          <img src="/assets/Logo-LIOIo5ZZ.png" alt="TrackSIM Logo" class="brand-logo-img">
+        </div>
+        <h2>TrackSIM CLOUD</h2>
+        <p>Trazabilidad y Evaluación de Operadores</p>
+      </div>
+
+      <!-- Alerta de Error de Acceso -->
+      <div id="loginAlert" class="login-alert"></div>
+
+      <!-- Sección Administrador con Google -->
+      <div style="margin-bottom: 0.5rem;">
+        <button id="googleLoginBtn" class="login-btn-google" type="button">
+          <svg width="20" height="20" viewBox="0 0 24 24">
+            <path fill="#4285F4"
+              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+            <path fill="#34A853"
+              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+            <path fill="#FBBC05"
+              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+            <path fill="#EA4335"
+              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+          </svg>
+          Ingresar con Google
+        </button>
+        <div class="domain-hint">
+          ⚡ Acceso directo para cuentas corporativas y administradores (@corporativomaf.com)
+        </div>
+      </div>
+
+      <div class="login-divider">
+        <span>O ingresa con correo y contraseña</span>
+      </div>
+
+      <!-- Pestañas de Login / Registro -->
+      <div class="auth-tabs">
+        <button id="authTabLogin" type="button" class="auth-tab active">Iniciar Sesión</button>
+        <button id="authTabRegister" type="button" class="auth-tab">Crear Cuenta</button>
+      </div>
+
+      <!-- Formulario Lector Correo / Contraseña (Iniciar Sesión) -->
+      <form id="viewerLoginForm" autocomplete="on">
+        <div class="form-group">
+          <label for="viewerEmail">Correo Electrónico:</label>
+          <input type="email" id="viewerEmail" class="form-control" placeholder="usuario@empresa.com" required>
+        </div>
+        <div class="form-group">
+          <label for="viewerPassword">Contraseña:</label>
+          <input type="password" id="viewerPassword" class="form-control" placeholder="••••••••" required>
+        </div>
+        <button id="viewerSubmitBtn" type="submit" class="btn btn-primary btn-login-submit">
+          Iniciar Sesión
+        </button>
+        <p
+          style="font-size: 0.75rem; color: var(--text-muted); text-align: center; margin-top: 0.85rem; line-height: 1.4;">
+          ¿No tienes cuenta? Haz clic en <strong>Crear Cuenta</strong> arriba para registrarte con el correo de tu
+          empresa.
+        </p>
+      </form>
+
+      <!-- Formulario de Autoregistro de Usuario (Lector) -->
+      <form id="viewerRegisterForm" autocomplete="on" style="display: none;">
+        <div class="form-group">
+          <label for="regEmail">Correo Corporativo:</label>
+          <input type="email" id="regEmail" class="form-control" placeholder="tu.nombre@empresa.com" required>
+          <small id="regDomainHint"
+            style="font-size: 0.72rem; color: var(--primary); display: block; margin-top: 0.3rem;">
+            Se vinculará a la empresa según el dominio registrado en el sistema.
+          </small>
+        </div>
+        <div class="form-group">
+          <label for="regPassword">Contraseña:</label>
+          <input type="password" id="regPassword" class="form-control" placeholder="Mínimo 6 caracteres" minlength="6"
+            required>
+        </div>
+        <div class="form-group">
+          <label for="regConfirmPassword">Confirmar Contraseña:</label>
+          <input type="password" id="regConfirmPassword" class="form-control" placeholder="Repite tu contraseña"
+            minlength="6" required>
+        </div>
+        <button id="regSubmitBtn" type="submit" class="btn btn-primary btn-login-submit">
+          Registrarme como Usuario
+        </button>
+        <p
+          style="font-size: 0.75rem; color: var(--text-muted); text-align: center; margin-top: 0.85rem; line-height: 1.4;">
+          El registro asigna automáticamente el perfil de <strong>Usuario Lector</strong> con acceso a las evaluaciones
+          de tu empresa.
+        </p>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       APLICACIÓN PRINCIPAL (PROTEGIDA POR LOGIN)
+       ======================================================== -->
+  <div id="appContainer" style="display: none;">
+
+    <!-- Barra de Navegación Superior -->
+    <header class="navbar">
+      <div class="nav-left">
+        <div class="brand-badge">
+          <div class="brand-icon">
+            <img src="/assets/Logo-LIOIo5ZZ.png" alt="TrackSIM Logo" class="brand-logo-img">
+          </div>
+          <div class="brand-text">
+            <h1>TrackSIM</h1>
+            <span>CLOUD TELEMETRY</span>
+          </div>
+        </div>
+
+        <nav>
+          <ul class="nav-links">
+            <li class="nav-item active" data-tab="dashboard">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="9"></rect>
+                <rect x="14" y="3" width="7" height="5"></rect>
+                <rect x="14" y="12" width="7" height="9"></rect>
+                <rect x="3" y="16" width="7" height="5"></rect>
+              </svg>
+              Dashboard
+            </li>
+            <li id="navTabIngesta" class="nav-item admin-only" data-tab="ingesta">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              Ingesta de PDFs
+            </li>
+            <li class="nav-item" data-tab="evolucion">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg>
+              Trazabilidad
+            </li>
+            <li class="nav-item" data-tab="empresas">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+              </svg>
+              Métricas
+            </li>
+            <li id="navTabDirectorio" class="nav-item admin-only" data-tab="directorio">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <line x1="8" y1="6" x2="21" y2="6"></line>
+                <line x1="8" y1="12" x2="21" y2="12"></line>
+                <line x1="8" y1="18" x2="21" y2="18"></line>
+                <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                <line x1="3" y1="18" x2="3.01" y2="18"></line>
+              </svg>
+              Directorio
+            </li>
+          </ul>
+        </nav>
+      </div>
+
+      <div class="nav-right">
+        <!-- Botón Administrador: Gestión de Usuarios -->
+        <button id="openUserMgmtBtn" class="nav-mgmt-btn admin-only" style="display: none;" type="button">
+          👥 Usuarios
+        </button>
+
+        <!-- Perfil de usuario autenticado -->
+        <div id="userContainer" class="user-profile">
+          <img id="userAvatar" class="user-avatar" src="https://ui-avatars.com/api/?name=User" alt="Avatar">
+          <div class="user-info">
+            <div style="display: flex; align-items: center; gap: 0.4rem;">
+              <span id="userName" class="user-name">Usuario</span>
+            </div>
+            <div id="userEmailSubtitle" class="user-role">correo@corporativomaf.com</div>
+          </div>
+          <button id="logoutBtn" class="btn btn-secondary btn-sm" style="margin-left: 0.5rem; padding: 0.25rem 0.6rem;">
+            Salir
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Contenedor Principal -->
+    <main class="main-content">
+
+      <!-- Banner de Aviso para Usuarios Sin Empresa Asignada -->
+      <div id="unassignedCompanyBanner" class="readonly-banner"
+        style="display: none; background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.35); color: #fde68a;">
+        <span style="font-size: 1.25rem;">⚠️</span>
+        <div>
+          <strong>Cuenta pendiente de vinculación empresarial.</strong>
+          <div style="font-size: 0.8rem; color: #cbd5e1; margin-top: 0.2rem;">
+            Tu correo electrónico aún no cuenta con una empresa asignada o su dominio no está registrado. Contacta al
+            Administrador para vincular tu cuenta a tu empresa.
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================================
+         VISTA 1: DASHBOARD EJECUTIVO
+         ======================================================== -->
+      <section id="view-dashboard" class="view-section active">
+        <div class="section-header">
+          <div>
+            <h2>📊 Panel Ejecutivo de Capacitación</h2>
+            <p>Métricas consolidadas de evaluaciones, desempeño de operadores y telemetría de simulador.</p>
+          </div>
+          <div>
+            <button id="dashboardNewEvalBtn" class="btn btn-primary admin-only" onclick="window.switchTab('ingesta')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              Nueva Evaluación PDF
+            </button>
+          </div>
+        </div>
+
+        <!-- Cuadrícula de KPIs -->
+        <div class="kpi-grid">
+          <div class="glass-card kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">Evaluaciones Registradas</span>
+              <div class="kpi-icon blue">📁</div>
+            </div>
+            <div id="kpiTotalEvals" class="kpi-value">0</div>
+            <div class="kpi-footer">Total de reportes PDF procesados</div>
+          </div>
+
+          <div class="glass-card kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">Conductores Únicos</span>
+              <div class="kpi-icon purple">🚛</div>
+            </div>
+            <div id="kpiTotalDrivers" class="kpi-value">0</div>
+            <div class="kpi-footer">Operadores con historial activo</div>
+          </div>
+
+          <div class="glass-card kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">Promedio General</span>
+              <div class="kpi-icon emerald">⭐</div>
+            </div>
+            <div id="kpiAvgScore" class="kpi-value">0.00</div>
+            <div class="kpi-footer">Puntaje global escala 0 a 10</div>
+          </div>
+
+          <div class="glass-card kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">Tasa de Aprobación</span>
+              <div class="kpi-icon amber">🎯</div>
+            </div>
+            <div id="kpiApprovalRate" class="kpi-value">0%</div>
+            <div class="kpi-footer">Operadores con nota &gt;= 6.0</div>
+          </div>
+
+          <div class="glass-card kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-label">Incidentes en Simulador</span>
+              <div class="kpi-icon rose">⚠️</div>
+            </div>
+            <div id="kpiTotalIncidents" class="kpi-value">0</div>
+            <div class="kpi-footer">Colisiones y salidas de vía</div>
+          </div>
+        </div>
+
+        <!-- Gráficos Principales -->
+        <div class="charts-grid charts-grid-single">
+          <!-- Gráfico de distribución de rendimiento -->
+          <div class="glass-card">
+            <div class="chart-header">
+              <div>
+                <h3 class="chart-title">Distribución de Estados de Aprobación</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted);">Clasificación según los resultados de evaluación
+                  final</p>
+              </div>
+            </div>
+            <div class="chart-container">
+              <canvas id="distributionChartCanvas"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabla de Evaluaciones Recientes -->
+        <div class="glass-card">
+          <div class="chart-header">
+            <h3 class="chart-title">Últimas Evaluaciones Procesadas</h3>
+            <button class="btn btn-secondary btn-sm admin-only" onclick="window.switchTab('directorio')">Ver
+              todas</button>
+          </div>
+          <div class="table-responsive">
+            <table class="custom-table">
+              <thead>
+                <tr>
+                  <th>Conductor / Empresa</th>
+                  <th>Fecha de Capacitación</th>
+                  <th>Calificación Final</th>
+                  <th>Estado</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody id="recentEvalsTableBody">
+                <!-- Se puebla dinámicamente con JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================
+         VISTA 2: INGESTA INTELIGENTE DE PDFS
+         ======================================================== -->
+      <section id="view-ingesta" class="view-section">
+        <div class="section-header">
+          <div>
+            <h2>📂 Extracción e Ingesta Inteligente de PDFs</h2>
+            <p>Sube los reportes PDF del simulador para extraer automáticamente la información y almacenarla en
+              Firestore.</p>
+          </div>
+        </div>
+
+        <!-- Banner de Solo Lectura para Usuarios Lectores -->
+        <div id="ingestaLockedAlert" class="readonly-banner" style="display: none;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <div>
+            <strong>Modo Solo Lectura:</strong> La carga y extracción de reportes PDF está reservada exclusivamente para
+            Administradores de <em>Corporativo MAF</em> (cuentas <code>@corporativomaf.com</code>). Tu cuenta tiene
+            acceso completo para consultar Dashboard, Trazabilidad, Empresas y Directorio.
+          </div>
+        </div>
+
+        <!-- Zona de Arrastrar y Soltar -->
+        <div id="uploadZoneWrapper" class="upload-zone-wrapper">
+          <input type="file" id="pdfFileInput" multiple accept=".pdf" style="display: none;">
+
+          <div id="pdfDropzone" class="dropzone">
+            <div class="dropzone-icon">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="12" y1="18" x2="12" y2="12"></line>
+                <line x1="9" y1="15" x2="15" y2="15"></line>
+              </svg>
+            </div>
+            <h3>Arrastra tus archivos PDF aquí o haz clic para seleccionarlos</h3>
+            <p>Compatible con los reportes individuales generados por el simulador TrackSIM</p>
+
+            <div class="upload-actions">
+              <button class="btn btn-primary" type="button" onclick="document.getElementById('pdfFileInput').click()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                Examinar Archivos Locales (.pdf)
+              </button>
+            </div>
+          </div>
+
+          <!-- Indicador de Progreso de Análisis -->
+          <div id="processingCard" class="glass-card processing-card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <strong id="processingStatusText" style="font-size: 0.9rem; color: var(--primary);">Procesando
+                PDFs...</strong>
+            </div>
+            <div class="progress-bar-bg">
+              <div id="processingBarFill" class="progress-bar-fill"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabla de Revisión Previa (Staging) -->
+        <div id="stagingReviewBox" class="glass-card extracted-review-box">
+          <div
+            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+            <div>
+              <h3 style="font-size: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+                Datos Extraídos con Éxito
+                <span id="stagingCountBadge" class="badge badge-info">0 pendientes</span>
+              </h3>
+              <p style="font-size: 0.85rem; color: var(--text-secondary);">Verifica o edita la empresa y sede antes de
+                confirmar el guardado en Cloud Firestore.</p>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+              <button id="toggleEditBatchBtn" class="btn btn-secondary"
+                style="border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">
+                ✏️ Editar Empresa / Sede
+              </button>
+              <button id="discardBatchBtn" class="btn btn-secondary"
+                style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35);">
+                ✕ Descartar Lote
+              </button>
+              <button id="saveBatchBtn" class="btn btn-success">
+                💾 Confirmar y Guardar en Firestore
+              </button>
+            </div>
+          </div>
+
+          <!-- Banner Informativo de Detección Automática -->
+          <div id="detectedConfigBanner"
+            style="background: linear-gradient(135deg, rgba(56, 189, 248, 0.1), rgba(168, 85, 247, 0.08)); border: 1px solid rgba(56, 189, 248, 0.28); border-radius: var(--radius-sm); padding: 0.85rem 1.2rem; margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <div
+                style="width: 36px; height: 36px; border-radius: 8px; background: rgba(56, 189, 248, 0.15); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0;">
+                🏢
+              </div>
+              <div>
+                <div id="detectedSummaryContent"
+                  style="font-size: 0.88rem; font-weight: 600; color: #f8fafc; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                  <!-- Se puebla dinámicamente con las empresas y sedes detectadas en cada PDF -->
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">
+                  Cada reporte conserva su empresa y sede detectadas de forma independiente. Usa el botón "✏️ Editar
+                  Empresa / Sede" solo si necesitas corregir alguna.
+                </div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <span class="badge badge-success" style="font-size: 0.72rem; padding: 0.25rem 0.6rem;">
+                ✓ Detección Automática
+              </span>
+            </div>
+          </div>
+
+          <!-- Panel de Edición Manual por Lote (Oculto por defecto hasta pulsar Editar) -->
+          <div id="batchEditPanel" class="batch-edit-card" style="display: none;">
+            <div class="batch-edit-header">
+              <span class="batch-edit-title">
+                ⚡ Asignar Empresa y Sede por Lote (Opcional)
+              </span>
+              <span class="batch-edit-subtitle">
+                Aplica a todos los reportes del lote o edita filas específicas directamente en la tabla
+              </span>
+            </div>
+            <div class="batch-edit-fields">
+              <div class="batch-edit-group">
+                <label for="batchEmpresaInput" class="batch-edit-label">
+                  <span>🏢</span> Empresa para todo el lote:
+                </label>
+                <input type="text" id="batchEmpresaInput" class="batch-edit-input"
+                  placeholder="Ej: La Corona, Jarritos...">
+              </div>
+              <div class="batch-edit-group">
+                <label for="batchSedeSelect" class="batch-edit-label">
+                  <span>📍</span> Sede para todo el lote:
+                </label>
+                <select id="batchSedeSelect" class="batch-edit-select">
+                  <option value="">-- Seleccionar Estado --</option>
+                </select>
+              </div>
+              <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <button type="button" id="applyBatchEmpresaSedeBtn" class="btn btn-primary"
+                  style="height: 40px; font-size: 0.85rem;">
+                  ⚡ Asignar a Todo el Lote
+                </button>
+                <button type="button" id="resetToDetectedBtn" class="btn btn-secondary"
+                  style="height: 40px; font-size: 0.85rem;"
+                  title="Restaurar a las empresas y sedes detectadas en cada PDF">
+                  🔄 Restaurar Detecciones
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="custom-table">
+              <thead>
+                <tr>
+                  <th>Conductor / Archivo</th>
+                  <th id="stagingEmpresaHeader" style="min-width: 190px;">Empresa y Sede</th>
+                  <th>Fecha</th>
+                  <th>Habilidades Manejo (3 pts)</th>
+                  <th>Práctica Simulador (7 pts)</th>
+                  <th>Evaluación Final</th>
+                  <th>Incidentes</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="stagingTableBody">
+                <!-- Se puebla con los PDFs leídos -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================
+         VISTA 3: TRAZABILIDAD Y EVOLUCIÓN
+         ======================================================== -->
+      <section id="view-evolucion" class="view-section">
+        <div class="section-header">
+          <div>
+            <h2>📈 Trazabilidad y Evolución Histórica</h2>
+            <p>Sigue el progreso de cada conductor a través del tiempo y analiza la evolución consolidada de cada
+              empresa a través de los años.</p>
+          </div>
+        </div>
+
+        <!-- Sub-navegación: Por Operador vs Por Empresa -->
+        <div class="subnav-tabs" role="tablist">
+          <button id="subnavEvolucionDriverBtn" class="subnav-btn active" type="button" role="tab" aria-selected="true">
+            👤 Evolución por Operador
+          </button>
+          <button id="subnavEvolucionCompanyBtn" class="subnav-btn" type="button" role="tab" aria-selected="false">
+            🏢 Evolución por Empresa (Histórico Anual)
+          </button>
+        </div>
+
+        <!-- ====================================================
+             PANEL 1: EVOLUCIÓN POR OPERADOR ESPECÍFICO
+             ==================================================== -->
+        <div id="panelEvolucionDriver">
+          <!-- Barra de Selección de Conductor -->
+          <div id="driverSelectorBar" class="driver-selector-bar" style="display: none;">
+            <label for="driverSelect"
+              style="font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="7" r="4"></circle>
+                <path d="M5.5 21a8.38 8.38 0 0 1 13 0"></path>
+              </svg>
+              Seleccionar Conductor:
+            </label>
+            <select id="driverSelect" class="custom-select">
+              <!-- Opciones pobladas dinámicamente -->
+            </select>
+          </div>
+
+          <!-- Estado Vacío Evolución Operador -->
+          <div id="driverHeroEmpty" class="glass-card" style="display: block; text-align: center; padding: 4rem 2rem;">
+            <div style="font-size: 3.5rem; margin-bottom: 1rem;">🚛</div>
+            <h3 style="font-size: 1.5rem; margin-bottom: 0.5rem; color: #ffffff;">Sin Evaluaciones Registradas</h3>
+            <p style="color: var(--text-secondary); max-width: 500px; margin: 0 auto 1.5rem; line-height: 1.6;">
+              Aún no se han cargado reportes PDF en el sistema. Sube los archivos de tus operadores en la sección de
+              Ingesta para comenzar a visualizar el historial y trazabilidad.
+            </p>
+            <button id="driverEmptyUploadBtn" class="btn btn-primary admin-only" onclick="window.switchTab('ingesta')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              Cargar PDFs de Evaluación
+            </button>
+            <p class="viewer-only" style="color: var(--text-muted); font-size: 0.88rem; margin-top: 1rem;">
+              ℹ️ Modo Lectura: Las evaluaciones son cargadas y gestionadas por los Administradores de la plataforma.
+            </p>
+          </div>
+
+          <!-- Contenido del Conductor -->
+          <div id="driverHeroContent" style="display: none;">
+            <!-- Ficha Resumen del Conductor -->
+            <div class="glass-card driver-hero-card">
+              <div id="driverInitialsAvatar" class="driver-avatar-huge">-</div>
+              <div>
+                <h3 id="driverNameTitle" style="font-size: 1.8rem; margin-bottom: 0.2rem;">-</h3>
+                <p id="driverCompanySubtitle" style="color: var(--primary); font-size: 0.95rem; font-weight: 600;">-</p>
+              </div>
+              <div class="driver-stats-strip">
+                <div class="stat-metric-box">
+                  <span class="label">Evaluaciones</span>
+                  <span id="statTotalEvals" class="val">0</span>
+                </div>
+                <div class="stat-metric-box">
+                  <span class="label">Último Score</span>
+                  <span id="statLatestScore" class="val" style="color: var(--primary);">0.00 / 10</span>
+                </div>
+                <div class="stat-metric-box">
+                  <span class="label">Promedio</span>
+                  <span id="statAvgScore" class="val">0.00</span>
+                </div>
+                <div class="stat-metric-box">
+                  <span class="label">Evolución</span>
+                  <span id="statEvolutionChange" class="val" style="color: var(--text-muted);">-</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Gráfico de Evolución Temporal -->
+            <div class="glass-card" style="margin-bottom: 2rem;">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Curva de Evolución Temporal del Operador</h3>
+                  <p style="font-size: 0.8rem; color: var(--text-muted);">Progreso de Calificación Final, Simulador y
+                    Habilidades en cada capacitación</p>
+                </div>
+              </div>
+              <div class="chart-container" style="height: 340px;">
+                <canvas id="driverEvolutionChartCanvas"></canvas>
+              </div>
+            </div>
+
+            <!-- Gráfico de Conteo de Accidentes e Incidentes -->
+            <div class="glass-card" style="margin-bottom: 2rem;">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">🚨 Curva de Conteo de Incidentes y Accidentes</h3>
+                  <p style="font-size: 0.8rem; color: var(--text-muted);">
+                    Evolución temporal de 💥 Colisiones en Conducción, 💀 Fatalidades en Simulaciones y 🛑 Salidas de la
+                    Vía
+                  </p>
+                </div>
+              </div>
+              <div class="chart-container" style="height: 330px;">
+                <canvas id="driverAccidentsChartCanvas"></canvas>
+              </div>
+            </div>
+
+            <!-- Línea de Tiempo de Sesiones -->
+            <div class="glass-card">
+              <h3 class="chart-title">Historial Cronológico de Capacitaciones</h3>
+              <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">Detalle de cada curso
+                tomado y resultados específicos obtenidos.</p>
+              <div id="driverTimelineContainer" class="timeline-list">
+                <!-- Items de timeline con JS -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ====================================================
+             PANEL 2: EVOLUCIÓN HISTÓRICA POR EMPRESA (POR AÑOS)
+             ==================================================== -->
+        <div id="panelEvolucionCompany" style="display: none;">
+          <!-- Barra de Selección de Empresa para Evolución Anual -->
+          <div id="companyEvolutionSelectorBar" class="driver-selector-bar" style="display: none;">
+            <label for="companyEvolutionSelect"
+              style="font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+              </svg>
+              Seleccionar Empresa:
+            </label>
+            <select id="companyEvolutionSelect" class="custom-select">
+              <!-- Opciones pobladas dinámicamente -->
+            </select>
+          </div>
+
+          <!-- Estado Vacío Evolución Empresa -->
+          <div id="companyEvolutionEmpty" class="glass-card"
+            style="display: block; text-align: center; padding: 4rem 2rem;">
+            <div style="font-size: 3.5rem; margin-bottom: 1rem;">🏢</div>
+            <h3 style="font-size: 1.5rem; margin-bottom: 0.5rem; color: #ffffff;">Sin Flotas Registradas</h3>
+            <p style="color: var(--text-secondary); max-width: 500px; margin: 0 auto 1.5rem; line-height: 1.6;">
+              No hay reportes ni empresas registradas para evaluar su progreso temporal a través de los años. Sube
+              archivos en Ingesta para comenzar.
+            </p>
+            <button class="btn btn-primary admin-only" onclick="window.switchTab('ingesta')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              Cargar PDFs de Evaluación
+            </button>
+          </div>
+
+          <!-- Contenido de Evolución de la Empresa -->
+          <div id="companyEvolutionContent" style="display: none;">
+            <!-- Ficha Resumen Hero de la Empresa -->
+            <div class="glass-card driver-hero-card">
+              <div id="companyEvolutionInitialsAvatar" class="driver-avatar-huge"
+                style="background: linear-gradient(135deg, #0284c7, #38bdf8); color: #fff;">🏢</div>
+              <div>
+                <h3 id="companyEvolutionNameTitle" style="font-size: 1.8rem; margin-bottom: 0.2rem;">-</h3>
+                <p id="companyEvolutionSedesSubtitle"
+                  style="color: var(--primary); font-size: 0.95rem; font-weight: 600;">Flota Oficial</p>
+              </div>
+              <div class="driver-stats-strip">
+                <div class="stat-metric-box">
+                  <span class="label">Años Evaluados</span>
+                  <span id="companyStatTotalYears" class="val" style="color: #38bdf8;">0</span>
+                </div>
+                <div class="stat-metric-box">
+                  <span class="label">Total Operadores</span>
+                  <span id="companyEvolutionStatTotalDrivers" class="val">0</span>
+                </div>
+                <div class="stat-metric-box">
+                  <span class="label">Total Evaluaciones</span>
+                  <span id="companyEvolutionStatTotalEvals" class="val">0</span>
+                </div>
+                <div class="stat-metric-box">
+                  <span class="label">Promedio Histórico</span>
+                  <span id="companyEvolutionStatAvgScore" class="val" style="color: var(--success);">0.00</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Gráfico 1: Curva de Evolución Temporal de la Empresa (Promedio por Año) -->
+            <div class="glass-card" style="margin-bottom: 2rem;">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Curva de Evolución Anual de la Flota</h3>
+                  <p style="font-size: 0.8rem; color: var(--text-muted);">Calificación Final Promedio, Simulador y
+                    Habilidades de manejo comparados por año</p>
+                </div>
+              </div>
+              <div class="chart-container" style="height: 340px;">
+                <canvas id="companyAnnualEvolutionChartCanvas"></canvas>
+              </div>
+            </div>
+
+            <!-- Gráfico de Conteo de Accidentes Anual de la Empresa -->
+            <div class="glass-card" style="margin-bottom: 2rem;">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">🚨 Curva de Conteo de Incidentes y Siniestralidad de la Flota</h3>
+                  <p style="font-size: 0.8rem; color: var(--text-muted);">
+                    Evolución anual comparada de 💥 Colisiones en Conducción, 💀 Fatalidades en Simulaciones y 🛑
+                    Salidas de la Vía
+                  </p>
+                </div>
+              </div>
+              <div class="chart-container" style="height: 330px;">
+                <canvas id="companyAnnualAccidentsChartCanvas"></canvas>
+              </div>
+            </div>
+
+            <!-- Gráfico 2: Comparativa de Rendimiento por Ejercicio a través de los Años -->
+            <div class="glass-card" style="margin-bottom: 2rem;">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Evolución de Rendimiento por Ejercicio / Simulación a través de los Años</h3>
+                  <p id="companyAnnualExercisesSubtitle" style="font-size: 0.8rem; color: var(--text-muted);">Contraste
+                    anual del desempeño medio de la flota en cada módulo y maniobra impartida</p>
+                </div>
+              </div>
+              <div class="chart-container" style="height: 340px;">
+                <canvas id="companyAnnualExercisesChartCanvas"></canvas>
+              </div>
+            </div>
+
+            <!-- Tabla Resumen Anual Comparativa -->
+            <div class="glass-card">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Desglose Anual Consolidado de la Empresa</h3>
+                  <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
+                    Resumen de métricas globales, índice de siniestralidad e incremento de rendimiento año con año.
+                  </p>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="custom-table" id="companyAnnualTable">
+                  <thead>
+                    <tr>
+                      <th>Año</th>
+                      <th>Operadores Evaluados</th>
+                      <th>Evaluaciones Realizadas</th>
+                      <th>Calificación Promedio</th>
+                      <th>Habilidades (3 pts)</th>
+                      <th>Simulador (7 pts)</th>
+                      <th>Tasa de Aprobación</th>
+                      <th>Incidentes Totales</th>
+                      <th>Tasa Accidentes</th>
+                    </tr>
+                  </thead>
+                  <tbody id="companyAnnualTableBody">
+                    <!-- Filas generadas dinámicamente con JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================
+         VISTA: FLOTAS POR EMPRESA
+         ======================================================== -->
+      <section id="view-empresas" class="view-section">
+        <div class="section-header">
+          <div>
+            <h2>🏢 Inspección de Flotas por Empresa</h2>
+            <p>Supervisa, compara y analiza el desempeño consolidado de todos los operadores de cada empresa cliente.
+            </p>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <span id="companyCountBadge" class="badge badge-info">0 Empresas</span>
+          </div>
+        </div>
+
+        <!-- Estado Vacío Empresas -->
+        <div id="companyEmptyState" class="glass-card" style="display: block; text-align: center; padding: 4rem 2rem;">
+          <div style="font-size: 3.5rem; margin-bottom: 1rem;">🏢</div>
+          <h3 style="font-size: 1.5rem; margin-bottom: 0.5rem; color: #ffffff;">Sin Flotas Registradas</h3>
+          <p style="color: var(--text-secondary); max-width: 520px; margin: 0 auto 1.5rem; line-height: 1.6;">
+            Aún no hay empresas o evaluaciones cargadas en el sistema. Al subir reportes PDF en el simulador, las flotas
+            y sus respectivos conductores se asociarán automáticamente aquí.
+          </p>
+          <button class="btn btn-primary admin-only" onclick="window.switchTab('ingesta')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            Cargar PDFs de Evaluación
+          </button>
+        </div>
+
+        <div id="companyContent" style="display: none;">
+          <!-- Barra de Selección de Empresa y Búsqueda -->
+          <div class="driver-selector-bar" style="justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+            <div id="companySelectWrapper" style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+              <label for="companySelect"
+                style="font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 0.4rem;">
+                🏢 Seleccionar Empresa:
+              </label>
+              <select id="companySelect" class="custom-select" style="min-width: 220px; max-width: 100%;">
+                <!-- Opciones dinámicas -->
+              </select>
+            </div>
+            <div class="search-input-wrapper" style="max-width: 320px; margin: 0;">
+              <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input type="text" id="companyDriverSearch" class="search-input"
+                placeholder="Buscar operador en esta empresa...">
+            </div>
+          </div>
+
+          <!-- Hero Resumen de la Empresa -->
+          <div class="glass-card driver-hero-card" style="margin-bottom: 1.5rem;">
+            <div class="driver-avatar-huge"
+              style="background: linear-gradient(135deg, #0284c7, #38bdf8); font-size: 2rem;">🏢</div>
+            <div>
+              <h3 id="companyNameTitle" style="font-size: 1.8rem; margin-bottom: 0.2rem; color: #ffffff;">-</h3>
+              <p id="companySedesSubtitle" style="color: var(--primary); font-size: 0.95rem; font-weight: 600;">Flota
+                Oficial de Autotransporte TrackSIM</p>
+              <div style="margin-top: 0.6rem;">
+                <button class="btn btn-secondary btn-sm"
+                  onclick="window.inspectCompanyEvolucion && window.inspectCompanyEvolucion();"
+                  title="Ver trazabilidad y evolución histórica anual de esta flota">
+                  📈 Ver Trazabilidad Anual de la Empresa
+                </button>
+              </div>
+            </div>
+            <div class="driver-stats-strip">
+              <div class="stat-metric-box">
+                <span class="label">Operadores</span>
+                <span id="companyStatTotalDrivers" class="val" style="color: #38bdf8;">0</span>
+              </div>
+              <div class="stat-metric-box">
+                <span class="label">Evaluaciones</span>
+                <span id="companyStatTotalEvals" class="val">0</span>
+              </div>
+              <div class="stat-metric-box">
+                <span class="label">Promedio Flota</span>
+                <span id="companyStatAvgScore" class="val" style="color: #10b981;">0.00 / 10</span>
+              </div>
+              <div class="stat-metric-box">
+                <span class="label">Tasa Aprobación</span>
+                <span id="companyStatApprovalRate" class="val" style="color: #fbbf24;">0%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Ranking de Operadores de la Empresa (ancho completo, colapsable) -->
+          <details id="companyRankingDetails" class="glass-card" style="margin-bottom: 1.5rem;">
+            <summary class="chart-header" style="cursor: pointer; list-style: none; user-select: none;">
+              <div>
+                <h3 class="chart-title">🏆 Ranking de Operadores de la Flota</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted);">Evaluación final (promedio si tiene más de 1
+                  sesión), de mayor a menor</p>
+              </div>
+              <span class="badge badge-info">▼ Mostrar / ocultar</span>
+            </summary>
+            <div class="chart-container" style="height: 320px; width: 100%; margin-top: 1rem;">
+              <canvas id="companyRankingChartCanvas"></canvas>
+            </div>
+          </details>
+
+          <!-- Desglose de Simulaciones de la Flota (colapsable) -->
+          <details id="companySimulationsDetails" class="glass-card" style="margin-bottom: 1.5rem;" close>
+            <summary class="chart-header" style="cursor: pointer; list-style: none; user-select: none;">
+              <div>
+                <h3 class="chart-title">🎮 Rendimiento Promedio en Simulaciones</h3>
+                <p id="companySimChartSubtitle" style="font-size: 0.8rem; color: var(--text-muted);">Promedio por
+                  ejercicio realizado en simulador</p>
+              </div>
+              <span class="badge badge-info">▼ Mostrar / ocultar</span>
+            </summary>
+            <div class="chart-container" style="height: 320px; width: 100%; margin-top: 1rem;">
+              <canvas id="companySimulationsChartCanvas"></canvas>
+            </div>
+          </details>
+
+          <!-- Tabla / Roster de Operadores de la Empresa -->
+          <div class="glass-card">
+            <div class="chart-header">
+              <div>
+                <h3 class="chart-title">👥 Operadores Pertenecientes a esta Flota</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted);">Historial de calificaciones y detalle de cada
+                  conductor</p>
+              </div>
+              <span id="companyDriversCountBadge" class="badge badge-info">0 operadores</span>
+            </div>
+            <div class="table-responsive">
+              <table class="custom-table" id="companyDriversTable">
+                <thead>
+                  <tr id="companyDriversTableHeadRow">
+                    <th class="sortable-th" data-sort-key="nombre" title="Haz clic para ordenar por Operador">
+                      Operador / Conductor <span class="sort-indicator">↕</span>
+                    </th>
+                    <th class="sortable-th" data-sort-key="totalEvaluaciones"
+                      title="Haz clic para ordenar por Evaluaciones">
+                      Evaluaciones <span class="sort-indicator">↕</span>
+                    </th>
+                    <th class="sortable-th" data-sort-key="ultimaFecha"
+                      title="Haz clic para ordenar por Fecha de Capacitación">
+                      Última<br>Capacitación <span class="sort-indicator">↕</span>
+                    </th>
+                    <th class="sortable-th sorted-desc" data-sort-key="promedioScore"
+                      title="Haz clic para ordenar por Calificación Promedio">
+                      Calificación <br>Promedio <span class="sort-indicator">▼</span>
+                    </th>
+                    <th class="sortable-th" data-sort-key="simulaciones"
+                      title="Haz clic para ordenar por Ejercicios Evaluados">
+                      Ejercicios <span class="sort-indicator">↕</span>
+                    </th>
+                    <th class="sortable-th" data-sort-key="incidentes"
+                      title="Haz clic para ordenar por Total de Incidentes">
+                      Incidentes <span class="sort-indicator">↕</span>
+                    </th>
+                    <th class="sortable-th" data-sort-key="estado" title="Haz clic para ordenar por Estado">
+                      Estado <span class="sort-indicator">↕</span>
+                    </th>
+                    <th class="actions-col" style="text-align: left;">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="companyDriversTableBody">
+                  <!-- Se puebla dinámicamente con JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================
+         VISTA 6: DIRECTORIO Y REPORTES
+         ======================================================== -->
+      <section id="view-directorio" class="view-section">
+        <div class="section-header">
+          <div>
+            <h2>📋 Directorio Completo de Evaluaciones</h2>
+            <p>Explora, busca y filtra el registro de evaluaciones almacenadas en Firestore.</p>
+          </div>
+          <div style="display:flex; gap:0.5rem;">
+            <input type="file" id="importCsvInput" accept=".csv,text/csv" style="display:none;" />
+            <button id="importCsvBtn" class="btn btn-secondary"
+              title="Edición masiva: sube un CSV generado con Exportar CSV">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              Importar CSV
+            </button>
+            <button id="exportCsvBtn" class="btn btn-secondary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Exportar CSV
+            </button>
+          </div>
+        </div>
+
+        <!-- Filtros -->
+        <div class="filter-bar">
+          <div class="search-input-wrapper">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="directorySearch" class="search-input"
+              placeholder="Buscar por conductor, empresa, curso...">
+          </div>
+
+          <select id="filterCompany" class="custom-select">
+            <option value="all">Todas las Empresas</option>
+          </select>
+
+          <select id="filterSede" class="custom-select">
+            <option value="all">Todas las Sedes</option>
+          </select>
+
+          <select id="filterStatus" class="custom-select">
+            <option value="all">Todos los Estatus</option>
+            <option value="Sobresaliente">Sobresaliente</option>
+            <option value="Aprobado">Aprobado</option>
+            <option value="Reforzar">Reforzar</option>
+            <option value="No Aprobado">No Aprobado</option>
+          </select>
+        </div>
+
+        <!-- Barra de Acción por Lote (Aparece al seleccionar filas) -->
+        <div id="dirBatchActionBar"
+          style="display: none; background: linear-gradient(135deg, rgba(56, 189, 248, 0.12), rgba(129, 140, 248, 0.08)); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: var(--radius-sm); padding: 0.75rem 1.25rem; margin-bottom: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div
+              style="width: 32px; height: 32px; border-radius: 6px; background: rgba(56, 189, 248, 0.2); display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
+              ⚡
+            </div>
+            <div>
+              <strong id="dirBatchSelectionText" style="color: #f8fafc; font-size: 0.9rem;">0 evaluaciones
+                seleccionadas</strong>
+              <div style="font-size: 0.75rem; color: var(--text-secondary);">Actualiza masivamente la empresa y sede en
+                Cloud Firestore</div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button type="button" id="openBatchEditDirModalBtn" class="btn btn-primary btn-sm">
+              ✏️ Modificar Empresa / Sede (<span id="dirSelectedCountSpan">0</span>)
+            </button>
+            <button type="button" id="clearDirSelectionBtn" class="btn btn-secondary btn-sm">
+              ✕ Cancelar Selección
+            </button>
+          </div>
+        </div>
+
+        <!-- Tabla de Evaluaciones -->
+        <div class="glass-card">
+          <div
+            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+            <span id="directoryCountBadge" class="badge badge-info">0 registros</span>
+            <button id="clearAllEvalsBtn" class="btn btn-secondary btn-sm admin-only"
+              style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35);"
+              onclick="window.confirmClearAllEvaluations()">
+              🗑️ Vaciar Todas las Evaluaciones
+            </button>
+          </div>
+          <div class="table-responsive">
+            <table class="custom-table" id="directoryTable">
+              <thead>
+                <tr id="directoryTableHeadRow">
+                  <th style="width: 40px; text-align: center;">
+                    <input type="checkbox" id="selectAllDirCheckbox" title="Seleccionar todas las evaluaciones visibles"
+                      style="cursor: pointer; width: 16px; height: 16px; accent-color: #38bdf8;">
+                  </th>
+                  <th class="sortable-th" data-sort-key="conductor" title="Haz clic para ordenar por Conductor">
+                    Conductor <span class="sort-indicator">↕</span>
+                  </th>
+                  <th class="sortable-th" data-sort-key="empresa" title="Haz clic para ordenar por Empresa">
+                    Empresa <span class="sort-indicator">↕</span>
+                  </th>
+                  <th class="sortable-th sorted-desc" data-sort-key="fecha" title="Haz clic para ordenar por Fecha">
+                    Fecha <span class="sort-indicator">▼</span>
+                  </th>
+                  <th class="sortable-th" data-sort-key="habilidades"
+                    title="Haz clic para ordenar por Habilidades de Manejo">
+                    Habilidades Manejo <span class="sort-indicator">↕</span>
+                  </th>
+                  <th class="sortable-th" data-sort-key="simulador"
+                    title="Haz clic para ordenar por Práctica en Simulador">
+                    Práctica Simulador <span class="sort-indicator">↕</span>
+                  </th>
+                  <th class="sortable-th" data-sort-key="simulaciones"
+                    title="Haz clic para ordenar por Desglose de Simulaciones">
+                    Desglose Simulaciones <span class="sort-indicator">↕</span>
+                  </th>
+                  <th class="sortable-th" data-sort-key="evaluacionFinal"
+                    title="Haz clic para ordenar por Evaluación Final">
+                    Evaluación Final <span class="sort-indicator">↕</span>
+                  </th>
+                  <th class="sortable-th" data-sort-key="estado" title="Haz clic para ordenar por Estado">
+                    Estado <span class="sort-indicator">↕</span>
+                  </th>
+                  <th class="actions-col">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="directoryTableBody">
+                <!-- Se puebla con JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ========================================================
+       MODAL: EDICIÓN EN LOTE DE EMPRESA Y SEDE (DIRECTORIO)
+       ======================================================== -->
+    <div id="dirBatchEditModal" class="modal-overlay">
+      <div class="modal-dialog" style="max-width: 520px;">
+        <div class="modal-header">
+          <div>
+            <h3 style="font-size: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+              <span>🏢</span> Actualizar Empresa y Sede
+            </h3>
+            <span id="dirBatchModalSubtitle" style="font-size: 0.75rem; color: var(--text-muted);">
+              Modificando 0 evaluaciones seleccionadas
+            </span>
+          </div>
+          <button id="closeDirBatchModalBtn" class="close-btn">&times;</button>
+        </div>
+
+        <div class="modal-body" style="padding: 1.25rem 1.5rem;">
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem;">
+            Aplica los cambios a todas las evaluaciones seleccionadas. Los cambios se guardarán automáticamente en Cloud
+            Firestore.
+          </p>
+
+          <div style="margin-bottom: 1.2rem;">
+            <label for="modalBatchEmpresaInput" class="batch-edit-label">
+              <span>🏢</span> Empresa:
+            </label>
+            <input type="text" id="modalBatchEmpresaInput" class="custom-input"
+              placeholder="Nombre de la nueva empresa..." style="width: 100%; height: 40px;" />
+            <small style="color: var(--text-muted); font-size: 0.72rem; display: block; margin-top: 0.35rem;">
+              * Deja este campo vacío si no deseas modificar el nombre de la empresa.
+            </small>
+          </div>
+
+          <div style="margin-bottom: 1.25rem;">
+            <label for="modalBatchSedeSelect" class="batch-edit-label">
+              <span>📍</span> Sede (Estado de la República):
+            </label>
+            <select id="modalBatchSedeSelect" class="custom-select" style="width: 100%; height: 40px;">
+              <option value="__KEEP__">-- Conservar Sede Actual --</option>
+              <option value="">-- Sin Sede (Limpiar Sede) --</option>
+              <!-- Opciones pobladas dinámicamente con los 32 estados -->
+            </select>
+          </div>
+
+          <div style="margin-bottom: 1.25rem;">
+            <span
+              style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 0.35rem;">
+              Evaluaciones seleccionadas:
+            </span>
+            <div id="dirBatchPreviewList"
+              style="background: rgba(8, 12, 20, 0.8); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-sm); padding: 0.6rem 0.85rem; max-height: 120px; overflow-y: auto; font-size: 0.8rem; color: #cbd5e1;">
+              <!-- Lista de conductores -->
+            </div>
+          </div>
+
+          <div
+            style="display: flex; justify-content: flex-end; gap: 0.75rem; padding-top: 0.5rem; border-top: 1px solid var(--border-subtle);">
+            <button type="button" id="cancelDirBatchModalBtn" class="btn btn-secondary">
+              Cancelar
+            </button>
+            <button type="button" id="confirmDirBatchUpdateBtn" class="btn btn-primary">
+              💾 Guardar Cambios en Firestore
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================
+       MODAL: EDICIÓN COMPLETA DE EVALUACIÓN INDIVIDUAL
+       ======================================================== -->
+    <div id="editIndividualEvalModal" class="modal-overlay">
+      <div class="modal-dialog" style="max-width: 820px;">
+        <div class="modal-header">
+          <div>
+            <h3 style="font-size: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+              <span>✏️</span> Editar Evaluación Individual
+            </h3>
+            <span id="editIndividualModalSubtitle" style="font-size: 0.75rem; color: var(--text-muted);">
+              Modificando todos los campos del reporte en Cloud Firestore
+            </span>
+          </div>
+          <button id="closeEditIndividualModalBtn" class="close-btn">&times;</button>
+        </div>
+
+        <form id="editIndividualEvalForm" class="modal-body"
+          style="padding: 1.25rem 1.5rem; max-height: 75vh; overflow-y: auto;">
+          <input type="hidden" id="editEvalId" value="" />
+
+          <!-- SECCIÓN 1: DATOS GENERALES -->
+          <div class="edit-eval-section">
+            <div class="edit-eval-section-title">
+              <span class="left-title">👤 Datos del Conductor y Empresa</span>
+            </div>
+
+            <div class="form-grid-2" style="margin-bottom: 0.85rem;">
+              <div>
+                <label for="editEvalConductor" class="batch-edit-label"><span>👤</span> Nombre del Conductor /
+                  Operador:</label>
+                <input type="text" id="editEvalConductor" class="custom-input" style="width: 100%; height: 38px;"
+                  required placeholder="Nombre completo del operador..." />
+              </div>
+              <div>
+                <label for="editEvalEmpresa" class="batch-edit-label"><span>🏢</span> Empresa:</label>
+                <input type="text" id="editEvalEmpresa" class="custom-input" style="width: 100%; height: 38px;"
+                  placeholder="Empresa transportista..." />
+              </div>
+            </div>
+
+            <div class="form-grid-2" style="margin-bottom: 0.85rem;">
+              <div>
+                <label for="editEvalSede" class="batch-edit-label"><span>📍</span> Sede (Estado de la
+                  República):</label>
+                <select id="editEvalSede" class="custom-select" style="width: 100%; height: 38px;">
+                  <option value="">-- Sin Sede --</option>
+                  <!-- Poblado dinámicamente con los 32 estados -->
+                </select>
+              </div>
+              <div>
+                <label for="editEvalFechaCapacitacion" class="batch-edit-label"><span>📅</span> Fecha de
+                  Capacitación:</label>
+                <input type="date" id="editEvalFechaCapacitacion" class="custom-input"
+                  style="width: 100%; height: 38px;" />
+              </div>
+            </div>
+
+            <div class="form-grid-2" style="margin-bottom: 0.85rem;">
+              <div>
+                <label for="editEvalCursoCodigo" class="batch-edit-label"><span>🔖</span> Código de Curso:</label>
+                <input type="text" id="editEvalCursoCodigo" class="custom-input" style="width: 100%; height: 38px;"
+                  placeholder="Ej: CUR-RIG-3C" />
+              </div>
+              <div>
+                <label for="editEvalCursoNombre" class="batch-edit-label"><span>📚</span> Nombre del Curso:</label>
+                <input type="text" id="editEvalCursoNombre" class="custom-input" style="width: 100%; height: 38px;"
+                  placeholder="Curso avanzado para operadores..." />
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div>
+                <label for="editEvalInstructor" class="batch-edit-label"><span>👨‍🏫</span> Instructor:</label>
+                <input type="text" id="editEvalInstructor" class="custom-input" style="width: 100%; height: 38px;"
+                  placeholder="Instructor certificado..." />
+              </div>
+              <div>
+                <label for="editEvalFolioGrupo" class="batch-edit-label"><span>📄</span> Folio de Grupo:</label>
+                <input type="text" id="editEvalFolioGrupo" class="custom-input" style="width: 100%; height: 38px;"
+                  placeholder="Ej: 1" />
+              </div>
+            </div>
+          </div>
+
+          <!-- SECCIÓN 2: CALIFICACIONES Y PUNTUACIONES -->
+          <div class="edit-eval-section">
+            <div class="edit-eval-section-title">
+              <span class="left-title">🎯 Calificaciones y Puntuaciones</span>
+              <button type="button" id="editEvalCalcAutoBtn" class="calc-auto-btn"
+                title="Recalcular automáticamente porcentajes, nota final y estatus en base a puntos de habilidades y simulador">
+                ⚡ Recalcular Automático
+              </button>
+            </div>
+
+            <div class="form-grid-3" style="margin-bottom: 0.5rem;">
+              <div
+                style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 6px; padding: 0.75rem;">
+                <span
+                  style="font-size: 0.76rem; font-weight: 700; color: #10b981; display: block; margin-bottom: 0.45rem;">
+                  Habilidades de Manejo (Máx 3.00 Puntos)
+                </span>
+                <label for="editEvalHabPuntos"
+                  style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">Puntos (/
+                  3.0):</label>
+                <input type="number" step="0.01" min="0" max="3" id="editEvalHabPuntos" class="custom-input"
+                  style="width: 100%; height: 34px;" />
+                <input type="hidden" id="editEvalHabPct" />
+              </div>
+
+              <div
+                style="background: rgba(168, 85, 247, 0.05); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: 6px; padding: 0.75rem;">
+                <span
+                  style="font-size: 0.76rem; font-weight: 700; color: #c084fc; display: block; margin-bottom: 0.45rem;">
+                  Práctica en Simulador (Máx 7.00 Puntos)
+                </span>
+                <label for="editEvalSimPuntos"
+                  style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">Puntos (/
+                  7.0):</label>
+                <input type="number" step="0.01" min="0" max="7" id="editEvalSimPuntos" class="custom-input"
+                  style="width: 100%; height: 34px;" />
+                <input type="hidden" id="editEvalSimPct" />
+              </div>
+
+              <div
+                style="background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 6px; padding: 0.75rem;">
+                <span
+                  style="font-size: 0.76rem; font-weight: 700; color: #38bdf8; display: block; margin-bottom: 0.45rem;">
+                  Evaluación Final Global (Máx 10.00 Puntos)
+                </span>
+                <label for="editEvalFinalPuntos"
+                  style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">Puntos
+                  Finales (/ 10.0):</label>
+                <input type="number" step="0.01" min="0" max="10" id="editEvalFinalPuntos" class="custom-input"
+                  style="width: 100%; height: 34px;" />
+                <input type="hidden" id="editEvalFinalPct" />
+                <input type="hidden" id="editEvalCalExacta" />
+              </div>
+            </div>
+          </div>
+
+          <!-- SECCIÓN 3: EJERCICIOS EVALUADOS EN SIMULADOR -->
+          <div class="edit-eval-section">
+            <div class="edit-eval-section-title">
+              <span class="left-title">🚦 Desglose de Ejercicios en Simulador (Págs. 4 y 5)</span>
+              <button type="button" id="editEvalAddExerciseBtn" class="calc-auto-btn"
+                style="color: #10b981; border-color: rgba(16, 185, 129, 0.35); background: rgba(16, 185, 129, 0.15);">
+                ➕ Agregar Ejercicio
+              </button>
+            </div>
+
+            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.65rem;">
+              Edita el número de simulación, nombre del escenario, calificación sobre 10 y su descripción:
+            </div>
+
+            <div id="editEvalEjerciciosContainer">
+              <!-- Renderizado dinámico de ejercicios -->
+            </div>
+          </div>
+
+          <!-- SECCIÓN 4: INCIDENTES -->
+          <div class="edit-eval-section">
+            <div class="edit-eval-section-title">
+              <span class="left-title">⚠️ Registro de Incidentes</span>
+            </div>
+
+            <div class="form-grid-3">
+              <div>
+                <label for="editEvalColisiones" class="batch-edit-label"><span>💥</span> Colisiones:</label>
+                <input type="number" min="0" id="editEvalColisiones" class="custom-input"
+                  style="width: 100%; height: 38px;" />
+              </div>
+              <div>
+                <label for="editEvalFatalidades" class="batch-edit-label"><span>💀</span> Fatalidades:</label>
+                <input type="number" min="0" id="editEvalFatalidades" class="custom-input"
+                  style="width: 100%; height: 38px;" />
+              </div>
+              <div>
+                <label for="editEvalVehiculoFueraVia" class="batch-edit-label"><span>🛑</span> Fuera de Vía:</label>
+                <input type="number" min="0" id="editEvalVehiculoFueraVia" class="custom-input"
+                  style="width: 100%; height: 38px;" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Campos ocultos (se conservan al guardar): dictamen, firma digital y observaciones -->
+          <input type="hidden" id="editEvalEstado" />
+          <input type="hidden" id="editEvalFirmaDigital" />
+          <input type="hidden" id="editEvalObservaciones" />
+
+          <div
+            style="display: flex; justify-content: flex-end; gap: 0.75rem; padding-top: 1rem; border-top: 1px solid var(--border-subtle); margin-top: 0.5rem;">
+            <button type="button" id="cancelEditIndividualModalBtn" class="btn btn-secondary">
+              Cancelar
+            </button>
+            <button type="submit" id="confirmEditIndividualBtn" class="btn btn-primary">
+              💾 Guardar Cambios en Firestore
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ========================================================
+       MODAL: SELECCIÓN DE REPORTE POR OPERADOR
+       ======================================================== -->
+    <div id="driverReportPickerModal" class="modal-overlay">
+      <div class="modal-dialog" style="max-width: 520px;">
+        <div class="modal-header">
+          <div>
+            <h3 id="pickerModalTitle" style="font-size: 1.25rem;">📄 Seleccionar Reporte de Evaluación</h3>
+            <span id="pickerModalSubtitle" style="font-size: 0.78rem; color: var(--text-muted);">
+              Este operador cuenta con múltiples capacitaciones registradas
+            </span>
+          </div>
+          <button id="closePickerModalBtn" class="close-btn">&times;</button>
+        </div>
+        <div class="modal-body" style="padding: 1.25rem;">
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+            Elige qué fecha o reporte de evaluación deseas consultar:
+          </p>
+          <div id="pickerReportsList" class="picker-reports-list"
+            style="display: flex; flex-direction: column; gap: 0.65rem; max-height: 380px; overflow-y: auto;">
+            <!-- Opciones renderizadas dinámicamente -->
+          </div>
+        </div>
+        <div
+          style="display: flex; justify-content: flex-end; padding: 1rem 1.25rem; border-top: 1px solid var(--border-subtle); background: rgba(0,0,0,0.15);">
+          <button type="button" id="cancelPickerModalBtn" class="btn btn-secondary">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================
+       MODAL: REPORTE DIGITAL INDIVIDUAL
+       ======================================================== -->
+    <div id="evaluationModal" class="modal-overlay">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <div>
+            <h3 id="modalTitle" style="font-size: 1.25rem;">Reporte de Evaluación</h3>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">TrackSIM Cloud Official Certificate
+              Record</span>
+          </div>
+          <button id="modalCloseBtn" class="close-btn">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <div style="display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem;">
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">CONDUCTOR</div>
+              <strong id="modalDriver" style="font-size: 1.05rem; color: #ffffff;">-</strong>
+            </div>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">EMPRESA</div>
+              <strong id="modalCompany" style="color: var(--primary); font-size: 1.05rem;">-</strong>
+            </div>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">SEDE (ESTADO)</div>
+              <div style="display: flex; align-items: center; gap: 0.35rem; margin-top: 0.2rem;">
+                <span style="color: #38bdf8;">📍</span>
+                <strong id="modalSedeText" style="color: #38bdf8; font-size: 0.95rem;">-</strong>
+              </div>
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">CURSO</div>
+              <div id="modalCourse" style="font-size: 0.88rem;">-</div>
+            </div>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">FECHA & INSTRUCTOR</div>
+              <div id="modalDate" style="font-size: 0.88rem;">-</div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">Instructor: <span id="modalInstructor">-</span>
+                (Grupo: <span id="modalFolio">-</span>)</div>
+            </div>
+          </div>
+
+          <!-- Tarjetas de Puntuación -->
+          <div
+            style="background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 1.2rem; margin-bottom: 1.5rem;">
+            <h4
+              style="font-size: 0.9rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 1rem;">
+              Puntajes Oficiales Obtenidos</h4>
+
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; text-align: center;">
+              <div
+                style="background: rgba(16, 185, 129, 0.08); padding: 0.8rem; border-radius: var(--radius-sm); border: 1px solid var(--success-border);">
+                <span style="font-size: 0.72rem; color: var(--text-muted); display: block;">a) HABILIDADES MANEJO</span>
+                <strong id="modalScoreHab" style="font-size: 1.1rem; color: #10b981;">-</strong>
+              </div>
+
+              <div
+                style="background: rgba(168, 85, 247, 0.08); padding: 0.8rem; border-radius: var(--radius-sm); border: 1px solid rgba(168, 85, 247, 0.3);">
+                <span style="font-size: 0.72rem; color: var(--text-muted); display: block;">b) PRÁCTICA SIMULADOR</span>
+                <strong id="modalScoreSim" style="font-size: 1.1rem; color: #a855f7;">-</strong>
+              </div>
+
+              <div
+                style="background: rgba(56, 189, 248, 0.08); padding: 0.8rem; border-radius: var(--radius-sm); border: 1px solid rgba(56, 189, 248, 0.3);">
+                <span style="font-size: 0.72rem; color: var(--text-muted); display: block;">EVALUACIÓN FINAL
+                  (a+b)</span>
+                <strong id="modalScoreFinal" style="font-size: 1.25rem; color: #38bdf8;">-</strong>
+                <div style="font-size: 0.7rem; color: var(--text-muted);">Exacta: <span id="modalScoreExact">-</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Desglose de Simulaciones e Incidentes -->
+          <div style="display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 1rem; margin-bottom: 1.5rem;">
+            <div
+              style="background: rgba(255, 255, 255, 0.03); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
+                <h4 style="font-size: 0.85rem; color: var(--text-secondary); margin: 0;">🎮 Ejercicios Evaluados en
+                  Simulador</h4>
+                <span
+                  style="font-size: 0.68rem; color: var(--text-muted); background: rgba(255,255,255,0.05); padding: 0.15rem 0.4rem; border-radius: 4px;">Pág.
+                  4 y 5</span>
+              </div>
+              <div id="modalSimulationsContainer" style="display: flex; flex-direction: column; gap: 0.6rem;">
+                <!-- Generado dinámicamente -->
+              </div>
+            </div>
+
+            <div
+              style="background: rgba(255, 255, 255, 0.03); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+              <h4 style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.6rem;">Registro de
+                Incidentes</h4>
+              <ul style="list-style: none; font-size: 0.85rem; line-height: 1.8;">
+                <li>💥 Colisiones en Conducción: <strong id="modalCollisions">-</strong></li>
+                <li>💀 Fatalidades en Simulaciones: <strong id="modalFatalities">-</strong></li>
+                <li>🛑 Vehículo Fuera de la Vía: <strong id="modalOffRoad">-</strong></li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Observaciones y Firma Digital -->
+          <div style="margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+              <span style="font-size: 0.75rem; color: var(--text-muted);">ESTADO</span>
+              <span id="modalStatusBadge" class="badge badge-info">Aprobado</span>
+            </div>
+            <p id="modalObservations"
+              style="font-size: 0.85rem; color: var(--text-secondary); background: rgba(0,0,0,0.2); padding: 0.75rem; border-radius: var(--radius-sm);">
+              -
+            </p>
+          </div>
+
+          <div
+            style="background: rgba(0,0,0,0.3); padding: 0.75rem; border-radius: var(--radius-sm); font-family: monospace; font-size: 0.72rem; word-break: break-all; color: var(--text-muted);">
+            <span style="color: var(--primary);">SHA256 Digital Signature:</span>
+            <div id="modalDigitalSign">-</div>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button id="modalDeleteBtn" class="btn btn-secondary admin-only"
+              style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35);" type="button">
+              🗑️ Eliminar Evaluación
+            </button>
+            <button id="modalEditBtn" class="btn btn-secondary admin-only"
+              style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.35);" type="button">
+              ✏️ Editar Evaluación
+            </button>
+          </div>
+          <div style="display: flex; gap: 0.5rem;">
+            <button id="modalCloseFooterBtn" class="btn btn-secondary">Cerrar</button>
+            <button class="btn btn-primary" onclick="window.print()">Imprimir Reporte</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de Gestión de Usuarios Lectores (Exclusivo Administradores) -->
+    <div id="userMgmtModal" class="modal-overlay">
+      <div class="modal-dialog" style="max-width: 820px;">
+        <div class="modal-header">
+          <div>
+            <h3 style="font-size: 1.25rem;">👥 Gestión de Usuarios Lectores</h3>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Creación de cuentas autorizadas y asignación de
+              empresas permitidas</span>
+          </div>
+          <button id="closeUserMgmtBtn" class="close-btn">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Formulario para Administrador -->
+          <form id="adminCreateUserForm"
+            style="background: rgba(0,0,0,0.25); padding: 1.25rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); margin-bottom: 1.5rem;">
+            <h4 style="font-size: 0.95rem; margin-bottom: 0.8rem; color: var(--primary);">Registrar Nuevo Usuario Lector
+            </h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+              <div>
+                <label
+                  style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.35rem;">Correo
+                  del usuario:</label>
+                <input type="email" id="newViewerEmail" class="form-control" placeholder="operador@empresa.com"
+                  required>
+              </div>
+              <div>
+                <label
+                  style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.35rem;">Contraseña
+                  inicial (mín. 6 car.):</label>
+                <input type="password" id="newViewerPassword" class="form-control" placeholder="••••••••" minlength="6"
+                  required>
+              </div>
+            </div>
+
+            <!-- Asignación de Empresa Permitida (Selección Única) -->
+            <div style="margin-bottom: 1rem;">
+              <label
+                style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.35rem; font-weight: 600;">🏢
+                Empresa Asignada (Acceso Exclusivo):</label>
+              <select id="newViewerCompanySelect" class="form-control"
+                style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-subtle); color: var(--text-primary);"
+                required>
+                <option value="">Seleccione una empresa...</option>
+              </select>
+              <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 0.3rem;">El usuario
+                lector únicamente podrá ver los resultados de la empresa seleccionada.</span>
+            </div>
+
+            <button id="btnSubmitCreateUser" type="submit" class="btn btn-success btn-sm">
+              ➕ Crear Cuenta de Lector
+            </button>
+          </form>
+
+          <h4
+            style="font-size: 0.9rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 0.75rem;">
+            Usuarios Individuales con Acceso Autorizado</h4>
+          <div class="table-responsive" style="margin-bottom: 2rem;">
+            <table class="custom-table">
+              <thead>
+                <tr>
+                  <th>Usuario / Correo</th>
+                  <th>Rol</th>
+                  <th>Empresa Asignada</th>
+                  <th>Creado Por</th>
+                  <th>Fecha de Alta</th>
+                  <th style="text-align: center;">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="registeredUsersTableBody">
+                <tr>
+                  <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Cargando
+                    usuarios...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- SECCIÓN: Mapeo Automático por Dominio de Correo (@empresa.com) -->
+          <div style="border-top: 1px solid var(--border-subtle); padding-top: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+              <div>
+                <h4 style="font-size: 1rem; color: var(--primary); margin-bottom: 0.25rem;">🌐 Asignación Automática por
+                  Dominio de Correo</h4>
+                <p style="font-size: 0.78rem; color: var(--text-muted); margin: 0;">
+                  Cualquier correo que termine con el dominio registrado (ej. <code>@almex.com</code>) tendrá acceso
+                  automático e inmediato a los reportes de la empresa correspondiente, sin tener que configurar usuario
+                  por usuario.
+                </p>
+              </div>
+            </div>
+
+            <!-- Formulario para Vincular Dominio -->
+            <form id="adminDomainForm"
+              style="background: rgba(0,0,0,0.25); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); margin-bottom: 1.25rem;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.75rem; align-items: flex-end;">
+                <div>
+                  <label
+                    style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.35rem;">Dominio
+                    corporativo (ej: almex.com):</label>
+                  <input type="text" id="newDomainInput" class="form-control" placeholder="almex.com" required
+                    style="font-family: monospace;">
+                </div>
+                <div>
+                  <label
+                    style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.35rem;">🏢
+                    Empresa Asignada:</label>
+                  <select id="newDomainCompanySelect" class="form-control" required>
+                    <option value="">Seleccione una empresa...</option>
+                  </select>
+                </div>
+                <div>
+                  <button id="btnSubmitDomain" type="submit" class="btn btn-primary btn-sm"
+                    style="white-space: nowrap; height: 38px;">
+                    🔗 Vincular Dominio
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            <!-- Tabla de Dominios Registrados -->
+            <div class="table-responsive">
+              <table class="custom-table">
+                <thead>
+                  <tr>
+                    <th>Dominio</th>
+                    <th>Empresa Asignada</th>
+                    <th>Registrado Por</th>
+                    <th>Fecha Registro</th>
+                    <th style="text-align: center;">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="registeredDomainsTableBody">
+                  <tr>
+                    <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 1rem;">Cargando
+                      dominios...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button id="closeUserMgmtFooterBtn" class="btn btn-secondary">Cerrar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal para Editar Usuario Lector (Empresa Permitida Única) -->
+    <div id="editUserModal" class="modal-overlay">
+      <div class="modal-dialog" style="max-width: 520px;">
+        <div class="modal-header">
+          <div>
+            <h3 style="font-size: 1.15rem;">✏️ Editar Empresa de Usuario</h3>
+            <span id="editUserSubtitle" style="font-size: 0.75rem; color: var(--text-muted);">Asignación de empresa
+              exclusiva para el usuario</span>
+          </div>
+          <button id="closeEditUserBtn" class="close-btn">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <form id="editUserForm">
+            <input type="hidden" id="editUserUid">
+
+            <div style="margin-bottom: 1rem;">
+              <label
+                style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">Correo
+                electrónico:</label>
+              <input type="email" id="editUserEmail" class="form-control" readonly
+                style="opacity: 0.8; background: rgba(255,255,255,0.05); cursor: not-allowed;">
+            </div>
+
+            <div style="margin-bottom: 1.25rem;">
+              <label
+                style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.35rem; font-weight: 600;">🏢
+                Empresa Autorizada:</label>
+              <select id="editUserCompanySelect" class="form-control"
+                style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-subtle); color: var(--text-primary);"
+                required>
+                <option value="">Seleccione una empresa...</option>
+              </select>
+              <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 0.35rem;">El
+                usuario solo podrá visualizar los resultados y evaluaciones pertenecientes a esta empresa.</span>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+              <button type="button" id="cancelEditUserBtn" class="btn btn-secondary">Cancelar</button>
+              <button type="submit" id="saveEditUserBtn" class="btn btn-primary">💾 Guardar Cambios</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /#appContainer -->
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Controlador Principal de la Aplicación -->
+</body>
+
+</html>

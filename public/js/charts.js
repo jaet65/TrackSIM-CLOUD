@@ -269,59 +269,61 @@ export function renderDistributionChart(canvasId, evaluations) {
 /**
  * Gráfico de Barras Horizontal: Ranking de Conductores de la Empresa
  */
-export function renderCompanyRankingChart(canvasId, conductores, searchFilter = '') {
+export function renderCompanyRankingChart(canvasId, conductores, searchFilter = '', page = 1, pageSize = 30) {
   const ctx = document.getElementById(canvasId);
   if (!ctx || !window.Chart) return;
 
   destroyChart(canvasId);
 
-  if (!conductores || conductores.length === 0) return;
+  const paginationBar = document.getElementById('companyRankingPaginationBar');
+  const paginationInfo = document.getElementById('companyRankingPaginationInfo');
+  const pageDisplay = document.getElementById('rankingCurrentPageDisplay');
+  const firstBtn = document.getElementById('rankingFirstPageBtn');
+  const prevBtn = document.getElementById('rankingPrevPageBtn');
+  const nextBtn = document.getElementById('rankingNextPageBtn');
+  const lastBtn = document.getElementById('rankingLastPageBtn');
+
+  if (!conductores || conductores.length === 0) {
+    if (paginationBar) paginationBar.style.display = 'none';
+    return;
+  }
 
   // Ordenar todos los operadores por puntaje promedio descendente
-  const sorted = [...conductores].sort((a, b) => b.promedioScore - a.promedioScore);
-  const total = sorted.length;
+  let sorted = [...conductores].sort((a, b) => b.promedioScore - a.promedioScore);
   const term = (searchFilter || '').trim().toLowerCase();
 
-  let displayItems = [];
-
-  if (!term || total <= 7) {
-    // Sin búsqueda o lista pequeña: mostrar todos con su posición real
-    displayItems = sorted.map((c, i) => ({
-      conductor: c,
-      rank: i + 1,
-      isMatch: term ? c.nombre.toLowerCase().includes(term) : false
-    }));
-  } else {
-    // Con búsqueda: 3 mejores ... conductor(es) que coinciden ... 3 peores
-    const topIndices = new Set([0, 1, 2].filter(i => i < total));
-    const bottomIndices = new Set([total - 3, total - 2, total - 1].filter(i => i >= 0));
-
-    const matchIndices = [];
-    sorted.forEach((c, i) => {
-      if (c.nombre.toLowerCase().includes(term)) {
-        matchIndices.push(i);
-      }
-    });
-
-    // Combinar índices preservando orden sin duplicados
-    const selectedIndices = Array.from(new Set([
-      ...topIndices,
-      ...matchIndices,
-      ...bottomIndices
-    ])).sort((a, b) => a - b);
-
-    // Armar items con posición real y detectar cortes con separador
-    selectedIndices.forEach((idx, pos) => {
-      if (pos > 0 && idx > selectedIndices[pos - 1] + 1) {
-        displayItems.push({ isSeparator: true });
-      }
-      displayItems.push({
-        conductor: sorted[idx],
-        rank: idx + 1,
-        isMatch: matchIndices.includes(idx)
-      });
-    });
+  if (term) {
+    sorted = sorted.filter(c => c.nombre.toLowerCase().includes(term));
   }
+
+  const total = sorted.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(Math.max(1, page), totalPages);
+
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, total);
+  const pageDrivers = sorted.slice(startIndex, endIndex);
+
+  // Actualizar controles de la barra de paginación del ranking
+  if (paginationBar) {
+    paginationBar.style.display = total > 0 ? 'flex' : 'none';
+  }
+  if (paginationInfo) {
+    paginationInfo.textContent = `Mostrando top ${startIndex + 1}-${endIndex} de ${total} operadores`;
+  }
+  if (pageDisplay) {
+    pageDisplay.textContent = `Página ${currentPage} de ${totalPages}`;
+  }
+  if (firstBtn) firstBtn.disabled = currentPage === 1;
+  if (prevBtn) prevBtn.disabled = currentPage === 1;
+  if (nextBtn) nextBtn.disabled = currentPage === totalPages;
+  if (lastBtn) lastBtn.disabled = currentPage === totalPages;
+
+  const displayItems = pageDrivers.map((c, i) => ({
+    conductor: c,
+    rank: startIndex + i + 1,
+    isMatch: term ? c.nombre.toLowerCase().includes(term) : false
+  }));
 
   if (ctx.parentElement) {
     ctx.parentElement.style.height = Math.max(200, displayItems.length * 24 + 40) + 'px';
