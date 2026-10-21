@@ -259,23 +259,17 @@ function initAuth() {
     const email = (user.email || '').toLowerCase().trim();
     const isGoogleAuth = user.providerData && user.providerData.some(p => p.providerId === 'google.com');
 
-    // Validación de dominio para Administradores de Google
-    if (isGoogleAuth) {
-      if (!email.endsWith('@corporativomaf.com')) {
-        showLoginAlert(`Acceso denegado: La cuenta ${email} no pertenece al dominio @corporativomaf.com. El acceso con Google está reservado para Administradores.`);
-        await signOut(auth);
-        return;
-      }
+    // Determinación de Rol: Exclusivamente @corporativomaf.com es Administrador
+    if (email.endsWith('@corporativomaf.com')) {
       AppState.userRole = 'admin';
       AppState.allowedCompanies = ['all'];
     } else {
-      // Usuario autenticado por Correo y Contraseña -> Rol Lector
+      // Usuario Estándar (Lector) autenticado con Google o Correo/Contraseña
       AppState.userRole = 'viewer';
       AppState.allowedCompanies = [];
 
       try {
-        const userEmail = (user.email || '').toLowerCase().trim();
-        const emailParts = userEmail.split('@');
+        const emailParts = email.split('@');
         const userDomain = emailParts.length > 1 ? emailParts[1].trim() : '';
 
         let domainMatchedCompany = null;
@@ -296,27 +290,46 @@ function initAuth() {
           }
         }
 
-        // 2. Si se encontró asignación por dominio, aplicarla
+        // 2. Si el usuario ingresó por primera vez y no existe documento en 'usuarios', crearlo como viewer sin empresa asignada (o con la empresa del dominio si existiera)
+        const userDocRef = doc(db, 'usuarios', user.uid);
+        let userSnap = await getDoc(userDocRef);
+        if (!userSnap.exists()) {
+          const newUserData = {
+            uid: user.uid,
+            email: email,
+            role: 'viewer',
+            empresaPermitida: domainMatchedCompany || '',
+            empresasPermitidas: domainMatchedCompany ? [domainMatchedCompany] : [],
+            metodoAcceso: isGoogleAuth ? 'google' : 'password',
+            creadoPor: isGoogleAuth ? 'Google (Autoregistro)' : 'Autoregistro',
+            autoregistro: true,
+            dominioDetectado: userDomain,
+            fechaAlta: new Date().toISOString()
+          };
+          try {
+            await setDoc(userDocRef, newUserData);
+            userSnap = await getDoc(userDocRef);
+          } catch (regDocErr) {
+            console.warn('Error al autoguardar documento de usuario en Firestore:', regDocErr);
+          }
+        }
+
+        // 3. Determinar empresa permitida: Primero por regla de dominio, luego por documento individual
         if (domainMatchedCompany) {
           AppState.allowedCompanies = domainMatchedCompany === 'all' ? ['all'] : [domainMatchedCompany];
-        } else {
-          // 3. Fallback: Verificar si existe regla individual para este UID en usuarios
-          const userDocRef = doc(db, 'usuarios', user.uid);
-          const userSnap = await getDoc(userDocRef);
-          if (userSnap.exists()) {
-            const uData = userSnap.data();
-            if (uData.empresaPermitida) {
-              AppState.allowedCompanies = uData.empresaPermitida === 'all' ? ['all'] : [uData.empresaPermitida];
-            } else if (Array.isArray(uData.empresasPermitidas) && uData.empresasPermitidas.length > 0) {
-              AppState.allowedCompanies = uData.empresasPermitidas;
-            } else {
-              // Usuario registrado sin empresa vinculada: NO mostrar información
-              AppState.allowedCompanies = [];
-            }
+        } else if (userSnap && userSnap.exists()) {
+          const uData = userSnap.data();
+          if (uData.empresaPermitida && uData.empresaPermitida !== '') {
+            AppState.allowedCompanies = uData.empresaPermitida === 'all' ? ['all'] : [uData.empresaPermitida];
+          } else if (Array.isArray(uData.empresasPermitidas) && uData.empresasPermitidas.length > 0) {
+            AppState.allowedCompanies = uData.empresasPermitidas;
           } else {
-            // Sin documento ni mapeo de dominio: NO mostrar información
+            // Usuario sin empresa vinculada: NO mostrar información
             AppState.allowedCompanies = [];
           }
+        } else {
+          // Sin documento ni mapeo de dominio: NO mostrar información
+          AppState.allowedCompanies = [];
         }
       } catch (err) {
         console.warn('No se pudo determinar la empresa asignada en Firestore:', err);
@@ -360,7 +373,7 @@ function initAuth() {
             <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
             <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
           </svg>
-          Ingresar con Google (Admin)
+          Ingresar con Google
         `;
       }
     });
@@ -2031,22 +2044,22 @@ function renderCompanyDriversTable(filterSearch = '') {
         <td>
           <div style="font-size: 0.76rem; display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap; max-width: 250px;">
             ${(() => {
-              if (c.promediosEjercicios && Object.keys(c.promediosEjercicios).length > 0) {
-                const exKeys = Object.keys(c.promediosEjercicios);
-                return exKeys.map((k, i) => {
-                  const ex = c.promediosEjercicios[k];
-                  const prefix = ex.numero != null ? `S${ex.numero}:` : `${ex.nombre.substring(0, 7)}:`;
-                  const repText = ex.totalVeces > 1 ? ` (${ex.totalVeces}x prom)` : '';
-                  const color = ['#38bdf8', '#f97316', '#a855f7', '#22c55e', '#eab308'][i % 5];
-                  return `<span style="color: ${color};" title="${ex.nombre}${repText}">${prefix} <strong>${ex.promedio}</strong></span>`;
-                }).join(' · ');
-              }
-              return `
+        if (c.promediosEjercicios && Object.keys(c.promediosEjercicios).length > 0) {
+          const exKeys = Object.keys(c.promediosEjercicios);
+          return exKeys.map((k, i) => {
+            const ex = c.promediosEjercicios[k];
+            const prefix = ex.numero != null ? `S${ex.numero}:` : `${ex.nombre.substring(0, 7)}:`;
+            const repText = ex.totalVeces > 1 ? ` (${ex.totalVeces}x prom)` : '';
+            const color = ['#38bdf8', '#f97316', '#a855f7', '#22c55e', '#eab308'][i % 5];
+            return `<span style="color: ${color};" title="${ex.nombre}${repText}">${prefix} <strong>${ex.promedio}</strong></span>`;
+          }).join(' · ');
+        }
+        return `
                 <span style="color: #94a3b8;" title="S2: ${n2}">S2: <strong>${s2}</strong></span> ·
                 <span style="color: #f97316;" title="S3: ${n3}">S3: <strong>${s3}</strong></span> ·
                 <span style="color: #38bdf8;" title="S4: ${n4}">S4: <strong>${s4}</strong></span>
               `;
-            })()}
+      })()}
           </div>
         </td>
         <td>
@@ -2064,10 +2077,6 @@ function renderCompanyDriversTable(filterSearch = '') {
                 📈 Trazabilidad
               </button>
             ` : ''}
-            ${c.latestEvalId ? `
-              <button class="btn btn-primary btn-sm" onclick="window.viewEvaluationDetail('${c.latestEvalId}')" title="Ver último reporte digital oficial">
-                📄 Reporte
-              </button>` : ''}
           </div>
         </td>
       </tr>
@@ -3498,7 +3507,7 @@ function populateCompanyDropdown(selectId, selectedCompany = '') {
 
   let html = `<option value="">-- Seleccionar Empresa --</option>`;
   html += `<option value="all" ${selectedCompany === 'all' ? 'selected' : ''}>🌐 Todas las Empresas (Sin restricción)</option>`;
-  
+
   companies.forEach(emp => {
     html += `<option value="${emp}" ${emp === selectedCompany ? 'selected' : ''}>🏢 ${emp}</option>`;
   });
@@ -3719,7 +3728,7 @@ function initUserManagement() {
 }
 
 // Ventana flotante de edición de usuario
-window.openEditUserModal = function(userJsonStr) {
+window.openEditUserModal = function (userJsonStr) {
   try {
     const user = JSON.parse(decodeURIComponent(userJsonStr));
     const editModal = document.getElementById('editUserModal');
@@ -3735,7 +3744,7 @@ window.openEditUserModal = function(userJsonStr) {
       subtitle.textContent = `Asignación de empresa para ${user.email}`;
     }
 
-    const assignedCompany = user.empresaPermitida || (Array.isArray(user.empresasPermitidas) ? user.empresasPermitidas[0] : 'all') || 'all';
+    const assignedCompany = user.empresaPermitida !== undefined ? user.empresaPermitida : (Array.isArray(user.empresasPermitidas) && user.empresasPermitidas.length > 0 ? user.empresasPermitidas[0] : '');
     populateCompanyDropdown('editUserCompanySelect', assignedCompany);
 
     editModal.classList.add('active');
@@ -3771,22 +3780,25 @@ async function loadRegisteredUsers() {
     snapshot.forEach(docSnap => users.push({ uid: docSnap.id, ...docSnap.data() }));
 
     tbody.innerHTML = users.map(u => {
-      const assigned = u.empresaPermitida || (Array.isArray(u.empresasPermitidas) ? u.empresasPermitidas[0] : 'all') || 'all';
+      const assigned = u.empresaPermitida !== undefined ? u.empresaPermitida : (Array.isArray(u.empresasPermitidas) && u.empresasPermitidas.length > 0 ? u.empresasPermitidas[0] : '');
       let companyBadgeHtml = '';
-      if (assigned === 'all' || !assigned) {
+      if (!assigned || assigned === '') {
+        companyBadgeHtml = `<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); font-size: 0.75rem; padding: 3px 8px;">⚠️ Sin Asignar</span>`;
+      } else if (assigned === 'all') {
         companyBadgeHtml = `<span class="badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.3); font-size: 0.75rem; padding: 3px 8px;">🌐 Todas</span>`;
       } else {
         companyBadgeHtml = `<span class="badge" style="background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); font-size: 0.75rem; padding: 3px 8px; font-weight: 600;">🏢 ${assigned}</span>`;
       }
 
       const encodedUser = encodeURIComponent(JSON.stringify(u));
+      const creadorDisplay = u.creadoPor || (u.metodoAcceso === 'google' ? 'Google (Autoregistro)' : (u.autoregistro ? 'Autoregistro' : 'Admin'));
 
       return `
         <tr>
           <td><strong>${u.email}</strong></td>
           <td><span class="role-badge viewer">👁️ Lector</span></td>
           <td>${companyBadgeHtml}</td>
-          <td style="font-size: 0.8rem; color: var(--text-muted);">${u.creadoPor || 'Admin'}</td>
+          <td style="font-size: 0.8rem; color: var(--text-muted);">${creadorDisplay}</td>
           <td style="font-size: 0.8rem;">${u.fechaAlta ? new Date(u.fechaAlta).toLocaleDateString() : 'N/A'}</td>
           <td style="text-align: center;">
             <button class="btn btn-secondary btn-sm" style="padding: 4px 8px; font-size: 0.75rem;" onclick="window.openEditUserModal('${encodedUser}')" title="Editar empresa autorizada">
@@ -3869,7 +3881,7 @@ async function loadRegisteredDomains() {
 }
 
 // Handler global para eliminar vinculación de dominio
-window.confirmDeleteDomain = async function(domainId, domainName, empresa) {
+window.confirmDeleteDomain = async function (domainId, domainName, empresa) {
   if (AppState.userRole !== 'admin') {
     showToast('Acción restringida a administradores.', 'warning');
     return;
