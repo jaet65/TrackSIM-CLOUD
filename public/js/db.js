@@ -386,244 +386,104 @@ export function processCompanySummaries(evaluations) {
   const summaries = [];
 
   for (const [name, data] of map.entries()) {
-    const totalEvals = data.evaluaciones.length;
-    let sumFinal = 0;
-    let sumHab = 0;
-    let sumSim = 0;
-    let sumSim2 = 0;
-    let countSim2 = 0;
-    let sumSim3 = 0;
-    let countSim3 = 0;
-    let sumSim4 = 0;
-    let countSim4 = 0;
-    let totalCollisions = 0;
-    let totalFatalities = 0;
-    let totalOffRoad = 0;
-    let approvedCount = 0;
-    const nombresSimulaciones = {};
-    const sedesSet = new Set();
+    summaries.push(createCompanySummaryFromEvaluations(name, data.slug, data.evaluaciones, data.conductoresMap));
+  }
 
-    data.evaluaciones.forEach(ev => {
-      const finalScore = ev.evaluacionFinalPuntos || ev.calificacionExacta || 0;
-      sumFinal += finalScore;
-      sumHab += (ev.habilidadesManejoPuntos || 0);
-      sumSim += (ev.practicaSimuladorPuntos || 0);
-      totalCollisions += (ev.colisiones || 0);
-      totalFatalities += (ev.fatalidades || 0);
-      totalOffRoad += (ev.vehiculoFueraVia || 0);
-      if (finalScore >= 6.0) approvedCount++;
+  summaries.sort((a, b) => a.nombre.localeCompare(b.nombre));
+  return summaries;
+}
 
-      if (ev.sede) {
-        sedesSet.add(ev.sede);
-      }
+/**
+ * Genera el resumen consolidado de flota e historial anual para un conjunto dado de evaluaciones y su mapa de conductores.
+ */
+export function createCompanySummaryFromEvaluations(name, slug, evaluaciones, conductoresMap = null) {
+  const evalsList = evaluaciones || [];
+  const totalEvals = evalsList.length;
 
-      // Recopilar nombres dinámicos de los ejercicios evaluados
-      if (Array.isArray(ev.ejercicios)) {
-        ev.ejercicios.forEach(e => {
-          if (e.numero && e.nombre && !nombresSimulaciones[e.numero]) {
-            nombresSimulaciones[e.numero] = e.nombre;
-          }
-        });
-      } else if (ev.nombresSimulaciones) {
-        Object.assign(nombresSimulaciones, ev.nombresSimulaciones);
-      }
+  let sumFinal = 0;
+  let sumHab = 0;
+  let sumSim = 0;
+  let sumSim2 = 0;
+  let countSim2 = 0;
+  let sumSim3 = 0;
+  let countSim3 = 0;
+  let sumSim4 = 0;
+  let countSim4 = 0;
+  let totalCollisions = 0;
+  let totalFatalities = 0;
+  let totalOffRoad = 0;
+  let approvedCount = 0;
+  const nombresSimulaciones = {};
+  const sedesSet = new Set();
 
-      if (typeof ev.simulacionesDetalle?.simulacion_2 === 'number' && !isNaN(ev.simulacionesDetalle.simulacion_2)) {
-        sumSim2 += ev.simulacionesDetalle.simulacion_2;
-        countSim2++;
-      }
-      if (typeof ev.simulacionesDetalle?.simulacion_3 === 'number' && !isNaN(ev.simulacionesDetalle.simulacion_3)) {
-        sumSim3 += ev.simulacionesDetalle.simulacion_3;
-        countSim3++;
-      }
-      if (typeof ev.simulacionesDetalle?.simulacion_4 === 'number' && !isNaN(ev.simulacionesDetalle.simulacion_4)) {
-        sumSim4 += ev.simulacionesDetalle.simulacion_4;
-        countSim4++;
-      }
-    });
+  evalsList.forEach(ev => {
+    const finalScore = ev.evaluacionFinalPuntos || ev.calificacionExacta || 0;
+    sumFinal += finalScore;
+    sumHab += (ev.habilidadesManejoPuntos || 0);
+    sumSim += (ev.practicaSimuladorPuntos || 0);
+    totalCollisions += (ev.colisiones || 0);
+    totalFatalities += (ev.fatalidades || 0);
+    totalOffRoad += (ev.vehiculoFueraVia || 0);
+    if (finalScore >= 6.0) approvedCount++;
 
-    const conductores = [];
-    for (const [condName, evals] of data.conductoresMap.entries()) {
-      evals.sort((a, b) => {
-        const da = a.fechaCapacitacion || a.fechaReporte || '';
-        const db = b.fechaCapacitacion || b.fechaReporte || '';
-        return da.localeCompare(db);
-      });
-
-      const latest = evals[evals.length - 1];
-      const avgScore = evals.reduce((acc, e) => acc + (e.evaluacionFinalPuntos || e.calificacionExacta || 0), 0) / evals.length;
-      const latestScore = latest.evaluacionFinalPuntos || latest.calificacionExacta || 0;
-
-      // Calcular promedio de cada ejercicio para ESTE conductor (si hizo el mismo ejercicio varias veces)
-      const driverExMap = new Map(); // key: normalizedName -> { nombreDisplay, scores: [], numeroMin }
-
-      evals.forEach(ev => {
-        if (Array.isArray(ev.ejercicios) && ev.ejercicios.length > 0) {
-          ev.ejercicios.forEach(ex => {
-            if (!ex) return;
-            const rawName = (ex.nombre || (ex.numero ? (nombresSimulaciones[ex.numero] || `Ejercicio ${ex.numero}`) : '')).trim();
-            if (!rawName) return;
-            const normKey = normalizeExerciseName(rawName) || rawName.toLowerCase();
-            const score = typeof ex.calificacion === 'number' ? ex.calificacion : parseFloat(ex.calificacion);
-            if (!isNaN(score)) {
-              if (!driverExMap.has(normKey)) {
-                driverExMap.set(normKey, { nombreDisplay: rawName, scores: [], numero: ex.numero });
-              }
-              driverExMap.get(normKey).scores.push(score);
-            }
-          });
-        } else if (ev.simulacionesDetalle && typeof ev.simulacionesDetalle === 'object') {
-          Object.keys(ev.simulacionesDetalle).forEach(k => {
-            const score = ev.simulacionesDetalle[k];
-            if (typeof score !== 'number' || isNaN(score)) return;
-            const num = parseInt(k.replace('simulacion_', ''), 10);
-            const rawName = (ev.nombresSimulaciones?.[num] || nombresSimulaciones[num] || `Simulación ${num}`).trim();
-            const normKey = normalizeExerciseName(rawName) || rawName.toLowerCase();
-            if (!driverExMap.has(normKey)) {
-              driverExMap.set(normKey, { nombreDisplay: rawName, scores: [], numero: num });
-            }
-            driverExMap.get(normKey).scores.push(score);
-          });
-        }
-      });
-
-      const promediosEjerciciosConductor = {};
-      driverExMap.forEach((val, normKey) => {
-        const sum = val.scores.reduce((a, b) => a + b, 0);
-        const avg = sum / val.scores.length;
-        promediosEjerciciosConductor[normKey] = {
-          nombre: val.nombreDisplay,
-          numero: val.numero,
-          promedio: parseFloat(avg.toFixed(2)),
-          totalVeces: val.scores.length
-        };
-      });
-
-      conductores.push({
-        nombre: condName,
-        totalEvaluaciones: evals.length,
-        ultimaFecha: latest.fechaCapacitacionFormato || latest.fechaCapacitacion || latest.fechaReporte,
-        ultimoScore: latestScore,
-        promedioScore: avgScore,
-        sede: latest.sede || '',
-        simulaciones: latest.simulacionesDetalle || {},
-        simulacionesNombres: latest.nombresSimulaciones || nombresSimulaciones,
-        ejercicios: latest.ejercicios || [],
-        promediosEjercicios: promediosEjerciciosConductor,
-        colisiones: evals.reduce((a, b) => a + (b.colisiones || 0), 0),
-        fatalidades: evals.reduce((a, b) => a + (b.fatalidades || 0), 0),
-        estado: latest.estado || 'Procesado',
-        badgeColor: latest.badgeColor || 'info',
-        latestEvalId: latest.id
-      });
+    if (ev.sede) {
+      sedesSet.add(ev.sede);
     }
 
-    // Ordenar conductores por puntaje promedio descendente (ranking)
-    conductores.sort((a, b) => b.promedioScore - a.promedioScore);
-
-    // Calcular el promedio general de la flota para CADA ejercicio
-    // Metodología: si un conductor hizo el mismo ejercicio varias veces, se toma primero su promedio personal,
-    // y luego se promedian los conductores que hayan realizado dicho ejercicio.
-    const fleetExerciseMap = new Map(); // normKey -> { nombreDisplay, numero, sumDriverAvg: 0, driverCount: 0 }
-
-    conductores.forEach(c => {
-      if (!c.promediosEjercicios) return;
-      Object.entries(c.promediosEjercicios).forEach(([normKey, exData]) => {
-        if (!fleetExerciseMap.has(normKey)) {
-          fleetExerciseMap.set(normKey, {
-            key: normKey,
-            nombre: exData.nombre,
-            numero: exData.numero || null,
-            sumDriverAvg: 0,
-            driverCount: 0,
-            totalRealizaciones: 0
-          });
+    // Recopilar nombres dinámicos de los ejercicios evaluados
+    if (Array.isArray(ev.ejercicios)) {
+      ev.ejercicios.forEach(e => {
+        if (e.numero && e.nombre && !nombresSimulaciones[e.numero]) {
+          nombresSimulaciones[e.numero] = e.nombre;
         }
-        const fleetEx = fleetExerciseMap.get(normKey);
-        fleetEx.sumDriverAvg += exData.promedio;
-        fleetEx.driverCount += 1;
-        fleetEx.totalRealizaciones += (exData.totalVeces || 1);
       });
+    } else if (ev.nombresSimulaciones) {
+      Object.assign(nombresSimulaciones, ev.nombresSimulaciones);
+    }
+
+    if (typeof ev.simulacionesDetalle?.simulacion_2 === 'number' && !isNaN(ev.simulacionesDetalle.simulacion_2)) {
+      sumSim2 += ev.simulacionesDetalle.simulacion_2;
+      countSim2++;
+    }
+    if (typeof ev.simulacionesDetalle?.simulacion_3 === 'number' && !isNaN(ev.simulacionesDetalle.simulacion_3)) {
+      sumSim3 += ev.simulacionesDetalle.simulacion_3;
+      countSim3++;
+    }
+    if (typeof ev.simulacionesDetalle?.simulacion_4 === 'number' && !isNaN(ev.simulacionesDetalle.simulacion_4)) {
+      sumSim4 += ev.simulacionesDetalle.simulacion_4;
+      countSim4++;
+    }
+  });
+
+  // Si no se proporcionó conductoresMap, armarlo a partir de las evaluaciones
+  let cMap = conductoresMap;
+  if (!cMap) {
+    cMap = new Map();
+    evalsList.forEach(ev => {
+      const condName = (ev.conductor || 'Sin Asignar').trim();
+      if (!cMap.has(condName)) {
+        cMap.set(condName, []);
+      }
+      cMap.get(condName).push(ev);
+    });
+  }
+
+  const conductores = [];
+  for (const [condName, evals] of cMap.entries()) {
+    evals.sort((a, b) => {
+      const da = a.fechaCapacitacion || a.fechaReporte || '';
+      const db = b.fechaCapacitacion || b.fechaReporte || '';
+      return da.localeCompare(db);
     });
 
-    const ejerciciosPromedio = [];
-    fleetExerciseMap.forEach(fEx => {
-      const avg = fEx.driverCount > 0 ? (fEx.sumDriverAvg / fEx.driverCount) : 0;
-      ejerciciosPromedio.push({
-        key: fEx.key,
-        nombre: fEx.nombre,
-        numero: fEx.numero,
-        promedio: parseFloat(avg.toFixed(2)),
-        totalConductores: fEx.driverCount,
-        totalRealizaciones: fEx.totalRealizaciones
-      });
-    });
+    const latest = evals[evals.length - 1];
+    const avgScore = evals.reduce((acc, e) => acc + (e.evaluacionFinalPuntos || e.calificacionExacta || 0), 0) / evals.length;
+    const latestScore = latest.evaluacionFinalPuntos || latest.calificacionExacta || 0;
 
-    // Ordenar ejercicios por número de simulación si existe, o por realizaciones / nombre
-    ejerciciosPromedio.sort((a, b) => {
-      if (a.numero && b.numero) return a.numero - b.numero;
-      if (a.numero) return -1;
-      if (b.numero) return 1;
-      return a.nombre.localeCompare(b.nombre);
-    });
+    // Calcular promedio de cada ejercicio para ESTE conductor (si hizo el mismo ejercicio varias veces)
+    const driverExMap = new Map();
 
-    // ==========================================
-    // TRAZABILIDAD Y EVOLUCIÓN ANUAL DE LA EMPRESA
-    // ==========================================
-    const annualMap = new Map(); // año (string) -> acumulador
-
-    data.evaluaciones.forEach(ev => {
-      // Extraer año de fechaCapacitacion (YYYY-MM-DD), fechaCapacitacionFormato (DD/MM/YYYY) o fechaReporte
-      let year = null;
-      if (ev.fechaCapacitacion && /^\d{4}/.test(ev.fechaCapacitacion)) {
-        year = ev.fechaCapacitacion.substring(0, 4);
-      } else if (ev.fechaCapacitacionFormato && /\d{4}/.test(ev.fechaCapacitacionFormato)) {
-        const m = ev.fechaCapacitacionFormato.match(/(\d{4})/);
-        if (m) year = m[1];
-      } else if (ev.fechaReporte && /\d{4}/.test(ev.fechaReporte)) {
-        const m = ev.fechaReporte.match(/(\d{4})/);
-        if (m) year = m[1];
-      }
-
-      if (!year) year = 'S/F';
-
-      if (!annualMap.has(year)) {
-        annualMap.set(year, {
-          year: year,
-          evaluaciones: [],
-          conductoresSet: new Set(),
-          sumFinal: 0,
-          sumHab: 0,
-          sumSim: 0,
-          approvedCount: 0,
-          totalCollisions: 0,
-          totalFatalities: 0,
-          totalOffRoad: 0,
-          driverExercisesMap: new Map() // condName -> Map(normKey -> { scores: [], nombre, numero })
-        });
-      }
-
-      const aData = annualMap.get(year);
-      aData.evaluaciones.push(ev);
-
-      const cName = (ev.conductor || 'Sin Asignar').trim();
-      aData.conductoresSet.add(cName);
-
-      const fScore = ev.evaluacionFinalPuntos || ev.calificacionExacta || 0;
-      aData.sumFinal += fScore;
-      aData.sumHab += (ev.habilidadesManejoPuntos || 0);
-      aData.sumSim += (ev.practicaSimuladorPuntos || 0);
-      aData.totalCollisions += (ev.colisiones || 0);
-      aData.totalFatalities += (ev.fatalidades || 0);
-      aData.totalOffRoad += (ev.vehiculoFueraVia || 0);
-      if (fScore >= 6.0) aData.approvedCount++;
-
-      // Registrar ejercicios para el conductor en este año
-      if (!aData.driverExercisesMap.has(cName)) {
-        aData.driverExercisesMap.set(cName, new Map());
-      }
-      const cExMap = aData.driverExercisesMap.get(cName);
-
+    evals.forEach(ev => {
       if (Array.isArray(ev.ejercicios) && ev.ejercicios.length > 0) {
         ev.ejercicios.forEach(ex => {
           if (!ex) return;
@@ -632,10 +492,10 @@ export function processCompanySummaries(evaluations) {
           const normKey = normalizeExerciseName(rawName) || rawName.toLowerCase();
           const score = typeof ex.calificacion === 'number' ? ex.calificacion : parseFloat(ex.calificacion);
           if (!isNaN(score)) {
-            if (!cExMap.has(normKey)) {
-              cExMap.set(normKey, { nombreDisplay: rawName, scores: [], numero: ex.numero });
+            if (!driverExMap.has(normKey)) {
+              driverExMap.set(normKey, { nombreDisplay: rawName, scores: [], numero: ex.numero });
             }
-            cExMap.get(normKey).scores.push(score);
+            driverExMap.get(normKey).scores.push(score);
           }
         });
       } else if (ev.simulacionesDetalle && typeof ev.simulacionesDetalle === 'object') {
@@ -645,105 +505,261 @@ export function processCompanySummaries(evaluations) {
           const num = parseInt(k.replace('simulacion_', ''), 10);
           const rawName = (ev.nombresSimulaciones?.[num] || nombresSimulaciones[num] || `Simulación ${num}`).trim();
           const normKey = normalizeExerciseName(rawName) || rawName.toLowerCase();
-          if (!cExMap.has(normKey)) {
-            cExMap.set(normKey, { nombreDisplay: rawName, scores: [], numero: num });
+          if (!driverExMap.has(normKey)) {
+            driverExMap.set(normKey, { nombreDisplay: rawName, scores: [], numero: num });
           }
-          cExMap.get(normKey).scores.push(score);
+          driverExMap.get(normKey).scores.push(score);
         });
       }
     });
 
-    const evolucionAnual = [];
-    const sortedYears = Array.from(annualMap.keys()).sort((a, b) => a.localeCompare(b));
-
-    sortedYears.forEach(year => {
-      const a = annualMap.get(year);
-      const totalEv = a.evaluaciones.length;
-      const totalCond = a.conductoresSet.size;
-
-      // Calcular ejercicios consolidados de este año
-      const annualExerciseFleet = new Map();
-      a.driverExercisesMap.forEach((cExMap) => {
-        cExMap.forEach((val, normKey) => {
-          const sum = val.scores.reduce((p, c) => p + c, 0);
-          const avg = sum / val.scores.length;
-
-          if (!annualExerciseFleet.has(normKey)) {
-            annualExerciseFleet.set(normKey, {
-              key: normKey,
-              nombre: val.nombreDisplay,
-              numero: val.numero,
-              sumDriverAvg: 0,
-              driverCount: 0,
-              totalRealizaciones: 0
-            });
-          }
-          const fEx = annualExerciseFleet.get(normKey);
-          fEx.sumDriverAvg += avg;
-          fEx.driverCount += 1;
-          fEx.totalRealizaciones += val.scores.length;
-        });
-      });
-
-      const ejerciciosAnuales = [];
-      annualExerciseFleet.forEach(fEx => {
-        const avg = fEx.driverCount > 0 ? (fEx.sumDriverAvg / fEx.driverCount) : 0;
-        ejerciciosAnuales.push({
-          key: fEx.key,
-          nombre: fEx.nombre,
-          numero: fEx.numero,
-          promedio: parseFloat(avg.toFixed(2)),
-          totalConductores: fEx.driverCount,
-          totalRealizaciones: fEx.totalRealizaciones
-        });
-      });
-
-      ejerciciosAnuales.sort((x, y) => {
-        if (x.numero && y.numero) return x.numero - y.numero;
-        if (x.numero) return -1;
-        if (y.numero) return 1;
-        return x.nombre.localeCompare(y.nombre);
-      });
-
-      evolucionAnual.push({
-        year: year,
-        totalEvaluaciones: totalEv,
-        totalConductores: totalCond,
-        promedioFinal: totalEv > 0 ? parseFloat((a.sumFinal / totalEv).toFixed(2)) : 0,
-        promedioHabilidades: totalEv > 0 ? parseFloat((a.sumHab / totalEv).toFixed(2)) : 0,
-        promedioSimulador: totalEv > 0 ? parseFloat((a.sumSim / totalEv).toFixed(2)) : 0,
-        tasaAprobacion: totalEv > 0 ? parseFloat(((a.approvedCount / totalEv) * 100).toFixed(1)) : 0,
-        totalColisiones: a.totalCollisions,
-        totalFatalidades: a.totalFatalities,
-        totalFueraVia: a.totalOffRoad,
-        ejercicios: ejerciciosAnuales
-      });
+    const promediosEjerciciosConductor = {};
+    driverExMap.forEach((val, normKey) => {
+      const sum = val.scores.reduce((a, b) => a + b, 0);
+      const avg = sum / val.scores.length;
+      promediosEjerciciosConductor[normKey] = {
+        nombre: val.nombreDisplay,
+        numero: val.numero,
+        promedio: parseFloat(avg.toFixed(2)),
+        totalVeces: val.scores.length
+      };
     });
 
-    summaries.push({
-      nombre: name,
-      slug: data.slug,
-      sedes: Array.from(sedesSet),
-      totalConductores: conductores.length,
-      totalEvaluaciones: totalEvals,
-      promedioFinal: totalEvals > 0 ? (sumFinal / totalEvals) : 0,
-      promedioHabilidades: totalEvals > 0 ? (sumHab / totalEvals) : 0,
-      promedioSimulador: totalEvals > 0 ? (sumSim / totalEvals) : 0,
-      tasaAprobacion: totalEvals > 0 ? ((approvedCount / totalEvals) * 100) : 0,
-      totalColisiones: totalCollisions,
-      totalFatalidades: totalFatalities,
-      totalFueraVia: totalOffRoad,
-      promedioSim2: countSim2 > 0 ? (sumSim2 / countSim2) : 0,
-      promedioSim3: countSim3 > 0 ? (sumSim3 / countSim3) : 0,
-      promedioSim4: countSim4 > 0 ? (sumSim4 / countSim4) : 0,
-      nombresSimulaciones: nombresSimulaciones,
-      ejerciciosPromedio: ejerciciosPromedio,
-      conductores: conductores,
-      evolucionAnual: evolucionAnual
+    conductores.push({
+      nombre: condName,
+      empresa: latest.empresa || '',
+      totalEvaluaciones: evals.length,
+      ultimaFecha: latest.fechaCapacitacionFormato || latest.fechaCapacitacion || latest.fechaReporte,
+      ultimoScore: latestScore,
+      promedioScore: avgScore,
+      sede: latest.sede || '',
+      simulaciones: latest.simulacionesDetalle || {},
+      simulacionesNombres: latest.nombresSimulaciones || nombresSimulaciones,
+      ejercicios: latest.ejercicios || [],
+      promediosEjercicios: promediosEjerciciosConductor,
+      colisiones: evals.reduce((a, b) => a + (b.colisiones || 0), 0),
+      fatalidades: evals.reduce((a, b) => a + (b.fatalidades || 0), 0),
+      estado: latest.estado || 'Procesado',
+      badgeColor: latest.badgeColor || 'info',
+      latestEvalId: latest.id
     });
   }
 
-  summaries.sort((a, b) => a.nombre.localeCompare(b.nombre));
-  return summaries;
+  // Ordenar conductores por puntaje promedio descendente (ranking)
+  conductores.sort((a, b) => b.promedioScore - a.promedioScore);
+
+  const fleetExerciseMap = new Map();
+
+  conductores.forEach(c => {
+    if (!c.promediosEjercicios) return;
+    Object.entries(c.promediosEjercicios).forEach(([normKey, exData]) => {
+      if (!fleetExerciseMap.has(normKey)) {
+        fleetExerciseMap.set(normKey, {
+          key: normKey,
+          nombre: exData.nombre,
+          numero: exData.numero || null,
+          sumDriverAvg: 0,
+          driverCount: 0,
+          totalRealizaciones: 0
+        });
+      }
+      const fleetEx = fleetExerciseMap.get(normKey);
+      fleetEx.sumDriverAvg += exData.promedio;
+      fleetEx.driverCount += 1;
+      fleetEx.totalRealizaciones += (exData.totalVeces || 1);
+    });
+  });
+
+  const ejerciciosPromedio = [];
+  fleetExerciseMap.forEach(fEx => {
+    const avg = fEx.driverCount > 0 ? (fEx.sumDriverAvg / fEx.driverCount) : 0;
+    ejerciciosPromedio.push({
+      key: fEx.key,
+      nombre: fEx.nombre,
+      numero: fEx.numero,
+      promedio: parseFloat(avg.toFixed(2)),
+      totalConductores: fEx.driverCount,
+      totalRealizaciones: fEx.totalRealizaciones
+    });
+  });
+
+  ejerciciosPromedio.sort((a, b) => {
+    if (a.numero && b.numero) return a.numero - b.numero;
+    if (a.numero) return -1;
+    if (b.numero) return 1;
+    return a.nombre.localeCompare(b.nombre);
+  });
+
+  // ==========================================
+  // TRAZABILIDAD Y EVOLUCIÓN ANUAL
+  // ==========================================
+  const annualMap = new Map();
+
+  evalsList.forEach(ev => {
+    let year = null;
+    if (ev.fechaCapacitacion && /^\d{4}/.test(ev.fechaCapacitacion)) {
+      year = ev.fechaCapacitacion.substring(0, 4);
+    } else if (ev.fechaCapacitacionFormato && /\d{4}/.test(ev.fechaCapacitacionFormato)) {
+      const m = ev.fechaCapacitacionFormato.match(/(\d{4})/);
+      if (m) year = m[1];
+    } else if (ev.fechaReporte && /\d{4}/.test(ev.fechaReporte)) {
+      const m = ev.fechaReporte.match(/(\d{4})/);
+      if (m) year = m[1];
+    }
+
+    if (!year) year = 'S/F';
+
+    if (!annualMap.has(year)) {
+      annualMap.set(year, {
+        year: year,
+        evaluaciones: [],
+        conductoresSet: new Set(),
+        sumFinal: 0,
+        sumHab: 0,
+        sumSim: 0,
+        approvedCount: 0,
+        totalCollisions: 0,
+        totalFatalities: 0,
+        totalOffRoad: 0,
+        driverExercisesMap: new Map()
+      });
+    }
+
+    const aData = annualMap.get(year);
+    aData.evaluaciones.push(ev);
+
+    const cName = (ev.conductor || 'Sin Asignar').trim();
+    aData.conductoresSet.add(cName);
+
+    const fScore = ev.evaluacionFinalPuntos || ev.calificacionExacta || 0;
+    aData.sumFinal += fScore;
+    aData.sumHab += (ev.habilidadesManejoPuntos || 0);
+    aData.sumSim += (ev.practicaSimuladorPuntos || 0);
+    aData.totalCollisions += (ev.colisiones || 0);
+    aData.totalFatalities += (ev.fatalidades || 0);
+    aData.totalOffRoad += (ev.vehiculoFueraVia || 0);
+    if (fScore >= 6.0) aData.approvedCount++;
+
+    if (!aData.driverExercisesMap.has(cName)) {
+      aData.driverExercisesMap.set(cName, new Map());
+    }
+    const cExMap = aData.driverExercisesMap.get(cName);
+
+    if (Array.isArray(ev.ejercicios) && ev.ejercicios.length > 0) {
+      ev.ejercicios.forEach(ex => {
+        if (!ex) return;
+        const rawName = (ex.nombre || (ex.numero ? (nombresSimulaciones[ex.numero] || `Ejercicio ${ex.numero}`) : '')).trim();
+        if (!rawName) return;
+        const normKey = normalizeExerciseName(rawName) || rawName.toLowerCase();
+        const score = typeof ex.calificacion === 'number' ? ex.calificacion : parseFloat(ex.calificacion);
+        if (!isNaN(score)) {
+          if (!cExMap.has(normKey)) {
+            cExMap.set(normKey, { nombreDisplay: rawName, scores: [], numero: ex.numero });
+          }
+          cExMap.get(normKey).scores.push(score);
+        }
+      });
+    } else if (ev.simulacionesDetalle && typeof ev.simulacionesDetalle === 'object') {
+      Object.keys(ev.simulacionesDetalle).forEach(k => {
+        const score = ev.simulacionesDetalle[k];
+        if (typeof score !== 'number' || isNaN(score)) return;
+        const num = parseInt(k.replace('simulacion_', ''), 10);
+        const rawName = (ev.nombresSimulaciones?.[num] || nombresSimulaciones[num] || `Simulación ${num}`).trim();
+        const normKey = normalizeExerciseName(rawName) || rawName.toLowerCase();
+        if (!cExMap.has(normKey)) {
+          cExMap.set(normKey, { nombreDisplay: rawName, scores: [], numero: num });
+        }
+        cExMap.get(normKey).scores.push(score);
+      });
+    }
+  });
+
+  const evolucionAnual = [];
+  const sortedYears = Array.from(annualMap.keys()).sort((a, b) => a.localeCompare(b));
+
+  sortedYears.forEach(year => {
+    const a = annualMap.get(year);
+    const totalEv = a.evaluaciones.length;
+    const totalCond = a.conductoresSet.size;
+
+    const annualExerciseFleet = new Map();
+    a.driverExercisesMap.forEach((cExMap) => {
+      cExMap.forEach((val, normKey) => {
+        const sum = val.scores.reduce((p, c) => p + c, 0);
+        const avg = sum / val.scores.length;
+
+        if (!annualExerciseFleet.has(normKey)) {
+          annualExerciseFleet.set(normKey, {
+            key: normKey,
+            nombre: val.nombreDisplay,
+            numero: val.numero,
+            sumDriverAvg: 0,
+            driverCount: 0,
+            totalRealizaciones: 0
+          });
+        }
+        const fEx = annualExerciseFleet.get(normKey);
+        fEx.sumDriverAvg += avg;
+        fEx.driverCount += 1;
+        fEx.totalRealizaciones += val.scores.length;
+      });
+    });
+
+    const ejerciciosAnuales = [];
+    annualExerciseFleet.forEach(fEx => {
+      const avg = fEx.driverCount > 0 ? (fEx.sumDriverAvg / fEx.driverCount) : 0;
+      ejerciciosAnuales.push({
+        key: fEx.key,
+        nombre: fEx.nombre,
+        numero: fEx.numero,
+        promedio: parseFloat(avg.toFixed(2)),
+        totalConductores: fEx.driverCount,
+        totalRealizaciones: fEx.totalRealizaciones
+      });
+    });
+
+    ejerciciosAnuales.sort((x, y) => {
+      if (x.numero && y.numero) return x.numero - y.numero;
+      if (x.numero) return -1;
+      if (y.numero) return 1;
+      return x.nombre.localeCompare(y.nombre);
+    });
+
+    evolucionAnual.push({
+      year: year,
+      totalEvaluaciones: totalEv,
+      totalConductores: totalCond,
+      promedioFinal: totalEv > 0 ? parseFloat((a.sumFinal / totalEv).toFixed(2)) : 0,
+      promedioHabilidades: totalEv > 0 ? parseFloat((a.sumHab / totalEv).toFixed(2)) : 0,
+      promedioSimulador: totalEv > 0 ? parseFloat((a.sumSim / totalEv).toFixed(2)) : 0,
+      tasaAprobacion: totalEv > 0 ? parseFloat(((a.approvedCount / totalEv) * 100).toFixed(1)) : 0,
+      totalColisiones: a.totalCollisions,
+      totalFatalidades: a.totalFatalities,
+      totalFueraVia: a.totalOffRoad,
+      ejercicios: ejerciciosAnuales
+    });
+  });
+
+  return {
+    nombre: name,
+    slug: slug,
+    sedes: Array.from(sedesSet),
+    totalConductores: conductores.length,
+    totalEvaluaciones: totalEvals,
+    promedioFinal: totalEvals > 0 ? (sumFinal / totalEvals) : 0,
+    promedioHabilidades: totalEvals > 0 ? (sumHab / totalEvals) : 0,
+    promedioSimulador: totalEvals > 0 ? (sumSim / totalEvals) : 0,
+    tasaAprobacion: totalEvals > 0 ? ((approvedCount / totalEvals) * 100) : 0,
+    totalColisiones: totalCollisions,
+    totalFatalidades: totalFatalities,
+    totalFueraVia: totalOffRoad,
+    promedioSim2: countSim2 > 0 ? (sumSim2 / countSim2) : 0,
+    promedioSim3: countSim3 > 0 ? (sumSim3 / countSim3) : 0,
+    promedioSim4: countSim4 > 0 ? (sumSim4 / countSim4) : 0,
+    nombresSimulaciones: nombresSimulaciones,
+    ejerciciosPromedio: ejerciciosPromedio,
+    conductores: conductores,
+    evolucionAnual: evolucionAnual
+  };
 }
 

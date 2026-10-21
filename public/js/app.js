@@ -34,7 +34,8 @@ import {
   updateEvaluationsBatchEmpresaSede,
   updateSingleEvaluation,
   processDriverSummaries,
-  processCompanySummaries
+  processCompanySummaries,
+  createCompanySummaryFromEvaluations
 } from './db.js';
 
 import {
@@ -44,7 +45,6 @@ import {
 
 import {
   renderEvolutionChart,
-  renderComparisonRadarChart,
   renderDistributionChart,
   renderCompanyRankingChart,
   renderCompanySimulationsChart,
@@ -670,7 +670,9 @@ async function loadAndRefreshData() {
 
     // Actualizar selección activa de empresa
     if (AppState.companies.length > 0) {
-      if (!AppState.selectedCompany || !AppState.companies.find(c => c.nombre === AppState.selectedCompany.nombre)) {
+      if (AppState.userRole === 'admin') {
+        AppState.selectedCompany = getAllCompaniesEvolutionSummary();
+      } else if (!AppState.selectedCompany || !AppState.companies.find(c => c.nombre === AppState.selectedCompany.nombre)) {
         AppState.selectedCompany = AppState.companies[0];
       }
     } else {
@@ -1186,6 +1188,12 @@ function initEvolutionViewControls() {
     companySelect.dataset.bound = 'true';
     companySelect.addEventListener('change', (e) => {
       const selectedName = e.target.value;
+      if (selectedName === 'all') {
+        const allSummary = getAllCompaniesEvolutionSummary();
+        AppState.selectedCompany = allSummary;
+        updateCompanyEvolutionDetails(allSummary);
+        return;
+      }
       const found = AppState.companies.find(c => c.nombre === selectedName);
       if (found) {
         AppState.selectedCompany = found;
@@ -1287,6 +1295,19 @@ function renderEvolutionView() {
   updateDriverDetails(AppState.selectedDriver);
 }
 
+// Helper para obtener el objeto de resumen consolidado de 'Todas las empresas'
+function getAllCompaniesEvolutionSummary() {
+  const allEvals = AppState.evaluations || [];
+  const summary = createCompanySummaryFromEvaluations(
+    'Todas las empresas',
+    'todas-las-empresas',
+    allEvals
+  );
+  // Indicar de forma descriptiva en sedes
+  summary.esGlobal = true;
+  return summary;
+}
+
 // Renderizar la trazabilidad y evolución anual por empresa
 function renderCompanyEvolutionView() {
   initEvolutionViewControls();
@@ -1306,28 +1327,57 @@ function renderCompanyEvolutionView() {
 
   if (emptyEl) emptyEl.style.display = 'none';
   if (contentEl) contentEl.style.display = 'block';
-  // Ocultar la barra de selección si sólo hay una empresa disponible para el usuario
-  if (selectorBar) selectorBar.style.display = companies.length > 1 ? 'flex' : 'none';
 
-  // Si no hay empresa seleccionada o la actual ya no existe, seleccionar la primera
-  if (!AppState.selectedCompany || !companies.some(c => c.nombre === AppState.selectedCompany.nombre)) {
-    AppState.selectedCompany = companies[0];
+  const isAdmin = AppState.userRole === 'admin';
+  // Ocultar la barra de selección si sólo hay una empresa disponible para el usuario y no es admin
+  if (selectorBar) selectorBar.style.display = (companies.length > 1 || isAdmin) ? 'flex' : 'none';
+
+  // Si no hay empresa seleccionada o la actual ya no existe (y no es 'all' o 'Todas las empresas')
+  const isSelectedAll = AppState.selectedCompany && (AppState.selectedCompany.nombre === 'Todas las empresas' || AppState.selectedCompany.slug === 'todas-las-empresas');
+  if (isAdmin) {
+    if (!AppState.selectedCompany || (!isSelectedAll && !companies.some(c => c.nombre === AppState.selectedCompany.nombre))) {
+      AppState.selectedCompany = getAllCompaniesEvolutionSummary();
+    }
+  } else {
+    if (isSelectedAll || !AppState.selectedCompany || !companies.some(c => c.nombre === AppState.selectedCompany.nombre)) {
+      AppState.selectedCompany = companies[0];
+    }
   }
 
   if (select) {
+    let optionsHtml = '';
+    if (isAdmin) {
+      const allSummary = getAllCompaniesEvolutionSummary();
+      const allYearsCount = (allSummary.evolucionAnual || []).length;
+      const isAllSelected = isSelectedAll || (AppState.selectedCompany && AppState.selectedCompany.nombre === 'Todas las empresas');
+      optionsHtml += `
+        <option value="all" ${isAllSelected ? 'selected' : ''}>
+          🌐 Todas las empresas (${allYearsCount} ${allYearsCount === 1 ? 'año evaluado' : 'años evaluados'} - ${allSummary.totalConductores} operadores)
+        </option>
+      `;
+    }
+
     const currentVal = AppState.selectedCompany ? AppState.selectedCompany.nombre : '';
-    select.innerHTML = companies.map(c => {
+    optionsHtml += companies.map(c => {
       const yearsCount = (c.evolucionAnual || []).length;
+      const isSelected = (!isSelectedAll && c.nombre === currentVal);
       return `
-        <option value="${c.nombre}" ${c.nombre === currentVal ? 'selected' : ''}>
+        <option value="${c.nombre}" ${isSelected ? 'selected' : ''}>
           🏢 ${c.nombre} (${yearsCount} ${yearsCount === 1 ? 'año evaluado' : 'años evaluados'} - ${c.totalConductores} operadores)
         </option>
       `;
     }).join('');
-    select.value = AppState.selectedCompany.nombre;
+
+    select.innerHTML = optionsHtml;
+    select.value = isSelectedAll ? 'all' : (AppState.selectedCompany ? AppState.selectedCompany.nombre : (isAdmin ? 'all' : companies[0]?.nombre));
   }
 
-  updateCompanyEvolutionDetails(AppState.selectedCompany);
+  const activeCompany = (isSelectedAll || (select && select.value === 'all'))
+    ? getAllCompaniesEvolutionSummary()
+    : AppState.selectedCompany;
+
+  AppState.selectedCompany = activeCompany;
+  updateCompanyEvolutionDetails(activeCompany);
 }
 
 function updateCompanyEvolutionDetails(company) {
@@ -1341,7 +1391,9 @@ function updateCompanyEvolutionDetails(company) {
 
   const sedesSubtitle = document.getElementById('companyEvolutionSedesSubtitle');
   if (sedesSubtitle) {
-    if (company.sedes && company.sedes.length > 0) {
+    if (company.esGlobal || company.nombre === 'Todas las empresas') {
+      sedesSubtitle.innerHTML = `🌐 Vista Consolidada Global: <strong style="color: #38bdf8;">Todas las flotas y empresas registradas</strong>`;
+    } else if (company.sedes && company.sedes.length > 0) {
       sedesSubtitle.innerHTML = `📍 Sedes: <strong style="color: #38bdf8;">${company.sedes.join(', ')}</strong>`;
     } else {
       sedesSubtitle.textContent = 'Flota Oficial de Autotransporte TrackSIM';
@@ -1556,94 +1608,7 @@ function updateDriverDetails(driver) {
   }
 }
 
-// ==========================================
-// VISTA: COMPARADOR DE CONDUCTORES
-// ==========================================
-function renderComparisonView() {
-  const selectA = document.getElementById('compareDriverA');
-  const selectB = document.getElementById('compareDriverB');
-  const emptyState = document.getElementById('compareEmptyState');
-  const compareContent = document.getElementById('compareContent');
 
-  const drivers = AppState.drivers;
-  if (!drivers || drivers.length < 2) {
-    if (emptyState) emptyState.style.display = 'block';
-    if (compareContent) compareContent.style.display = 'none';
-    return;
-  }
-
-  if (emptyState) emptyState.style.display = 'none';
-  if (compareContent) compareContent.style.display = 'block';
-
-  if (!selectA || !selectB) return;
-
-  const optionsHTML = drivers.map(d => `<option value="${d.slug}">${d.nombre}</option>`).join('');
-  selectA.innerHTML = optionsHTML;
-  selectB.innerHTML = optionsHTML;
-
-  if (drivers.length > 1) {
-    selectB.selectedIndex = 1;
-  }
-
-  const updateRadar = () => {
-    const dA = drivers.find(d => d.slug === selectA.value) || drivers[0];
-    const dB = drivers.find(d => d.slug === selectB.value) || drivers[1] || drivers[0];
-
-    renderComparisonRadarChart('comparisonRadarCanvas', dA, dB);
-    renderComparisonCards(dA, dB);
-  };
-
-  selectA.onchange = updateRadar;
-  selectB.onchange = updateRadar;
-
-  updateRadar();
-}
-
-function renderComparisonCards(driverA, driverB) {
-  const cardA = document.getElementById('compareCardA');
-  const cardB = document.getElementById('compareCardB');
-  if (!cardA || !cardB) return;
-
-  function renderCardHTML(d, color) {
-    return `
-      <div style="border-left: 4px solid ${color}; padding-left: 1rem;">
-        <h3 style="color: ${color}; font-size: 1.3rem;">${d.nombre}</h3>
-        <p style="color: var(--text-muted); font-size: 0.85rem;">${d.empresa}</p>
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; margin-top: 1rem;">
-          <div>
-            <span style="font-size: 0.75rem; color: var(--text-muted);">Calificación Actual:</span>
-            <div style="font-size: 1.4rem; font-weight: 700; color: #ffffff;">${(d.ultimaCalificacion || 0).toFixed(2)}</div>
-          </div>
-          <div>
-            <span style="font-size: 0.75rem; color: var(--text-muted);">Promedio General:</span>
-            <div style="font-size: 1.4rem; font-weight: 700; color: #ffffff;">${(d.promedioCalificacion || 0).toFixed(2)}</div>
-          </div>
-          <div>
-            <span style="font-size: 0.75rem; color: var(--text-muted);">Habilidades Manejo:</span>
-            <div style="font-weight: 600; color: #10b981;">${(d.promedioHabilidades || 0).toFixed(2)} / 3.0</div>
-          </div>
-          <div>
-            <span style="font-size: 0.75rem; color: var(--text-muted);">Práctica Simulador:</span>
-            <div style="font-weight: 600; color: #a855f7;">${(d.promedioSimulador || 0).toFixed(2)} / 7.0</div>
-          </div>
-          <div>
-            <span style="font-size: 0.75rem; color: var(--text-muted);">Total Incidentes:</span>
-            <div style="font-weight: 600; color: ${(d.totalColisiones + d.totalFatalidades) > 0 ? 'var(--danger)' : 'var(--success)'};">
-              ${d.totalColisiones} Colisiones / ${d.totalFatalidades} Fatalidades
-            </div>
-          </div>
-          <div>
-            <span style="font-size: 0.75rem; color: var(--text-muted);">Tendencia:</span>
-            <div><span class="badge badge-${d.badgeColor}">${d.estadoGeneral}</span></div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  cardA.innerHTML = renderCardHTML(driverA, '#38bdf8');
-  cardB.innerHTML = renderCardHTML(driverB, '#f59e0b');
-}
 
 // ==========================================
 // VISTA: INSPECCIÓN DE FLOTAS POR EMPRESA
@@ -1655,7 +1620,11 @@ function initCompanyView() {
   if (select) {
     select.addEventListener('change', (e) => {
       const selectedName = e.target.value;
-      AppState.selectedCompany = AppState.companies.find(c => c.nombre === selectedName) || null;
+      if (selectedName === 'all') {
+        AppState.selectedCompany = getAllCompaniesEvolutionSummary();
+      } else {
+        AppState.selectedCompany = AppState.companies.find(c => c.nombre === selectedName) || null;
+      }
       renderCompanyView();
     });
   }
@@ -1797,7 +1766,6 @@ function initCompanyView() {
       listEl.innerHTML = driverEvals.map((ev, idx) => {
         const dateStr = ev.fechaCapacitacionFormato || ev.fechaCapacitacion || ev.fechaReporte || 'Fecha no especificada';
         const score = (ev.evaluacionFinalPuntos || ev.calificacionExacta || 0).toFixed(2);
-        const incidents = (ev.colisiones || 0) + (ev.fatalidades || 0) + (ev.vehiculoFueraVia || 0);
         const isLatest = idx === 0;
 
         return `
@@ -1996,29 +1964,55 @@ function renderCompanyView() {
 
   if (emptyState) emptyState.style.display = 'none';
   if (content) content.style.display = 'block';
+  const isAdmin = AppState.userRole === 'admin';
 
-  // Si no hay empresa seleccionada o la actual ya no existe en el listado, seleccionar la primera
-  if (!AppState.selectedCompany || !companies.some(c => c.nombre === AppState.selectedCompany.nombre)) {
-    AppState.selectedCompany = companies[0];
+  // Si no hay empresa seleccionada o la actual ya no existe en el listado
+  const isSelectedAll = AppState.selectedCompany && (AppState.selectedCompany.nombre === 'Todas las empresas' || AppState.selectedCompany.slug === 'todas-las-empresas');
+  if (isAdmin) {
+    if (!AppState.selectedCompany || (!isSelectedAll && !companies.some(c => c.nombre === AppState.selectedCompany.nombre))) {
+      AppState.selectedCompany = getAllCompaniesEvolutionSummary();
+    }
+  } else {
+    if (isSelectedAll || !AppState.selectedCompany || !companies.some(c => c.nombre === AppState.selectedCompany.nombre)) {
+      AppState.selectedCompany = companies[0];
+    }
   }
 
-  // Controlar visibilidad del selector de empresa si sólo hay una empresa disponible
+  // Controlar visibilidad del selector de empresa si sólo hay una empresa disponible y no es admin
   const selectWrapper = document.getElementById('companySelectWrapper');
   if (selectWrapper) {
-    selectWrapper.style.display = companies.length > 1 ? 'flex' : 'none';
+    selectWrapper.style.display = (companies.length > 1 || isAdmin) ? 'flex' : 'none';
   }
 
   // Actualizar opciones del select
   if (select) {
+    let optionsHtml = '';
+    if (isAdmin) {
+      const allSummary = getAllCompaniesEvolutionSummary();
+      const isAllSelected = isSelectedAll || (AppState.selectedCompany && AppState.selectedCompany.nombre === 'Todas las empresas');
+      optionsHtml += `
+        <option value="all" ${isAllSelected ? 'selected' : ''}>
+          🌐 Todas las empresas (${allSummary.totalConductores} operadores - ${allSummary.totalEvaluaciones} reportes)
+        </option>
+      `;
+    }
+
     const currentVal = AppState.selectedCompany ? AppState.selectedCompany.nombre : '';
-    select.innerHTML = companies.map(c => `
-      <option value="${c.nombre}" ${c.nombre === currentVal ? 'selected' : ''}>
+    optionsHtml += companies.map(c => `
+      <option value="${c.nombre}" ${(!isSelectedAll && c.nombre === currentVal) ? 'selected' : ''}>
         🏢 ${c.nombre} ${c.sedes && c.sedes.length > 0 ? `(📍 Sede: ${c.sedes.join(', ')})` : ''} (${c.totalConductores} operadores)
       </option>
     `).join('');
+
+    select.innerHTML = optionsHtml;
+    select.value = isSelectedAll ? 'all' : (AppState.selectedCompany ? AppState.selectedCompany.nombre : (isAdmin ? 'all' : companies[0]?.nombre));
   }
 
-  const comp = AppState.selectedCompany;
+  const comp = (isSelectedAll || (select && select.value === 'all'))
+    ? getAllCompaniesEvolutionSummary()
+    : AppState.selectedCompany;
+
+  AppState.selectedCompany = comp;
   if (!comp) return;
 
   // 1. Resumen Hero
@@ -2027,7 +2021,9 @@ function renderCompanyView() {
 
   const sedesSubtitle = document.getElementById('companySedesSubtitle');
   if (sedesSubtitle) {
-    if (comp.sedes && comp.sedes.length > 0) {
+    if (comp.esGlobal || comp.nombre === 'Todas las empresas') {
+      sedesSubtitle.innerHTML = `🌐 Vista Consolidada Global: <strong style="color: #38bdf8;">Todas las flotas y empresas registradas</strong>`;
+    } else if (comp.sedes && comp.sedes.length > 0) {
       sedesSubtitle.innerHTML = `📍 Sede de Evaluación: <strong style="color: #38bdf8;">${comp.sedes.join(', ')}</strong>`;
     } else {
       sedesSubtitle.textContent = 'Flota Oficial de Autotransporte TrackSIM';
@@ -2161,7 +2157,9 @@ function renderCompanyDriversTable(filterSearch = '') {
             </div>
             <div style="min-width: 0;">
               <div style="font-weight: 600; color: #ffffff; max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${c.nombre}">${c.nombre}</div>
-              <div style="font-size: 0.72rem; color: var(--text-muted); max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">ID: ${c.latestEvalId ? c.latestEvalId.substring(0, 16) : 'N/A'}</div>
+              <div style="font-size: 0.72rem; color: var(--text-muted); max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                ${(comp.esGlobal || comp.nombre === 'Todas las empresas') && c.empresa ? `<strong style="color: #38bdf8;">🏢 ${c.empresa}</strong> • ` : ''}ID: ${c.latestEvalId ? c.latestEvalId.substring(0, 16) : 'N/A'}
+              </div>
             </div>
           </div>
         </td>

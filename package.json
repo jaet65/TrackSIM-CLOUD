@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "oxlint",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "oxlint",
