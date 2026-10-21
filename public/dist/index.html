@@ -32,8 +32,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <!-- Estilos del Sistema de Diseño -->
-  <script type="module" crossorigin src="/assets/index-D1xDDIAG.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-kIig0az5.css">
+  <script type="module" crossorigin src="/assets/index-DgrAPFkz.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index--cWs0yTY.css">
 </head>
 
 <body>
@@ -45,7 +45,7 @@
     <div class="login-card">
       <div class="login-header">
         <div class="login-logo">
-          <img src="/assets/Logo-DDm_S6GN.png" alt="TrackSIM Logo" class="brand-logo-img">
+          <img src="/assets/Logo-LIOIo5ZZ.png" alt="TrackSIM Logo" class="brand-logo-img">
         </div>
         <h2>TrackSIM CLOUD</h2>
         <p>Trazabilidad y Evaluación de Operadores</p>
@@ -78,7 +78,13 @@
         <span>Acceso para usuarios</span>
       </div>
 
-      <!-- Formulario Lector Correo / Contraseña -->
+      <!-- Pestañas de Login / Registro -->
+      <div class="auth-tabs">
+        <button id="authTabLogin" type="button" class="auth-tab active">Iniciar Sesión</button>
+        <button id="authTabRegister" type="button" class="auth-tab">Crear Cuenta</button>
+      </div>
+
+      <!-- Formulario Lector Correo / Contraseña (Iniciar Sesión) -->
       <form id="viewerLoginForm" autocomplete="on">
         <div class="form-group">
           <label for="viewerEmail">Correo Electrónico:</label>
@@ -93,7 +99,33 @@
         </button>
         <p
           style="font-size: 0.75rem; color: var(--text-muted); text-align: center; margin-top: 0.85rem; line-height: 1.4;">
-          Las cuentas de solo lectura son creadas y autorizadas por un Administrador.
+          ¿No tienes cuenta? Haz clic en <strong>Crear Cuenta</strong> arriba para registrarte con el correo de tu empresa.
+        </p>
+      </form>
+
+      <!-- Formulario de Autoregistro de Usuario (Lector) -->
+      <form id="viewerRegisterForm" autocomplete="on" style="display: none;">
+        <div class="form-group">
+          <label for="regEmail">Correo Corporativo:</label>
+          <input type="email" id="regEmail" class="form-control" placeholder="tu.nombre@empresa.com" required>
+          <small id="regDomainHint" style="font-size: 0.72rem; color: var(--primary); display: block; margin-top: 0.3rem;">
+            Se vinculará a la empresa según el dominio registrado en el sistema.
+          </small>
+        </div>
+        <div class="form-group">
+          <label for="regPassword">Contraseña:</label>
+          <input type="password" id="regPassword" class="form-control" placeholder="Mínimo 6 caracteres" minlength="6" required>
+        </div>
+        <div class="form-group">
+          <label for="regConfirmPassword">Confirmar Contraseña:</label>
+          <input type="password" id="regConfirmPassword" class="form-control" placeholder="Repite tu contraseña" minlength="6" required>
+        </div>
+        <button id="regSubmitBtn" type="submit" class="btn btn-primary btn-login-submit">
+          Registrarme como Usuario
+        </button>
+        <p
+          style="font-size: 0.75rem; color: var(--text-muted); text-align: center; margin-top: 0.85rem; line-height: 1.4;">
+          El registro asigna automáticamente el perfil de <strong>Usuario Lector</strong> con acceso a las evaluaciones de tu empresa.
         </p>
       </form>
     </div>
@@ -109,7 +141,7 @@
       <div class="nav-left">
         <div class="brand-badge">
           <div class="brand-icon">
-            <img src="/assets/Logo-DDm_S6GN.png" alt="TrackSIM Logo" class="brand-logo-img">
+            <img src="/assets/Logo-LIOIo5ZZ.png" alt="TrackSIM Logo" class="brand-logo-img">
           </div>
           <div class="brand-text">
             <h1>TrackSIM</h1>
@@ -193,6 +225,17 @@
 
     <!-- Contenedor Principal -->
     <main class="main-content">
+
+      <!-- Banner de Aviso para Usuarios Sin Empresa Asignada -->
+      <div id="unassignedCompanyBanner" class="readonly-banner" style="display: none; background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.35); color: #fde68a;">
+        <span style="font-size: 1.25rem;">⚠️</span>
+        <div>
+          <strong>Cuenta pendiente de vinculación empresarial.</strong>
+          <div style="font-size: 0.8rem; color: #cbd5e1; margin-top: 0.2rem;">
+            Tu correo electrónico aún no cuenta con una empresa asignada o su dominio no está registrado. Contacta al Administrador para vincular tu cuenta a tu empresa.
+          </div>
+        </div>
+      </div>
 
       <!-- ========================================================
          VISTA 1: DASHBOARD EJECUTIVO

@@ -306,20 +306,21 @@ function initAuth() {
           if (userSnap.exists()) {
             const uData = userSnap.data();
             if (uData.empresaPermitida) {
-              AppState.allowedCompanies = [uData.empresaPermitida];
-            } else if (Array.isArray(uData.empresasPermitidas)) {
+              AppState.allowedCompanies = uData.empresaPermitida === 'all' ? ['all'] : [uData.empresaPermitida];
+            } else if (Array.isArray(uData.empresasPermitidas) && uData.empresasPermitidas.length > 0) {
               AppState.allowedCompanies = uData.empresasPermitidas;
             } else {
-              AppState.allowedCompanies = ['all'];
+              // Usuario registrado sin empresa vinculada: NO mostrar información
+              AppState.allowedCompanies = [];
             }
           } else {
-            // Sin mapeo de dominio ni usuario individual: sin restricción (o fallback a todas)
-            AppState.allowedCompanies = ['all'];
+            // Sin documento ni mapeo de dominio: NO mostrar información
+            AppState.allowedCompanies = [];
           }
         }
       } catch (err) {
         console.warn('No se pudo determinar la empresa asignada en Firestore:', err);
-        AppState.allowedCompanies = ['all'];
+        AppState.allowedCompanies = [];
       }
     }
 
@@ -397,6 +398,144 @@ function initAuth() {
     });
   }
 
+  const authTabLogin = document.getElementById('authTabLogin');
+  const authTabRegister = document.getElementById('authTabRegister');
+  const viewerRegisterForm = document.getElementById('viewerRegisterForm');
+
+  // Alternar entre Iniciar Sesión y Registro
+  if (authTabLogin && authTabRegister) {
+    authTabLogin.addEventListener('click', () => {
+      hideLoginAlert();
+      authTabLogin.classList.add('active');
+      authTabRegister.classList.remove('active');
+      if (viewerLoginForm) viewerLoginForm.style.display = 'block';
+      if (viewerRegisterForm) viewerRegisterForm.style.display = 'none';
+    });
+
+    authTabRegister.addEventListener('click', () => {
+      hideLoginAlert();
+      authTabRegister.classList.add('active');
+      authTabLogin.classList.remove('active');
+      if (viewerLoginForm) viewerLoginForm.style.display = 'none';
+      if (viewerRegisterForm) viewerRegisterForm.style.display = 'block';
+    });
+  }
+
+  // Actualizar pista de dominio en vivo al escribir en el registro
+  const regEmailInput = document.getElementById('regEmail');
+  const regDomainHint = document.getElementById('regDomainHint');
+  if (regEmailInput && regDomainHint) {
+    regEmailInput.addEventListener('input', async () => {
+      const emailVal = regEmailInput.value.trim().toLowerCase();
+      const parts = emailVal.split('@');
+      if (parts.length > 1 && parts[1].includes('.')) {
+        const dom = parts[1].trim();
+        try {
+          const domSnap = await getDoc(doc(db, 'dominios_empresas', dom));
+          if (domSnap.exists() && domSnap.data().empresa) {
+            regDomainHint.innerHTML = `🏢 Empresa detectada: <strong>${domSnap.data().empresa}</strong>`;
+            regDomainHint.style.color = '#38bdf8';
+            return;
+          }
+        } catch {
+          // Ignorar error en preview
+        }
+        regDomainHint.innerHTML = `ℹ️ Dominio <code>@${dom}</code> (se asignará tras aprobación o vinculación de dominio)`;
+        regDomainHint.style.color = 'var(--text-muted)';
+      } else {
+        regDomainHint.textContent = 'Se vinculará a la empresa según el dominio registrado en el sistema.';
+        regDomainHint.style.color = 'var(--primary)';
+      }
+    });
+  }
+
+  // Procesar Autoregistro de Usuario (siempre rol viewer)
+  if (viewerRegisterForm) {
+    viewerRegisterForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideLoginAlert();
+
+      const email = (document.getElementById('regEmail').value || '').trim().toLowerCase();
+      const password = document.getElementById('regPassword').value;
+      const confirmPassword = document.getElementById('regConfirmPassword').value;
+      const submitBtn = document.getElementById('regSubmitBtn');
+
+      if (!email || !password) return;
+
+      if (password !== confirmPassword) {
+        showLoginAlert('Las contraseñas no coinciden. Por favor verifícalas.');
+        return;
+      }
+
+      if (password.length < 6) {
+        showLoginAlert('La contraseña debe contener al menos 6 caracteres.');
+        return;
+      }
+
+      // Si intenta registrarse con @corporativomaf.com mediante correo/contraseña, recordarle usar botón Google
+      if (email.endsWith('@corporativomaf.com')) {
+        showLoginAlert('Las cuentas de @corporativomaf.com deben ingresar con el botón "Ingresar con Google".');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creando cuenta...';
+
+      try {
+        // 1. Crear la cuenta en Firebase Authentication
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        const newUid = cred.user.uid;
+
+        // 2. Comprobar si el dominio de correo tiene empresa asignada
+        const emailParts = email.split('@');
+        const userDomain = emailParts.length > 1 ? emailParts[1].trim() : '';
+        let matchedCompany = null;
+
+        if (userDomain) {
+          try {
+            const domainSnap = await getDoc(doc(db, 'dominios_empresas', userDomain));
+            if (domainSnap.exists() && domainSnap.data().empresa) {
+              matchedCompany = domainSnap.data().empresa;
+            }
+          } catch (domErr) {
+            console.warn('Error verificando dominio en autoregistro:', domErr);
+          }
+        }
+
+        // 3. Crear documento en colección 'usuarios' siempre como 'viewer'
+        const userDocRef = doc(db, 'usuarios', newUid);
+        await setDoc(userDocRef, {
+          uid: newUid,
+          email: email,
+          role: 'viewer', // SIEMPRE usuario lector
+          empresaPermitida: matchedCompany || '',
+          empresasPermitidas: matchedCompany ? [matchedCompany] : [],
+          autoregistro: true,
+          dominioDetectado: userDomain,
+          fechaAlta: new Date().toISOString()
+        });
+
+        showToast(`¡Cuenta creada con éxito! Bienvenido a TrackSIM Cloud.`, 'success');
+      } catch (err) {
+        console.error('Error durante el autoregistro:', err);
+        let errorMsg = 'Error al registrar la cuenta.';
+        if (err.code === 'auth/email-already-in-use') {
+          errorMsg = 'Este correo ya tiene una cuenta registrada. Cambia a "Iniciar Sesión".';
+        } else if (err.code === 'auth/invalid-email') {
+          errorMsg = 'El formato del correo electrónico no es válido.';
+        } else if (err.code === 'auth/weak-password') {
+          errorMsg = 'La contraseña es muy débil (debe tener al menos 6 caracteres).';
+        } else {
+          errorMsg = `No se pudo completar el registro: ${err.message || err.code}`;
+        }
+        showLoginAlert(errorMsg);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Registrarme como Usuario';
+      }
+    });
+  }
+
   // Cerrar sesión
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
@@ -467,6 +606,16 @@ function applyRolePermissions(user, role) {
       switchTab('dashboard');
     }
   }
+
+  // Banner informativo para usuarios lectores sin empresa asignada
+  const unassignedBanner = document.getElementById('unassignedCompanyBanner');
+  if (unassignedBanner) {
+    if (role !== 'admin' && (!AppState.allowedCompanies || AppState.allowedCompanies.length === 0)) {
+      unassignedBanner.style.display = 'flex';
+    } else {
+      unassignedBanner.style.display = 'none';
+    }
+  }
 }
 
 // ==========================================
@@ -476,13 +625,18 @@ async function loadAndRefreshData() {
   try {
     let allEvals = await getEvaluations();
 
-    // Si el usuario es lector y tiene empresas restringidas, filtrar evaluaciones únicamente a sus empresas autorizadas
-    if (AppState.userRole !== 'admin' && AppState.allowedCompanies && !AppState.allowedCompanies.includes('all')) {
-      const allowedSet = new Set(AppState.allowedCompanies.map(c => (c || '').trim().toLowerCase()));
-      allEvals = allEvals.filter(e => {
-        const emp = (e.empresa || '').trim().toLowerCase();
-        return allowedSet.has(emp);
-      });
+    // Si el usuario es lector, aplicar restricción estricta de empresa
+    if (AppState.userRole !== 'admin') {
+      if (!AppState.allowedCompanies || AppState.allowedCompanies.length === 0) {
+        // Lector sin empresa vinculada: NO tiene acceso a ninguna evaluación
+        allEvals = [];
+      } else if (!AppState.allowedCompanies.includes('all')) {
+        const allowedSet = new Set(AppState.allowedCompanies.map(c => (c || '').trim().toLowerCase()));
+        allEvals = allEvals.filter(e => {
+          const emp = (e.empresa || '').trim().toLowerCase();
+          return allowedSet.has(emp);
+        });
+      }
     }
 
     AppState.evaluations = allEvals;
@@ -552,9 +706,12 @@ function renderDashboard() {
   const recentTableBody = document.getElementById('recentEvalsTableBody');
   if (recentTableBody) {
     if (evals.length === 0) {
-      const emptyMsg = AppState.userRole === 'admin'
-        ? "No hay evaluaciones registradas aún. Sube tus archivos PDF en la pestaña 'Ingesta de PDFs'."
-        : "No hay evaluaciones registradas aún en el sistema.";
+      let emptyMsg = "No hay evaluaciones registradas aún en el sistema.";
+      if (AppState.userRole === 'admin') {
+        emptyMsg = "No hay evaluaciones registradas aún. Sube tus archivos PDF en la pestaña 'Ingesta de PDFs'.";
+      } else if (!AppState.allowedCompanies || AppState.allowedCompanies.length === 0) {
+        emptyMsg = "Tu cuenta no tiene una empresa asociada todavía. No se muestran evaluaciones.";
+      }
       recentTableBody.innerHTML = `
         <tr>
           <td colspan="5" style="text-align: center; padding: 3rem 1.5rem; color: var(--text-muted);">
