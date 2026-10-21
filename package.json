@@ -7,6 +7,7 @@
     "prebuild": "oxlint",
     "build": "vite build",
     "preview": "vite preview",
+    "deploy:staging": "vite build && firebase hosting:channel:deploy staging",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix"
   },

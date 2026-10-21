@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
-import { collection, getDocs, query, orderBy, deleteDoc, doc, setDoc } from '../services/firebase';
+import { collection, getDocs, deleteDoc, doc, setDoc } from '../services/firebase';
 import { db } from '../services/firebase';
 import { Evaluation, CompanySummary, DriverSummary } from '../types';
 import { processCompanySummaries, processDriverSummaries, createCompanySummaryFromEvaluations } from '../services/analytics';

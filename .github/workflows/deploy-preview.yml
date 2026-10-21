@@ -1,0 +1,40 @@
+name: Desplegar a Canal de Prueba (Branch Preview)
+
+on:
+  push:
+    branches:
+      - Preview
+      - preview
+  workflow_dispatch:
+
+permissions:
+  checks: write
+  contents: read
+
+jobs:
+  build_and_deploy_preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Compilar aplicación React + Vite
+        run: npm run build
+
+      - name: Desplegar a Firebase Hosting (Canal Preview)
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_TRACKSIM_CLOUD }}
+          projectId: tracksim-cloud
+          channelId: preview
+          expires: 30d
