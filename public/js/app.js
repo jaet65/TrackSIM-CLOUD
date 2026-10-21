@@ -20,6 +20,7 @@ import {
   getDoc,
   updateDoc,
   getDocs,
+  deleteDoc,
   query,
   orderBy
 } from './firebase-config.js';
@@ -270,24 +271,54 @@ function initAuth() {
     } else {
       // Usuario autenticado por Correo y Contraseña -> Rol Lector
       AppState.userRole = 'viewer';
+      AppState.allowedCompanies = [];
+
       try {
-        const userDocRef = doc(db, 'usuarios', user.uid);
-        const userSnap = await getDoc(userDocRef);
-        if (userSnap.exists()) {
-          const uData = userSnap.data();
-          if (uData.empresaPermitida) {
-            AppState.allowedCompanies = [uData.empresaPermitida];
-          } else if (Array.isArray(uData.empresasPermitidas)) {
-            AppState.allowedCompanies = uData.empresasPermitidas;
+        const userEmail = (user.email || '').toLowerCase().trim();
+        const emailParts = userEmail.split('@');
+        const userDomain = emailParts.length > 1 ? emailParts[1].trim() : '';
+
+        let domainMatchedCompany = null;
+
+        // 1. Verificar si el dominio de correo está registrado en dominios_empresas
+        if (userDomain) {
+          try {
+            const domainDocRef = doc(db, 'dominios_empresas', userDomain);
+            const domainSnap = await getDoc(domainDocRef);
+            if (domainSnap.exists()) {
+              const dData = domainSnap.data();
+              if (dData.empresa) {
+                domainMatchedCompany = dData.empresa;
+              }
+            }
+          } catch (domainErr) {
+            console.warn('Error verificando asignación por dominio:', domainErr);
+          }
+        }
+
+        // 2. Si se encontró asignación por dominio, aplicarla
+        if (domainMatchedCompany) {
+          AppState.allowedCompanies = domainMatchedCompany === 'all' ? ['all'] : [domainMatchedCompany];
+        } else {
+          // 3. Fallback: Verificar si existe regla individual para este UID en usuarios
+          const userDocRef = doc(db, 'usuarios', user.uid);
+          const userSnap = await getDoc(userDocRef);
+          if (userSnap.exists()) {
+            const uData = userSnap.data();
+            if (uData.empresaPermitida) {
+              AppState.allowedCompanies = [uData.empresaPermitida];
+            } else if (Array.isArray(uData.empresasPermitidas)) {
+              AppState.allowedCompanies = uData.empresasPermitidas;
+            } else {
+              AppState.allowedCompanies = ['all'];
+            }
           } else {
+            // Sin mapeo de dominio ni usuario individual: sin restricción (o fallback a todas)
             AppState.allowedCompanies = ['all'];
           }
-        } else {
-          // Si no existe aún registro específico, por defecto tiene acceso a todas
-          AppState.allowedCompanies = ['all'];
         }
       } catch (err) {
-        console.warn('No se pudo consultar el documento de usuario en Firestore:', err);
+        console.warn('No se pudo determinar la empresa asignada en Firestore:', err);
         AppState.allowedCompanies = ['all'];
       }
     }
@@ -3342,8 +3373,9 @@ function initUserManagement() {
       return;
     }
     populateCompanyDropdown('newViewerCompanySelect', '');
+    populateCompanyDropdown('newDomainCompanySelect', '');
     mgmtModal.classList.add('active');
-    await loadRegisteredUsers();
+    await Promise.all([loadRegisteredUsers(), loadRegisteredDomains()]);
   };
 
   const hideModal = () => {
@@ -3367,6 +3399,56 @@ function initUserManagement() {
   if (editModal) {
     editModal.addEventListener('click', (e) => {
       if (e.target === editModal) hideEditModal();
+    });
+  }
+
+  // Formulario para vincular Dominio Corporativo a Empresa
+  const domainForm = document.getElementById('adminDomainForm');
+  if (domainForm) {
+    domainForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const domainInput = document.getElementById('newDomainInput');
+      const companySelect = document.getElementById('newDomainCompanySelect');
+      const submitBtn = document.getElementById('btnSubmitDomain');
+
+      let domain = (domainInput.value || '').toLowerCase().trim();
+      // Limpiar prefijo @ o https:// si el usuario lo escribió
+      domain = domain.replace(/^https?:\/\//i, '').replace(/^@/, '').split('/')[0].trim();
+      const empresa = companySelect ? companySelect.value.trim() : '';
+
+      if (!domain || !domain.includes('.')) {
+        showToast('Por favor ingrese un dominio válido (ej: almex.com).', 'warning');
+        return;
+      }
+
+      if (!empresa) {
+        showToast('Por favor seleccione una empresa para asociar al dominio.', 'warning');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Vinculando...';
+
+      try {
+        const domainDocRef = doc(db, 'dominios_empresas', domain);
+        await setDoc(domainDocRef, {
+          dominio: domain,
+          empresa: empresa,
+          registradoPor: auth.currentUser?.email || 'admin@corporativomaf.com',
+          fechaRegistro: new Date().toISOString()
+        });
+
+        showToast(`Dominio @${domain} vinculado exitosamente a "${empresa}".`, 'success');
+        domainForm.reset();
+        populateCompanyDropdown('newDomainCompanySelect', '');
+        await loadRegisteredDomains();
+      } catch (err) {
+        console.error('Error al registrar dominio:', err);
+        showToast('Error al registrar el dominio corporativo en Firestore.', 'error');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '🔗 Vincular Dominio';
+      }
     });
   }
 
@@ -3568,6 +3650,86 @@ async function loadRegisteredUsers() {
     `;
   }
 }
+
+/**
+ * Consulta y lista los dominios corporativos vinculados en Firestore
+ */
+async function loadRegisteredDomains() {
+  const tbody = document.getElementById('registeredDomainsTableBody');
+  if (!tbody) return;
+
+  try {
+    const q = query(collection(db, 'dominios_empresas'), orderBy('fechaRegistro', 'desc'));
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+            No se han registrado dominios corporativos aún. Agregue uno arriba (ej. <code>almex.com</code>).
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    const domains = [];
+    snapshot.forEach(docSnap => domains.push({ id: docSnap.id, ...docSnap.data() }));
+
+    tbody.innerHTML = domains.map(d => {
+      const assigned = d.empresa || 'all';
+      let companyBadgeHtml = '';
+      if (assigned === 'all' || !assigned) {
+        companyBadgeHtml = `<span class="badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.3); font-size: 0.75rem; padding: 3px 8px;">🌐 Todas</span>`;
+      } else {
+        companyBadgeHtml = `<span class="badge" style="background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); font-size: 0.75rem; padding: 3px 8px; font-weight: 600;">🏢 ${assigned}</span>`;
+      }
+
+      return `
+        <tr>
+          <td><code style="background: rgba(255,255,255,0.06); padding: 3px 6px; border-radius: 4px; color: var(--primary);">@${d.dominio}</code></td>
+          <td>${companyBadgeHtml}</td>
+          <td style="font-size: 0.8rem; color: var(--text-muted);">${d.registradoPor || 'Admin'}</td>
+          <td style="font-size: 0.8rem;">${d.fechaRegistro ? new Date(d.fechaRegistro).toLocaleDateString() : 'N/A'}</td>
+          <td style="text-align: center;">
+            <button class="btn btn-danger btn-sm" style="padding: 3px 8px; font-size: 0.75rem; background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.4); color: #f87171;" onclick="window.confirmDeleteDomain('${d.id}', '${d.dominio}', '${assigned}')" title="Eliminar vinculación de dominio">
+              🗑️ Desvincular
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    console.warn('No se pudo cargar la lista de dominios:', err);
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+          Sin registros disponibles o modo local.
+        </td>
+      </tr>
+    `;
+  }
+}
+
+// Handler global para eliminar vinculación de dominio
+window.confirmDeleteDomain = async function(domainId, domainName, empresa) {
+  if (AppState.userRole !== 'admin') {
+    showToast('Acción restringida a administradores.', 'warning');
+    return;
+  }
+
+  if (window.confirm(`¿Estás seguro de que deseas desvincular el dominio @${domainName} de la empresa "${empresa}"?\n\nLos usuarios con este correo ya no tendrán acceso automático a esa empresa.`)) {
+    try {
+      const domainDocRef = doc(db, 'dominios_empresas', domainId);
+      await deleteDoc(domainDocRef);
+      showToast(`Dominio @${domainName} desvinculado exitosamente.`, 'info');
+      await loadRegisteredDomains();
+    } catch (err) {
+      console.error('Error al desvincular dominio:', err);
+      showToast('Error al desvincular el dominio.', 'error');
+    }
+  }
+};
 
 // ==========================================
 // TOAST NOTIFICATIONS

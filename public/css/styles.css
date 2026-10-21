@@ -132,15 +132,22 @@ textarea {
 }
 
 .brand-icon {
-  width: 40px;
-  height: 40px;
+  width: 70px !important;
+  height: 70px !important;
   border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, #0284c7, #38bdf8);
+  background: #566c7b00;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
-  box-shadow: 0 0 15px var(--primary-glow);
+  overflow: hidden;
+  padding: 0px;
+}
+
+.brand-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 
 .brand-text h1 {
@@ -1519,13 +1526,14 @@ textarea {
   width: 56px;
   height: 56px;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, #0284c7, #38bdf8);
+  background: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
   margin: 0 auto 1rem;
   box-shadow: 0 0 20px var(--primary-glow);
+  overflow: hidden;
+  padding: 4px;
 }
 
 .login-header h2 {
