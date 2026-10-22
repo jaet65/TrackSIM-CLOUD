@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
+import { normalizeExerciseName, findCatalogExercise } from '../services/exerciseCatalog';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -159,21 +160,30 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
         }
       }
 
-      // Variantes de ejercicio
-      if (Array.isArray(e.ejercicios)) {
+      // Variantes de ejercicio realizadas
+      if (Array.isArray(e.ejercicios) && e.ejercicios.length > 0) {
         e.ejercicios.forEach((ex) => {
-          const name = (ex.nombre || '').trim() || (ex.numero ? `Ejercicio ${ex.numero}` : '');
-          if (name) exercisesSet.add(name);
+          const rawName = (ex.nombre || (ex.numero ? (e.nombresSimulaciones?.[ex.numero] || `Ejercicio ${ex.numero}`) : '')).trim();
+          if (rawName) {
+            const matched = findCatalogExercise(rawName);
+            const normKey = matched ? normalizeExerciseName(matched.nombre) : normalizeExerciseName(rawName);
+            if (normKey) exercisesSet.add(normKey);
+          }
         });
-      }
-      if (e.nombresSimulaciones) {
+      } else if (e.nombresSimulaciones && Object.keys(e.nombresSimulaciones).length > 0) {
         Object.values(e.nombresSimulaciones).forEach((simName) => {
-          if (simName && typeof simName === 'string') exercisesSet.add(simName.trim());
+          if (simName && typeof simName === 'string') {
+            const matched = findCatalogExercise(simName);
+            const normKey = matched ? normalizeExerciseName(matched.nombre) : normalizeExerciseName(simName);
+            if (normKey) exercisesSet.add(normKey);
+          }
         });
-      }
-      if (e.simulacionesDetalle) {
+      } else if (e.simulacionesDetalle) {
         Object.keys(e.simulacionesDetalle).forEach((key) => {
-          exercisesSet.add(key.replace(/_/g, ' ').toUpperCase());
+          const clean = key.replace(/_/g, ' ').trim();
+          const matched = findCatalogExercise(clean);
+          const normKey = matched ? normalizeExerciseName(matched.nombre) : normalizeExerciseName(clean);
+          if (normKey) exercisesSet.add(normKey);
         });
       }
     });
