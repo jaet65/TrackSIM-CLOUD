@@ -8,6 +8,18 @@ import { useAuth } from './AuthContext';
 const LOCAL_STORAGE_KEY = 'tracksim_cloud_evaluaciones';
 const LOCAL_STORAGE_SYNC_TIME_KEY = 'tracksim_cloud_last_sync_time';
 
+const safeStorageSet = (key: string, value: string): void => {
+  try {
+    localStorage.setItem(key, value);
+  } catch (err: any) {
+    if (err?.name === 'QuotaExceededError' || err?.code === 22) {
+      console.warn(`[Storage Quota] Espacio de localStorage excedido al guardar ${key}. Se conserva la copia en memoria y caché IndexedDB de Firestore.`);
+    } else {
+      console.warn(`[Storage] No se pudo guardar ${key} en localStorage:`, err);
+    }
+  }
+};
+
 interface DataContextType {
   evaluations: Evaluation[];
   roleAllowedEvaluations: Evaluation[];
@@ -128,8 +140,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const nowIso = new Date().toISOString();
       setEvaluations(mergedList);
       setLastSyncTime(nowIso);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(mergedList));
-      localStorage.setItem(LOCAL_STORAGE_SYNC_TIME_KEY, nowIso);
+      safeStorageSet(LOCAL_STORAGE_KEY, JSON.stringify(mergedList));
+      safeStorageSet(LOCAL_STORAGE_SYNC_TIME_KEY, nowIso);
     } catch (err) {
       console.error('Error sincronizando evaluaciones de Firestore:', err);
       // Mantener los datos locales existentes
@@ -243,7 +255,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setEvaluations((prev) => {
       const next = prev.filter((item) => item.id !== id);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(next));
+      safeStorageSet(LOCAL_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
   };
@@ -296,7 +308,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const deleteSet = new Set(successfullyDeletedIds);
       setEvaluations((prev) => {
         const next = prev.filter((item) => !deleteSet.has(item.id));
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(next));
+        safeStorageSet(LOCAL_STORAGE_KEY, JSON.stringify(next));
         return next;
       });
     }
@@ -327,7 +339,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setEvaluations((prev) => {
       const next = prev.map((item) => (item.id === id ? { ...item, ...cleanUpdates } : item));
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(next));
+      safeStorageSet(LOCAL_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
   };
