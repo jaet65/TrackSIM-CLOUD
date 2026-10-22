@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { Evaluation, ExerciseItem } from '../types';
 import { findCatalogExercise } from '../services/exerciseCatalog';
+import { ReportDetailModal } from './ReportDetailModal';
 
 /** Escapa un valor para CSV (comillas dobles, comas y saltos de línea) */
 function csvCell(v: any): string {
@@ -1081,164 +1082,11 @@ export const DirectoryTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal: Ver Reporte Digital Detallado */}
-      {viewingReport && (
-        <div
-          className="modal-overlay active"
-          onClick={() => setViewingReport(null)}
-        >
-          <div
-            className="modal-dialog"
-            style={{ maxWidth: '800px', width: '92%', padding: '1.75rem', borderRadius: '16px' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.75rem' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800, color: '#fff' }}>
-                  📄 Reporte Oficial de Conducción
-                </h3>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  ID Registro: {viewingReport.id}
-                </span>
-              </div>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => setViewingReport(null)}
-                style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px' }}
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Metadatos Generales */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.85rem', marginBottom: '1.25rem' }}>
-              <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Operador / Conductor</div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', marginTop: '0.2rem' }}>
-                  {viewingReport.conductor || viewingReport.operador || 'Sin Asignar'}
-                </div>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Empresa & Sede</div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#38bdf8', marginTop: '0.2rem' }}>
-                  {viewingReport.empresa} {viewingReport.sede ? `• 📍 ${viewingReport.sede}` : ''}
-                </div>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Fecha Capacitación</div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', marginTop: '0.2rem' }}>
-                  {viewingReport.fechaCapacitacionFormato || viewingReport.fechaCapacitacion || viewingReport.fechaReporte || 'N/A'}
-                </div>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Instructor & Folio</div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', marginTop: '0.2rem' }}>
-                  {viewingReport.instructor || 'Oficial'} {viewingReport.folio ? `• Grupo: ${viewingReport.folio}` : ''}
-                </div>
-              </div>
-            </div>
-
-            {/* Puntuaciones Principales */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1.25rem', textAlign: 'center' }}>
-              <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '0.85rem', borderRadius: '10px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>HABILIDADES DE MANEJO</div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#10b981', marginTop: '0.2rem' }}>
-                  {(viewingReport.habilidadesManejoPuntos || 0).toFixed(2)} <span style={{ fontSize: '0.75rem' }}>/ 3.0</span>
-                </div>
-              </div>
-              <div style={{ background: 'rgba(168, 85, 247, 0.08)', border: '1px solid rgba(168, 85, 247, 0.25)', padding: '0.85rem', borderRadius: '10px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>PRÁCTICA EN SIMULADOR</div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#c084fc', marginTop: '0.2rem' }}>
-                  {(viewingReport.practicaSimuladorPuntos || 0).toFixed(2)} <span style={{ fontSize: '0.75rem' }}>/ 7.0</span>
-                </div>
-              </div>
-              <div style={{ background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)', padding: '0.85rem', borderRadius: '10px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>CALIFICACIÓN FINAL</div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#38bdf8', marginTop: '0.2rem' }}>
-                  {(viewingReport.evaluacionFinalPuntos ?? viewingReport.calificacionExacta ?? 0).toFixed(2)} <span style={{ fontSize: '0.75rem' }}>/ 10.0</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Registro de Incidentes */}
-            <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '10px', padding: '0.85rem', marginBottom: '1.25rem' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#f87171', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
-                🚨 Incidentes en Simulador
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', textAlign: 'center' }}>
-                <div style={{ background: 'rgba(0,0,0,0.25)', padding: '0.5rem', borderRadius: '8px' }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>💥 Colisiones</div>
-                  <strong style={{ fontSize: '1.1rem', color: (viewingReport.colisiones || 0) > 0 ? '#f87171' : '#4ade80' }}>
-                    {viewingReport.colisiones || 0}
-                  </strong>
-                </div>
-                <div style={{ background: 'rgba(0,0,0,0.25)', padding: '0.5rem', borderRadius: '8px' }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>💀 Fatalidades</div>
-                  <strong style={{ fontSize: '1.1rem', color: (viewingReport.fatalidades || 0) > 0 ? '#f87171' : '#4ade80' }}>
-                    {viewingReport.fatalidades || 0}
-                  </strong>
-                </div>
-                <div style={{ background: 'rgba(0,0,0,0.25)', padding: '0.5rem', borderRadius: '8px' }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>🛑 Fuera de Vía</div>
-                  <strong style={{ fontSize: '1.1rem', color: (viewingReport.vehiculoFueraVia || 0) > 0 ? '#f87171' : '#4ade80' }}>
-                    {viewingReport.vehiculoFueraVia || 0}
-                  </strong>
-                </div>
-              </div>
-            </div>
-
-            {/* Ejercicios de Simulador */}
-            {Array.isArray(viewingReport.ejercicios) && viewingReport.ejercicios.length > 0 && (
-              <div style={{ marginBottom: '1.25rem' }}>
-                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '0.6rem' }}>
-                  🎮 Ejercicios Evaluados ({viewingReport.ejercicios.length})
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {viewingReport.ejercicios.map((ex, idx) => {
-                    const catalog = findCatalogExercise(ex.nombre);
-                    const desc = catalog?.descripcion || ex.comentarios;
-                    return (
-                      <div key={idx} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '0.6rem 0.85rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontWeight: 600, color: '#fff', fontSize: '0.85rem' }}>
-                            {ex.numero ? `#${ex.numero} • ` : ''}{ex.nombre}
-                          </span>
-                          <span style={{ color: '#38bdf8', fontWeight: 700, fontSize: '0.88rem' }}>
-                            {typeof ex.calificacion === 'number' ? `${ex.calificacion.toFixed(1)} pts` : 'Realizado'}
-                          </span>
-                        </div>
-                        {desc && (
-                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem', lineHeight: 1.4 }}>
-                            {desc}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Firma Digital y Estado */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '1rem', borderTop: '1px solid var(--border-subtle)', flexWrap: 'wrap', gap: '0.75rem' }}>
-              <div>
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Dictamen Oficial: </span>
-                <span className={`badge badge-${viewingReport.estado === 'Sobresaliente' ? 'success' : viewingReport.estado === 'Aprobado' ? 'info' : 'warning'}`}>
-                  {viewingReport.estado || 'Evaluado'}
-                </span>
-              </div>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setViewingReport(null)}
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal: Ver Reporte Digital Detallado Unificado */}
+      <ReportDetailModal
+        evaluation={viewingReport}
+        onClose={() => setViewingReport(null)}
+      />
 
       {/* Modal: Edición Masiva en Lote */}
       {isBatchModalOpen && (
