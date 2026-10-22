@@ -508,7 +508,7 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
           <button
             type="button"
             className="btn btn-secondary btn-sm"
-            onClick={() => onSetDriversPage((p) => (typeof p === 'function' ? p(driversPage) - 1 : p - 1))}
+            onClick={() => onSetDriversPage((prev) => prev - 1)}
             disabled={driversPage === 1}
             style={{ borderRadius: '6px', padding: '0.35rem 0.75rem' }}
           >
@@ -520,7 +520,7 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
           <button
             type="button"
             className="btn btn-secondary btn-sm"
-            onClick={() => onSetDriversPage((p) => (typeof p === 'function' ? p(driversPage) + 1 : p + 1))}
+            onClick={() => onSetDriversPage((prev) => prev + 1)}
             disabled={driversPage === totalDriversPages}
             style={{ borderRadius: '6px', padding: '0.35rem 0.75rem' }}
           >

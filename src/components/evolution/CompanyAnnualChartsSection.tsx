@@ -216,9 +216,9 @@ export const CompanyAnnualChartsSection: React.FC<CompanyAnnualChartsSectionProp
                     ? `Tendencia en Aumento (+${activeAccidentTrend.percent}%)`
                     : 'Tendencia Estable'}
               </span>
-              {activeAccidentTrend.diff !== 0 && (
+              {Number(activeAccidentTrend.diff) !== 0 && (
                 <span style={{ fontSize: '0.78rem', opacity: 0.85, fontWeight: 600 }}>
-                  ({activeAccidentTrend.diff > 0 ? `+${activeAccidentTrend.diff}` : activeAccidentTrend.diff} {activeAccidentTrend.unit})
+                  ({Number(activeAccidentTrend.diff) > 0 ? `+${activeAccidentTrend.diff}` : activeAccidentTrend.diff} {activeAccidentTrend.unit})
                 </span>
               )}
             </div>

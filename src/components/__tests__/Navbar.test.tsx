@@ -29,6 +29,8 @@ describe('Navbar component', () => {
       setSelectedCompany: vi.fn(),
       searchFilter: '',
       setSearchFilter: vi.fn(),
+      roleAllowedEvaluations: [],
+      initialLoaded: true,
       deleteEvaluation: vi.fn(),
       deleteAllEvaluations: vi.fn(),
       updateEvaluation: vi.fn()

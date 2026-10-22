@@ -1,16 +1,11 @@
 import React from 'react';
 import { Radar } from 'react-chartjs-2';
 import { DriverSummary } from '../../types';
-import { MISTAKE_DIMENSIONS } from '../../services/mistakeCatalog';
+import { MistakeDimension, MISTAKE_DIMENSIONS } from '../../services/mistakeCatalog';
 
-interface RadarDimension {
-  id: number;
-  nombre: string;
-  shortName: string;
-  icono: string;
-  color: string;
-  descripcion: string;
-}
+export type RadarDimension = MistakeDimension & {
+  descripcion?: string;
+};
 
 interface MistakeDetail {
   error: string;
