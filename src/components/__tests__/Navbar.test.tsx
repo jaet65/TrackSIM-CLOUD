@@ -17,28 +17,21 @@ describe('Navbar component', () => {
       reloadEvaluations: vi.fn(),
       isSyncing: false,
       lastSyncTime: null,
+      loading: false,
       evaluations: [],
       filteredEvaluations: [],
-      instructors: [],
       companies: [],
-      availableExercises: [],
-      selectedInstructor: 'all',
-      selectedExercise: 'all',
+      companiesSummaries: [],
+      driverSummaries: [],
+      selectedCompanySummary: null,
+      selectedDriverName: '',
+      setSelectedDriverName: vi.fn(),
       setSelectedCompany: vi.fn(),
-      setSelectedInstructor: vi.fn(),
-      setSelectedExercise: vi.fn(),
-      stats: {} as any,
-      operatorStats: [],
-      instructorStats: [],
-      exerciseStats: [],
-      recentActivity: [],
-      companyBreakdown: [],
-      monthlyTrends: [],
-      globalScoreDistribution: [],
-      instructorPerformance: [],
-      operatorRankings: [],
-      isLocalMode: false,
-      enableLocalMode: vi.fn()
+      searchFilter: '',
+      setSearchFilter: vi.fn(),
+      deleteEvaluation: vi.fn(),
+      deleteAllEvaluations: vi.fn(),
+      updateEvaluation: vi.fn()
     });
   });
 
@@ -49,11 +42,10 @@ describe('Navbar component', () => {
       allowedCompanies: ['Transportes Demo'],
       profile: null,
       loading: false,
-      error: null,
       loginWithGoogle: vi.fn(),
       loginWithEmail: vi.fn(),
-      logout: vi.fn(),
-      updateUserProfile: vi.fn()
+      registerWithEmail: vi.fn(),
+      logout: vi.fn()
     });
 
     render(<Navbar currentTab="dashboard" onTabChange={mockOnTabChange} />);
@@ -76,11 +68,10 @@ describe('Navbar component', () => {
       allowedCompanies: ['all'],
       profile: null,
       loading: false,
-      error: null,
       loginWithGoogle: vi.fn(),
       loginWithEmail: vi.fn(),
-      logout: vi.fn(),
-      updateUserProfile: vi.fn()
+      registerWithEmail: vi.fn(),
+      logout: vi.fn()
     });
 
     render(<Navbar currentTab="dashboard" onTabChange={mockOnTabChange} />);
@@ -98,11 +89,10 @@ describe('Navbar component', () => {
       allowedCompanies: ['all'],
       profile: null,
       loading: false,
-      error: null,
       loginWithGoogle: vi.fn(),
       loginWithEmail: vi.fn(),
-      logout: vi.fn(),
-      updateUserProfile: vi.fn()
+      registerWithEmail: vi.fn(),
+      logout: vi.fn()
     });
 
     render(<Navbar currentTab="dashboard" onTabChange={mockOnTabChange} />);
