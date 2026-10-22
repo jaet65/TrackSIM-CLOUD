@@ -329,18 +329,18 @@ export const IngestaTab: React.FC = () => {
             </button>
           </div>
 
-          <div className="table-responsive">
-            <table className="data-table">
+          <div className="table-responsive" style={{ width: '100%', overflowX: 'auto' }}>
+            <table className="custom-table" style={{ width: '100%', minWidth: '950px' }}>
               <thead>
                 <tr>
-                  <th>#</th>
+                  <th style={{ width: '48px', textAlign: 'center' }}>#</th>
                   <th>Operador Extraído</th>
                   <th>Empresa</th>
                   <th>Sede</th>
                   <th>Fecha</th>
-                  <th>Puntaje</th>
-                  <th>Incidentes</th>
-                  <th>Estado</th>
+                  <th style={{ textAlign: 'center' }}>Puntaje</th>
+                  <th style={{ textAlign: 'center' }}>Incidentes</th>
+                  <th style={{ textAlign: 'center' }}>Estado</th>
                 </tr>
               </thead>
               <tbody>
@@ -350,28 +350,36 @@ export const IngestaTab: React.FC = () => {
 
                   return (
                     <tr key={idx}>
-                      <td style={{ color: 'var(--text-muted)' }}>{idx + 1}</td>
+                      <td style={{ color: 'var(--text-muted)', textAlign: 'center' }}>{idx + 1}</td>
                       <td>
                         <div style={{ fontWeight: 600, color: '#fff' }}>{item.conductor || item.operador}</div>
                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{item.fileName}</div>
                       </td>
-                      <td>{item.empresa || 'N/A'}</td>
-                      <td>{item.sede || 'N/A'}</td>
-                      <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                      <td style={{ color: '#e2e8f0', fontWeight: 500 }}>{item.empresa || 'N/A'}</td>
+                      <td>
+                        {item.sede ? (
+                          <span style={{ fontSize: '0.78rem', color: '#38bdf8', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+                            📍 {item.sede}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>-</span>
+                        )}
+                      </td>
+                      <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                         {item.fechaCapacitacionFormato || item.fechaCapacitacion || item.fechaReporte || item.fecha || 'N/A'}
                       </td>
-                      <td>
-                        <span style={{ color: '#38bdf8', fontWeight: 700 }}>
+                      <td style={{ textAlign: 'center' }}>
+                        <span style={{ color: score >= 6.0 ? '#38bdf8' : '#f87171', fontWeight: 700, fontSize: '0.92rem' }}>
                           {score.toFixed(2)}
                           <small style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}> / 10</small>
                         </span>
                       </td>
-                      <td>
+                      <td style={{ textAlign: 'center' }}>
                         <span style={{ color: incidentes > 0 ? 'var(--danger)' : 'var(--success)', fontWeight: 700 }}>
                           {incidentes}
                         </span>
                       </td>
-                      <td>
+                      <td style={{ textAlign: 'center' }}>
                         <span className="badge badge-info">{item.estado || 'Procesado'}</span>
                       </td>
                     </tr>

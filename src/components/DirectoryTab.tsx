@@ -1083,8 +1083,15 @@ export const DirectoryTab: React.FC = () => {
 
       {/* Modal: Ver Reporte Digital Detallado */}
       {viewingReport && (
-        <div className="modal-backdrop active" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="modal-dialog card" style={{ maxWidth: '780px', width: '92%', padding: '1.75rem', maxHeight: '90vh', overflowY: 'auto', borderRadius: '16px' }}>
+        <div
+          className="modal-overlay active"
+          onClick={() => setViewingReport(null)}
+        >
+          <div
+            className="modal-dialog"
+            style={{ maxWidth: '800px', width: '92%', padding: '1.75rem', borderRadius: '16px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.75rem' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800, color: '#fff' }}>
@@ -1235,8 +1242,15 @@ export const DirectoryTab: React.FC = () => {
 
       {/* Modal: Edición Masiva en Lote */}
       {isBatchModalOpen && (
-        <div className="modal-backdrop active" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="modal-dialog card" style={{ maxWidth: '540px', width: '90%', padding: '1.75rem', borderRadius: '16px' }}>
+        <div
+          className="modal-overlay active"
+          onClick={() => !isSavingBatch && setIsBatchModalOpen(false)}
+        >
+          <div
+            className="modal-dialog"
+            style={{ maxWidth: '540px', width: '90%', padding: '1.75rem', borderRadius: '16px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 style={{ marginTop: 0, fontWeight: 800, fontSize: '1.25rem', color: '#fff' }}>
               ⚡ Edición Masiva en Lote
             </h3>
@@ -1314,8 +1328,15 @@ export const DirectoryTab: React.FC = () => {
 
       {/* Modal de Edición Individual */}
       {editingItem && (
-        <div className="modal-backdrop active" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="modal-dialog card" style={{ maxWidth: '640px', width: '90%', padding: '1.75rem', maxHeight: '90vh', overflowY: 'auto', borderRadius: '16px' }}>
+        <div
+          className="modal-overlay active"
+          onClick={() => setEditingItem(null)}
+        >
+          <div
+            className="modal-dialog"
+            style={{ maxWidth: '640px', width: '90%', padding: '1.75rem', borderRadius: '16px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 style={{ marginTop: 0, fontWeight: 800, fontSize: '1.25rem', color: '#fff' }}>✏️ Editar Evaluación Individual</h3>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
               Modificando evaluación ID: {editingItem.id}

@@ -1456,11 +1456,6 @@ export const EvolutionTab: React.FC = () => {
                   </p>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  {axisStats.hasMistakeData && (
-                    <span className="badge badge-info" style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}>
-                      📊 Basado en Reportes PDF
-                    </span>
-                  )}
                   <button
                     className="btn btn-secondary btn-sm"
                     style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
