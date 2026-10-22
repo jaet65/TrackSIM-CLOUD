@@ -29,12 +29,12 @@ import {
 } from "firebase/firestore";
 
 export const firebaseConfig = {
-  apiKey: "AIzaSyDjKR_odoy5F1eROE-q_45Bm83qJ6a6mc0",
-  authDomain: "tracksim-cloud.firebaseapp.com",
-  projectId: "tracksim-cloud",
-  storageBucket: "tracksim-cloud.firebasestorage.app",
-  messagingSenderId: "410020297169",
-  appId: "1:410020297169:web:6e87e92fb09568d98bc8f0"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDjKR_odoy5F1eROE-q_45Bm83qJ6a6mc0",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "tracksim-cloud.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "tracksim-cloud",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "tracksim-cloud.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "410020297169",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:410020297169:web:6e87e92fb09568d98bc8f0"
 };
 
 // Initialize Primary Firebase App
