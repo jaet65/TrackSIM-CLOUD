@@ -1,4 +1,4 @@
-import { Evaluation, CompanySummary, DriverSummary, DriverConductor } from '../types';
+import { Evaluation, CompanySummary, DriverSummary, DriverConductor, ExerciseItem } from '../types';
 
 export function slugify(text: string): string {
   return (text || '')
@@ -298,6 +298,28 @@ export function createCompanySummaryFromEvaluations(
       badgeColor = 'danger';
     }
 
+    // Consolidar todos los ejercicios únicos realizados a lo largo de todas sus sesiones
+    const allExercisesUnique: ExerciseItem[] = [];
+    const seenExerciseKeys = new Set<string>();
+
+    evals.forEach((ev) => {
+      if (Array.isArray(ev.ejercicios)) {
+        ev.ejercicios.forEach((ex) => {
+          if (!ex) return;
+          const rawName = (ex.nombre || (ex.numero ? (nombresSimulaciones[ex.numero] || `Ejercicio ${ex.numero}`) : '')).trim();
+          if (!rawName) return;
+          const normKey = normalizeExerciseName(rawName) || rawName.toLowerCase();
+          if (!seenExerciseKeys.has(normKey)) {
+            seenExerciseKeys.add(normKey);
+            allExercisesUnique.push({
+              ...ex,
+              nombre: rawName
+            });
+          }
+        });
+      }
+    });
+
     conductores.push({
       nombre: condName,
       empresa: latest.empresa || '',
@@ -314,7 +336,7 @@ export function createCompanySummaryFromEvaluations(
       latestEvalId: latest.id,
       simulaciones: latest.simulacionesDetalle || {},
       simulacionesNombres: latest.nombresSimulaciones || nombresSimulaciones,
-      ejercicios: latest.ejercicios || [],
+      ejercicios: allExercisesUnique.length > 0 ? allExercisesUnique : (latest.ejercicios || []),
       promediosEjercicios: promediosEjerciciosConductor
     });
   }

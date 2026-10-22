@@ -18,6 +18,8 @@ interface DataContextType {
   selectedCompany: string;
   setSelectedCompany: (c: string) => void;
   selectedCompanySummary: CompanySummary | null;
+  selectedDriverName: string;
+  setSelectedDriverName: (name: string) => void;
   searchFilter: string;
   setSearchFilter: (s: string) => void;
   deleteEvaluation: (id: string) => Promise<void>;
@@ -27,7 +29,7 @@ interface DataContextType {
 const DataContext = createContext<DataContextType>({} as DataContextType);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, userRole, allowedCompanies } = useAuth();
+  const { user, profile, userRole, allowedCompanies } = useAuth();
   const [evaluations, setEvaluations] = useState<Evaluation[]>(() => {
     try {
       const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -38,6 +40,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [loading, setLoading] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<string>('all');
+  const [selectedDriverName, setSelectedDriverName] = useState<string>('');
   const [searchFilter, setSearchFilter] = useState<string>('');
 
   const fetchEvaluations = async () => {
@@ -112,6 +115,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Array.from(set).sort();
   }, [roleAllowedEvaluations]);
 
+  // Si el usuario es un lector restringido a una empresa específica, inicializar selectedCompany con su empresa
+  useEffect(() => {
+    if (userRole !== 'admin') {
+      const targetCompany =
+        (allowedCompanies.length > 0 && !allowedCompanies.includes('all') ? allowedCompanies[0] : null) ||
+        (profile?.empresaPermitida && profile.empresaPermitida !== 'all' ? profile.empresaPermitida : null) ||
+        (companies.length === 1 ? companies[0] : null);
+
+      if (targetCompany && selectedCompany !== targetCompany) {
+        setSelectedCompany(targetCompany);
+      }
+    }
+  }, [userRole, allowedCompanies, profile, companies, selectedCompany]);
+
   // Resumen analítico por empresa
   const companiesSummaries = useMemo(() => {
     return processCompanySummaries(roleAllowedEvaluations);
@@ -124,11 +141,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Empresa seleccionada actualmente (o consolidado global de Todas las empresas)
   const selectedCompanySummary = useMemo<CompanySummary | null>(() => {
+    // Si el usuario no es admin y solo tiene 1 empresa o está restringido, no mostrar nunca el consolidado global "Todas las empresas"
+    if (userRole !== 'admin' && (selectedCompany === 'all' || !selectedCompany)) {
+      if (companiesSummaries.length > 0) {
+        return companiesSummaries[0];
+      }
+    }
+
     if (selectedCompany === 'all') {
       return createCompanySummaryFromEvaluations('Todas las empresas', 'todas-las-empresas', roleAllowedEvaluations);
     }
-    return companiesSummaries.find((c) => c.nombre === selectedCompany) || null;
-  }, [selectedCompany, roleAllowedEvaluations, companiesSummaries]);
+    return companiesSummaries.find((c) => c.nombre === selectedCompany) || (companiesSummaries.length > 0 ? companiesSummaries[0] : null);
+  }, [selectedCompany, roleAllowedEvaluations, companiesSummaries, userRole]);
 
   // Evaluaciones filtradas según selector de empresa y búsqueda
   const filteredEvaluations = useMemo(() => {
@@ -190,6 +214,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         selectedCompany,
         setSelectedCompany,
         selectedCompanySummary,
+        selectedDriverName,
+        setSelectedDriverName,
         searchFilter,
         setSearchFilter,
         deleteEvaluation,

@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Evaluation } from '../types';
+import { findCatalogExercise } from '../services/exerciseCatalog';
 import { Line, Radar, Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -32,13 +33,24 @@ ChartJS.register(
 
 export const EvolutionTab: React.FC = () => {
   const { userRole } = useAuth();
-  const { driverSummaries, companiesSummaries, filteredEvaluations } = useData();
+  const { driverSummaries, companiesSummaries, filteredEvaluations, selectedDriverName, setSelectedDriverName } = useData();
 
   const [activeSubtab, setActiveSubtab] = useState<'driver' | 'company'>('driver');
-  const [selectedDriverName, setSelectedDriverName] = useState<string>('');
   const [selectedCompanyName, setSelectedCompanyName] = useState<string>('');
   const [accidentViewMode, setAccidentViewMode] = useState<'counts' | 'rate'>('counts');
   const [viewReport, setViewReport] = useState<Evaluation | null>(null);
+
+  // Asegurar que al entrar a la pestaña o al cambiar de operador, se active la vista de conductor y la página suba al inicio
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    const main = document.querySelector('.main-content');
+    if (main) main.scrollTop = 0;
+    if (selectedDriverName) {
+      setActiveSubtab('driver');
+    }
+  }, [selectedDriverName]);
 
   // Resumen Consolidado Global "Todas las empresas" para administradores
   const allCompaniesSummary = useMemo(() => {
@@ -1583,33 +1595,54 @@ export const EvolutionTab: React.FC = () => {
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.5rem' }}>
                       🎮 Ejercicios y Simulaciones Realizadas
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                      {viewReport.ejercicios.map((ex, exIdx) => (
-                        <div
-                          key={exIdx}
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            padding: '0.55rem 0.85rem',
-                            background: 'rgba(255, 255, 255, 0.03)',
-                            border: '1px solid rgba(255, 255, 255, 0.06)',
-                            borderRadius: '8px',
-                            fontSize: '0.84rem'
-                          }}
-                        >
-                          <span style={{ color: '#fff', fontWeight: 600 }}>
-                            {ex.numero ? `#${ex.numero} • ` : ''}{ex.nombre || `Ejercicio ${exIdx + 1}`}
-                          </span>
-                          <span style={{ color: '#38bdf8', fontWeight: 700 }}>
-                            {typeof ex.calificacion === 'number'
-                              ? `${ex.calificacion.toFixed(1)} pts`
-                              : typeof ex.score === 'number'
-                                ? `${ex.score.toFixed(1)} pts`
-                                : 'Realizado'}
-                          </span>
-                        </div>
-                      ))}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {viewReport.ejercicios.map((ex, exIdx) => {
+                        const exName = ex.nombre || `Ejercicio ${exIdx + 1}`;
+                        const catalogItem = findCatalogExercise(exName);
+                        const desc = catalogItem?.descripcion || ex.comentarios;
+
+                        return (
+                          <div
+                            key={exIdx}
+                            style={{
+                              padding: '0.65rem 0.9rem',
+                              background: 'rgba(255, 255, 255, 0.03)',
+                              border: '1px solid rgba(255, 255, 255, 0.06)',
+                              borderRadius: '8px',
+                              fontSize: '0.84rem'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ color: '#fff', fontWeight: 600 }}>
+                                {ex.numero ? `#${ex.numero} • ` : ''}{exName}
+                              </span>
+                              <span style={{ color: '#38bdf8', fontWeight: 700 }}>
+                                {typeof ex.calificacion === 'number'
+                                  ? `${ex.calificacion.toFixed(1)} pts`
+                                  : typeof ex.score === 'number'
+                                    ? `${ex.score.toFixed(1)} pts`
+                                    : 'Realizado'}
+                              </span>
+                            </div>
+                            {desc && (
+                              <div
+                                style={{
+                                  fontSize: '0.74rem',
+                                  color: '#94a3b8',
+                                  marginTop: '0.35rem',
+                                  lineHeight: 1.45,
+                                  background: 'rgba(15, 23, 42, 0.4)',
+                                  padding: '0.35rem 0.6rem',
+                                  borderRadius: '6px',
+                                  borderLeft: '2px solid rgba(56, 189, 248, 0.5)'
+                                }}
+                              >
+                                {desc}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

@@ -106,7 +106,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
               className={`nav-item ${currentTab === 'empresas' ? 'active' : ''}`}
               onClick={() => onTabChange('empresas')}
             >
-              <span>🏢</span> Empresas
+              <span>📐</span> Métricas
             </li>
             {userRole === 'admin' && (
               <>

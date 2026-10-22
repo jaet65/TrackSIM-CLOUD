@@ -19,9 +19,15 @@ export const App: React.FC = () => {
   const handleTabChange = (tab: TabType) => {
     if (userRole !== 'admin' && (tab === 'directorio' || tab === 'ingesta' || tab === 'usuarios')) {
       setCurrentTab('dashboard');
+      window.scrollTo(0, 0);
       return;
     }
     setCurrentTab(tab);
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    const main = document.querySelector('.main-content');
+    if (main) main.scrollTop = 0;
   };
 
   if (loading) {
@@ -62,7 +68,7 @@ export const App: React.FC = () => {
         <main className="main-content">
           {currentTab === 'dashboard' && <DashboardTab onNavigate={handleTabChange} />}
           {currentTab === 'evolucion' && <EvolutionTab />}
-          {currentTab === 'empresas' && <CompanyTab />}
+          {currentTab === 'empresas' && <CompanyTab onNavigate={handleTabChange} />}
           {currentTab === 'directorio' && (userRole === 'admin' ? <DirectoryTab /> : <DashboardTab onNavigate={handleTabChange} />)}
           {currentTab === 'ingesta' && (userRole === 'admin' ? <IngestaTab /> : <DashboardTab onNavigate={handleTabChange} />)}
           {currentTab === 'usuarios' && (userRole === 'admin' ? <UserManagementTab /> : <DashboardTab onNavigate={handleTabChange} />)}
