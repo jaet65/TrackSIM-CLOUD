@@ -178,6 +178,23 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
       }
     });
 
+    const totalEvals = filteredEvaluations.length;
+
+    if (totalEvals === 0) {
+      const activeCompanyName = selectedCompany === 'all'
+        ? (companies.length === 1 ? companies[0] : `Todas las Empresas (${companiesSet.size})`)
+        : selectedCompany;
+
+      return {
+        nombreEmpresa: activeCompanyName,
+        aniosEvaluados: '0 años',
+        totalAnios: 0,
+        totalSedes: 0,
+        listaSedes: 'Ninguna',
+        totalEjercicios: 0
+      };
+    }
+
     const sortedYears = Array.from(yearsSet).sort();
     let yearsLabel = '1 año (En curso)';
     if (sortedYears.length === 1) {
@@ -196,9 +213,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
       nombreEmpresa: activeCompanyName,
       aniosEvaluados: yearsLabel,
       totalAnios: sortedYears.length || 1,
-      totalSedes: sedesSet.size > 0 ? sedesSet.size : 1,
+      totalSedes: sedesSet.size,
       listaSedes: Array.from(sedesSet).slice(0, 3).join(', '),
-      totalEjercicios: exercisesSet.size || 6 // Si no hay detalle explícito de ejercicios, estándar TrackSIM de 6 variantes
+      totalEjercicios: exercisesSet.size
     };
   }, [filteredEvaluations, selectedCompany, companies]);
 

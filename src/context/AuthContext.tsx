@@ -11,7 +11,8 @@ import {
   createUserWithEmailAndPassword,
   doc,
   getDoc,
-  setDoc
+  setDoc,
+  onSnapshot
 } from '../services/firebase';
 import { UserProfile } from '../types';
 
@@ -68,7 +69,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Viewer logic with domain check and Firestore user document
       setUserRole('viewer');
-      let allowed: string[] = [];
       let domainMatchedCompany: string | null = null;
 
       try {
@@ -89,7 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         const userDocRef = doc(db, 'usuarios', currentUser.uid);
-        let userSnap = await getDoc(userDocRef);
+        const userSnap = await getDoc(userDocRef);
 
         if (!userSnap.exists()) {
           const newUserData: UserProfile = {
@@ -106,29 +106,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
           try {
             await setDoc(userDocRef, newUserData);
-            userSnap = await getDoc(userDocRef);
           } catch (regErr) {
             console.warn('Error al autoguardar documento de usuario en Firestore:', regErr);
           }
         }
 
-        if (domainMatchedCompany) {
-          allowed = domainMatchedCompany === 'all' ? ['all'] : [domainMatchedCompany];
-        } else if (userSnap && userSnap.exists()) {
-          const uData = userSnap.data();
-          if (uData.empresaPermitida && uData.empresaPermitida !== '') {
-            allowed = uData.empresaPermitida === 'all' ? ['all'] : [uData.empresaPermitida];
-          } else if (Array.isArray(uData.empresasPermitidas) && uData.empresasPermitidas.length > 0) {
-            allowed = uData.empresasPermitidas;
+        // Suscribirse en tiempo real al documento del usuario para detectar asignaciones inmediatas del admin
+        const unsubProfile = onSnapshot(userDocRef, (snap) => {
+          let allowed: string[] = [];
+          if (domainMatchedCompany) {
+            allowed = domainMatchedCompany === 'all' ? ['all'] : [domainMatchedCompany];
+          } else if (snap && snap.exists()) {
+            const uData = snap.data();
+            if (uData.empresaPermitida && uData.empresaPermitida !== '') {
+              allowed = uData.empresaPermitida === 'all' ? ['all'] : [uData.empresaPermitida];
+            } else if (Array.isArray(uData.empresasPermitidas) && uData.empresasPermitidas.length > 0) {
+              allowed = uData.empresasPermitidas;
+            }
           }
-        }
+          setAllowedCompanies(allowed);
+          setProfile(snap && snap.exists() ? (snap.data() as UserProfile) : null);
+          setLoading(false);
+        }, (err) => {
+          console.warn('Error en listener de usuario:', err);
+          setLoading(false);
+        });
 
-        setAllowedCompanies(allowed);
-        setProfile(userSnap?.exists() ? (userSnap.data() as UserProfile) : null);
+        return () => unsubProfile();
       } catch (err) {
         console.warn('Error determinando empresa de usuario:', err);
         setAllowedCompanies([]);
-      } finally {
         setLoading(false);
       }
     });

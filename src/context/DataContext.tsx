@@ -12,7 +12,9 @@ const CACHE_TTL_MS = 30 * 60 * 1000;
 
 interface DataContextType {
   evaluations: Evaluation[];
+  roleAllowedEvaluations: Evaluation[];
   loading: boolean;
+  initialLoaded: boolean;
   isSyncing: boolean;
   lastSyncTime: string | null;
   reloadEvaluations: (forceFull?: boolean) => Promise<void>;
@@ -45,6 +47,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   });
   const [loading, setLoading] = useState(false);
+  const [initialLoaded, setInitialLoaded] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(() => {
     return localStorage.getItem(LOCAL_STORAGE_SYNC_TIME_KEY);
@@ -79,12 +82,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           collection(db, 'evaluaciones'),
           where('updatedAt', '>', storedLastSync)
         );
-        const snap = await getDocs(incrementalQuery);
-        console.log(`[Firestore Sync] ${snap.docs.length} documentos nuevos/modificados recibidos.`);
+        const [snapUpdates, snapDeletions] = await Promise.all([
+          getDocs(incrementalQuery),
+          getDocs(query(collection(db, '_eliminaciones'), where('deletedAt', '>', storedLastSync)))
+        ]);
 
-        if (snap.docs.length > 0) {
-          snap.forEach((d) => {
+        console.log(`[Firestore Sync] ${snapUpdates.docs.length} documentos nuevos/modificados y ${snapDeletions.docs.length} eliminaciones recibidas.`);
+
+        if (snapUpdates.docs.length > 0) {
+          snapUpdates.forEach((d) => {
             itemsMap.set(d.id, { id: d.id, ...d.data() } as Evaluation);
+          });
+        }
+
+        // Remover de la memoria y caché local cualquier documento registrado como eliminado
+        if (snapDeletions.docs.length > 0) {
+          snapDeletions.forEach((d) => {
+            const data = d.data();
+            if (data.deleteAll) {
+              itemsMap.clear();
+            } else if (Array.isArray(data.ids) && data.ids.length > 0) {
+              data.ids.forEach((id: string) => itemsMap.delete(id));
+            } else {
+              itemsMap.delete(d.id);
+            }
           });
         }
       } else {
@@ -117,32 +138,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setLoading(false);
       setIsSyncing(false);
+      setInitialLoaded(true);
     }
   };
 
   useEffect(() => {
     if (user) {
-      // Verificar si tenemos datos locales y si el TTL sigue vigente
-      const storedLastSync = localStorage.getItem(LOCAL_STORAGE_SYNC_TIME_KEY);
-      const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
-      const hasCached = cached && cached !== '[]';
-
-      if (hasCached && storedLastSync) {
-        const lastSyncDate = new Date(storedLastSync).getTime();
-        const now = Date.now();
-        const isCacheValid = now - lastSyncDate < CACHE_TTL_MS;
-
-        if (isCacheValid) {
-          console.log('[Cache] Datos locales activos dentro del TTL (no se consulta Firestore en esta recarga).');
-          return;
-        } else {
-          // Si el TTL expiró, consultar únicamente cambios incrementales de forma transparente en background
-          fetchEvaluations(false);
-        }
-      } else {
-        // Primera vez o caché vacía: carga completa
-        fetchEvaluations(false);
-      }
+      // Si ya hay datos en caché se muestran instantáneamente en pantalla,
+      // y se lanza una sincronización incremental en segundo plano para traer cambios/eliminaciones.
+      fetchEvaluations(false);
     } else {
       setEvaluations([]);
     }
@@ -228,7 +232,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteEvaluation = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'evaluaciones', id));
+      const nowIso = new Date().toISOString();
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'evaluaciones', id));
+      batch.set(doc(db, '_eliminaciones', id), {
+        id,
+        deletedAt: nowIso
+      });
+      await batch.commit();
     } catch (e) {
       console.warn('Error eliminando de Firestore:', e);
     }
@@ -244,10 +255,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const toDelete = targetEvaluations || roleAllowedEvaluations;
     if (toDelete.length === 0) return 0;
 
+    const isTotalWipe = !targetEvaluations || toDelete.length >= evaluations.length;
     const idsToDelete = toDelete.map((e) => e.id);
     const BATCH_SIZE = 450; // Firestore admite hasta 500 operaciones por batch
     const successfullyDeletedIds: string[] = [];
     let firestoreError: any = null;
+    const nowIso = new Date().toISOString();
 
     for (let i = 0; i < idsToDelete.length; i += BATCH_SIZE) {
       const chunk = idsToDelete.slice(i, i + BATCH_SIZE);
@@ -263,6 +276,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Error al cometer batch de eliminación en Firestore:', e);
         firestoreError = e;
         break; // Detener para no reportar éxito si Firestore falló
+      }
+    }
+
+    // Registrar evento de eliminación para sincronizar con los demás clientes
+    if (successfullyDeletedIds.length > 0) {
+      try {
+        const tombstoneId = `del_${Date.now()}`;
+        await setDoc(doc(db, '_eliminaciones', tombstoneId), {
+          deletedAt: nowIso,
+          deleteAll: isTotalWipe,
+          ids: isTotalWipe ? [] : successfullyDeletedIds
+        });
+      } catch (tombErr) {
+        console.warn('Error registrando evento de eliminación:', tombErr);
       }
     }
 
@@ -311,7 +338,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <DataContext.Provider
       value={{
         evaluations,
+        roleAllowedEvaluations,
         loading,
+        initialLoaded,
         isSyncing,
         lastSyncTime,
         reloadEvaluations: fetchEvaluations,
