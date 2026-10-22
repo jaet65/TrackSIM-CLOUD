@@ -1926,3 +1926,173 @@ body.role-viewer div.viewer-only {
   transform: translateY(-2px);
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
 }
+
+/* ========================================================
+   ESTILOS OPTIMIZADOS PARA IMPRESIÓN Y EXPORTACIÓN A PDF
+   ======================================================== */
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 12mm 10mm;
+  }
+
+  /* 1. Ocultar elementos de navegación e interacción */
+  .no-print,
+  .navbar,
+  .subnav-tabs,
+  button,
+  .badge-info,
+  .screen-only {
+    display: none !important;
+  }
+
+  /* 2. Mostrar elementos exclusivos para impresión */
+  .print-only {
+    display: block !important;
+  }
+
+  /* 3. Base para documento impreso: fondo blanco, texto oscuro legible */
+  *,
+  *::before,
+  *::after {
+    box-shadow: none !important;
+    text-shadow: none !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    background-image: none !important;
+    color: #0f172a !important;
+    font-size: 9pt !important;
+    line-height: 1.35 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  #appContainer,
+  .main-content,
+  .view-section,
+  .card,
+  .glass-card {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  .main-content {
+    padding: 0 !important;
+  }
+
+  /* Ficha ejecutiva de cabecera de empresa */
+  .glass-card {
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+    padding: 12px 16px !important;
+    margin-bottom: 14px !important;
+    background: #f8fafc !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .glass-card h2 {
+    color: #0f172a !important;
+    font-size: 16pt !important;
+  }
+
+  .glass-card span,
+  .glass-card p,
+  .glass-card div {
+    color: #334155 !important;
+  }
+
+  .glass-card strong {
+    color: #0f172a !important;
+  }
+
+  /* Card contenedor general */
+  .card {
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 6px !important;
+    margin-bottom: 14px !important;
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+
+  .card summary,
+  .card h3 {
+    color: #0f172a !important;
+    font-size: 11pt !important;
+  }
+
+  .print-avoid-break {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Canvas de gráficos responsive en impresión */
+  canvas {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  .chart-canvas-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  /* 4. Tablas impresas compactas al 100% de ancho sin desborde */
+  .table-responsive {
+    overflow: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  table.print-table {
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    font-size: 8pt !important;
+    color: #0f172a !important;
+    page-break-inside: auto;
+  }
+
+  table.print-table tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  table.print-table th {
+    background-color: #f1f5f9 !important;
+    color: #1e293b !important;
+    font-weight: 700 !important;
+    border-bottom: 1.5px solid #94a3b8 !important;
+    padding: 4px 6px !important;
+    text-align: left;
+    font-size: 7.5pt !important;
+    text-transform: uppercase;
+  }
+
+  table.print-table td {
+    padding: 4px 6px !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    color: #1e293b !important;
+    vertical-align: middle;
+  }
+
+  table.print-table tbody tr:nth-child(even) {
+    background-color: #f8fafc !important;
+  }
+}

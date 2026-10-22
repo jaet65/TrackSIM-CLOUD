@@ -5,20 +5,23 @@ import { ReportDetailModal } from './ReportDetailModal';
 import { CompanyOverviewCard } from './company/CompanyOverviewCard';
 import { CompanyRankingChartCard } from './company/CompanyRankingChartCard';
 import { CompanyDriversTable, CompanySortKey } from './company/CompanyDriversTable';
-import { Bar } from 'react-chartjs-2';
+import { Bar, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
   BarElement,
+  PointElement,
+  LineElement,
   Title,
   Tooltip,
   Legend
 } from 'chart.js';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend);
 
-const PAGE_SIZE = 30;
+const DRIVERS_PAGE_SIZE = 30;
+const RANKING_PAGE_SIZE = 10;
 
 type SortKey = CompanySortKey;
 
@@ -119,7 +122,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
     return list;
   }, [comp, driverSearch, sortKey, sortDir]);
 
-  // Paginación del Ranking (Top 30 por página ordenado estrictamente por score)
+  // Paginación del Ranking (Top 10 por página ordenado estrictamente por score)
   const rankingList = useMemo(() => {
     if (!comp?.conductores) return [];
     let list = [...comp.conductores].sort((a, b) => b.promedioScore - a.promedioScore);
@@ -130,14 +133,14 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
     return list;
   }, [comp, driverSearch]);
 
-  const totalRankingPages = Math.max(1, Math.ceil(rankingList.length / PAGE_SIZE));
+  const totalRankingPages = Math.max(1, Math.ceil(rankingList.length / RANKING_PAGE_SIZE));
   const currentRankingPage = Math.min(Math.max(1, rankingPage), totalRankingPages);
-  const pagedRanking = rankingList.slice((currentRankingPage - 1) * PAGE_SIZE, currentRankingPage * PAGE_SIZE);
+  const pagedRanking = rankingList.slice((currentRankingPage - 1) * RANKING_PAGE_SIZE, currentRankingPage * RANKING_PAGE_SIZE);
 
   // Paginación de la Tabla de Operadores (30 por página)
-  const totalDriversPages = Math.max(1, Math.ceil(filteredConductores.length / PAGE_SIZE));
+  const totalDriversPages = Math.max(1, Math.ceil(filteredConductores.length / DRIVERS_PAGE_SIZE));
   const currentDriversPage = Math.min(Math.max(1, driversPage), totalDriversPages);
-  const pagedDrivers = filteredConductores.slice((currentDriversPage - 1) * PAGE_SIZE, currentDriversPage * PAGE_SIZE);
+  const pagedDrivers = filteredConductores.slice((currentDriversPage - 1) * DRIVERS_PAGE_SIZE, currentDriversPage * DRIVERS_PAGE_SIZE);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -261,7 +264,8 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
           },
           borderWidth: 1.5,
           borderRadius: 8,
-          barPercentage: 0.65,
+          maxBarThickness: 75,
+          barPercentage: 0.7,
           categoryPercentage: 0.8
         }
       ]
@@ -386,7 +390,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
   // Configuración del gráfico de ranking horizontal
   const medals: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
   const chartLabels = pagedRanking.map((item, idx) => {
-    const globalRank = (currentRankingPage - 1) * PAGE_SIZE + idx + 1;
+    const globalRank = (currentRankingPage - 1) * RANKING_PAGE_SIZE + idx + 1;
     const prefix = medals[globalRank] || `#${globalRank}`;
     return `${prefix} ${item.nombre}`;
   });
@@ -406,7 +410,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
           const item = pagedRanking[idx];
           if (!item) return 'rgba(56, 189, 248, 0.7)';
 
-          const globalRank = (currentRankingPage - 1) * PAGE_SIZE + idx + 1;
+          const globalRank = (currentRankingPage - 1) * RANKING_PAGE_SIZE + idx + 1;
           const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
 
           if (globalRank === 1) {
@@ -443,7 +447,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
           const idx = context.dataIndex;
           const item = pagedRanking[idx];
           if (!item) return 'rgba(56, 189, 248, 0.8)';
-          const globalRank = (currentRankingPage - 1) * PAGE_SIZE + idx + 1;
+          const globalRank = (currentRankingPage - 1) * RANKING_PAGE_SIZE + idx + 1;
 
           if (globalRank === 1) return 'rgba(250, 204, 21, 1)';
           if (globalRank === 2) return 'rgba(226, 232, 240, 1)';
@@ -500,12 +504,123 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
     }
   };
 
+  // Cálculo de Tasa de Accidentes por Conductor (Anual e Histórica) para Pantalla y PDF
+  const accidentRateAnnual = useMemo(() => {
+    if (!filteredEvaluations || filteredEvaluations.length === 0) {
+      return { labels: [], accidentRates: [], totalIncidentes: [], operatorsCount: [] };
+    }
+
+    const yearDataMap = new Map<string, { colisiones: number; fatalidades: number; fueraVia: number; operators: Set<string> }>();
+
+    filteredEvaluations.forEach((e) => {
+      const dateStr = e.fechaCapacitacion || e.fechaReporte || e.fecha || '';
+      const match = dateStr.match(/\b(20\d{2}|19\d{2})\b/);
+      const year = match ? match[1] : (dateStr ? dateStr.substring(0, 4) : '');
+      if (!year) return;
+
+      const col = e.colisiones || e.totalColisiones || 0;
+      const fat = e.fatalidades || 0;
+      const off = e.vehiculoFueraVia || 0;
+      const op = (e.conductor || e.operador || 'Sin Asignar').trim();
+
+      const current = yearDataMap.get(year) || { colisiones: 0, fatalidades: 0, fueraVia: 0, operators: new Set<string>() };
+      current.colisiones += col;
+      current.fatalidades += fat;
+      current.fueraVia += off;
+      current.operators.add(op);
+      yearDataMap.set(year, current);
+    });
+
+    const sortedYears = Array.from(yearDataMap.keys()).sort();
+    const labels = sortedYears.map((yr) => `Año ${yr}`);
+    const totalIncidentes = sortedYears.map((yr) => {
+      const d = yearDataMap.get(yr)!;
+      return d.colisiones + d.fatalidades + d.fueraVia;
+    });
+    const operatorsCount = sortedYears.map((yr) => yearDataMap.get(yr)!.operators.size);
+    const accidentRates = sortedYears.map((_, i) => {
+      const ops = operatorsCount[i];
+      return ops > 0 ? Number((totalIncidentes[i] / ops).toFixed(2)) : 0;
+    });
+
+    return {
+      labels,
+      accidentRates,
+      totalIncidentes,
+      operatorsCount
+    };
+  }, [filteredEvaluations]);
+
+  const accidentRateChartData = useMemo(() => {
+    return {
+      labels: accidentRateAnnual.labels,
+      datasets: [
+        {
+          label: 'Tasa de Incidentes por Operador',
+          data: accidentRateAnnual.accidentRates,
+          borderColor: '#38bdf8',
+          backgroundColor: 'rgba(56, 189, 248, 0.15)',
+          fill: true,
+          tension: 0.35,
+          borderWidth: 3,
+          pointBackgroundColor: '#38bdf8',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2,
+          pointRadius: 6,
+          pointHoverRadius: 8
+        }
+      ]
+    };
+  }, [accidentRateAnnual]);
+
+  const accidentRateChartOptions = useMemo(() => {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          labels: {
+            color: '#f8fafc',
+            font: { size: 12, weight: 'bold' as const }
+          }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          titleColor: '#f8fafc',
+          bodyColor: '#38bdf8',
+          padding: 10,
+          callbacks: {
+            label: (ctx: any) => ` Tasa: ${ctx.raw} incidentes / operador`
+          }
+        }
+      },
+      scales: {
+        y: {
+          min: 0,
+          title: {
+            display: true,
+            text: 'Incidentes / Operador',
+            color: '#38bdf8',
+            font: { size: 11, weight: 'bold' as const }
+          },
+          grid: { color: 'rgba(255, 255, 255, 0.06)' },
+          ticks: { color: 'rgba(255, 255, 255, 0.7)' }
+        },
+        x: {
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: { color: '#f8fafc', font: { weight: 'bold' as const } }
+        }
+      }
+    };
+  }, []);
+
   return (
     <div className="view-section active">
       {/* Selector de Empresa / Flota (Visible si es admin o si el usuario tiene más de 1 empresa) */}
       {(userRole === 'admin' || companies.length > 1) && (
         <div
-          className="glass-card"
+          className="glass-card no-print"
           style={{
             padding: '0.9rem 1.25rem',
             marginBottom: '1.25rem',
@@ -552,7 +667,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
 
       {/* Rendimiento Promedio en Ejercicios (Solo ejercicios realizados por la empresa) */}
       {exerciseStats.length > 0 && (
-        <div className="card" style={{ marginBottom: '2rem' }}>
+        <div className="card print-avoid-break" style={{ marginBottom: '2rem' }}>
           <div
             style={{
               padding: '1rem 1.25rem',
@@ -575,19 +690,56 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
                 </span>
               </div>
             </div>
-            <div className="badge badge-info" style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+            <div className="badge badge-info no-print" style={{ fontSize: '0.75rem', fontWeight: 600 }}>
               {exerciseStats.length} ejercicios registrados
             </div>
           </div>
           <div style={{ padding: '1.25rem' }}>
-            <div style={{ height: '380px', width: '100%' }}>
+            <div className="chart-canvas-container" style={{ height: '320px', width: '100%', position: 'relative' }}>
               <Bar data={exerciseChartData} options={exerciseChartOptions} plugins={[exerciseLabelPlugin]} />
+            </div>
+
+            {/* Resumen tabular exclusivo para PDF / Impresión que garantiza que ninguna columna quede truncada */}
+            <div className="print-only" style={{ display: 'none', marginTop: '1rem' }}>
+              <table className="print-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '8.5pt' }}>
+                <thead>
+                  <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
+                    <th style={{ padding: '4px 8px', textAlign: 'center', width: '40px' }}>#</th>
+                    <th style={{ padding: '4px 8px', textAlign: 'left' }}>Nombre del Ejercicio</th>
+                    <th style={{ padding: '4px 8px', textAlign: 'center', width: '100px' }}>Evaluaciones</th>
+                    <th style={{ padding: '4px 8px', textAlign: 'center', width: '110px' }}>Calificación Promedio</th>
+                    <th style={{ padding: '4px 8px', textAlign: 'center', width: '120px' }}>Nivel de Destreza</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {exerciseStats.map((ex, idx) => {
+                    const isTop = ex.promedio >= 8.0;
+                    const isPass = ex.promedio >= 6.0;
+                    const scoreColor = isTop ? '#15803d' : isPass ? '#0369a1' : '#b91c1c';
+                    const levelLabel = isTop ? 'Sobresaliente' : isPass ? 'Aprobado' : 'Requiere Refuerzo';
+
+                    return (
+                      <tr key={ex.key} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                        <td style={{ padding: '4px 6px', textAlign: 'center', fontWeight: 600 }}>{idx + 1}</td>
+                        <td style={{ padding: '4px 6px', fontWeight: 700 }}>{ex.nombre}</td>
+                        <td style={{ padding: '4px 6px', textAlign: 'center' }}>{ex.totalEvaluaciones}</td>
+                        <td style={{ padding: '4px 6px', textAlign: 'center', fontWeight: 700, color: scoreColor }}>
+                          {ex.promedio.toFixed(2)} / 10 pts
+                        </td>
+                        <td style={{ padding: '4px 6px', textAlign: 'center', fontWeight: 600, fontSize: '8pt' }}>
+                          {levelLabel}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
       )}
 
-      {/* Ranking de Operadores (Colapsable con Paginación de 30) */}
+      {/* Ranking de Operadores (Colapsable con Paginación de 10 y Vista de Impresión Completa) */}
       <CompanyRankingChartCard
         chartData={chartData}
         chartOptions={chartOptions}
@@ -595,10 +747,47 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         pagedRankingLength={pagedRanking.length}
         currentRankingPage={currentRankingPage}
         totalRankingPages={totalRankingPages}
-        pageSize={PAGE_SIZE}
+        pageSize={RANKING_PAGE_SIZE}
         onSetRankingPage={setRankingPage}
+        fullRankingList={rankingList}
       />
 
+      {/* Gráfico: Tasa de Accidentes por Conductor (Visible en Pantalla y en el PDF/Impresión) */}
+      {accidentRateAnnual.labels.length > 0 && (
+        <div className="card print-avoid-break" style={{ marginBottom: '2rem' }}>
+          <div
+            style={{
+              padding: '1rem 1.25rem',
+              borderBottom: '1px solid var(--border-subtle)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '0.5rem'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <span style={{ fontSize: '1.25rem' }}>🚨</span>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>
+                  Tasa de Accidentes por Conductor
+                </h3>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  Promedio de siniestros (colisiones, salidas de vía y fatalidades) por operador evaluado
+                </span>
+              </div>
+            </div>
+            <div className="badge badge-info" style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+              {accidentRateAnnual.labels.length} {accidentRateAnnual.labels.length === 1 ? 'año registrado' : 'años registrados'}
+            </div>
+          </div>
+          <div style={{ padding: '1.25rem' }}>
+            <div style={{ height: '300px', width: '100%' }}>
+              <Line data={accidentRateChartData} options={accidentRateChartOptions} />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Roster de Operadores de la Flota (Paginación de 30) */}
       <CompanyDriversTable
@@ -611,7 +800,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         }}
         driversPage={currentDriversPage}
         totalDriversPages={totalDriversPages}
-        pageSize={PAGE_SIZE}
+        pageSize={DRIVERS_PAGE_SIZE}
         onSetDriversPage={setDriversPage}
         sortKey={sortKey}
         sortDir={sortDir}

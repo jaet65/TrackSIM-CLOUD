@@ -92,6 +92,34 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Acciones Ejecutivas: Imprimir / Generar PDF */}
+        <div className="no-print" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => window.print()}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.5rem 0.95rem',
+              borderRadius: '8px',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              background: 'rgba(15, 23, 42, 0.75)',
+              border: '1px solid rgba(56, 189, 248, 0.35)',
+              color: '#38bdf8',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)'
+            }}
+            title="Imprimir o guardar como PDF la ficha ejecutiva de la flota"
+          >
+            <span>🖨️</span>
+            <span>Exportar PDF / Imprimir</span>
+          </button>
+        </div>
       </div>
 
       {/* Tercer Nivel: Número de Operadores, Conductores Recurrentes (> 1 vez), Promedio de Flota, Tasa de Aprobación */}

@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { Evaluation } from '../../types';
 
 export type CompanySortKey = 'promedioScore' | 'nombre' | 'totalEvaluaciones' | 'ultimaFecha' | 'incidentes' | 'estado';
+export type StatusFilterOption = 'all' | 'sobresaliente' | 'aprobado' | 'reforzar' | 'incidentes';
 
 interface CompanyDriversTableProps {
   filteredConductores: any[];
@@ -26,11 +27,11 @@ interface CompanyDriversTableProps {
 
 export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
   filteredConductores,
-  pagedDrivers,
+  pagedDrivers: initialPagedDrivers,
   driverSearch,
   onSetDriverSearch,
   driversPage,
-  totalDriversPages,
+  totalDriversPages: initialTotalPages,
   pageSize,
   onSetDriversPage,
   sortKey,
@@ -44,9 +45,111 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
   onSelectDriverName,
   onNavigate
 }) => {
+  const [statusFilter, setStatusFilter] = useState<StatusFilterOption>('all');
+
+  // Filtrado local adicional por estado si se selecciona un chip
+  const displayedConductores = useMemo(() => {
+    if (statusFilter === 'all') return filteredConductores;
+    return filteredConductores.filter((c) => {
+      const totIncidentes = (c.colisiones || 0) + (c.fatalidades || 0) + (c.totalFueraVia || 0);
+      switch (statusFilter) {
+        case 'sobresaliente':
+          return c.estado === 'Sobresaliente' || c.promedioScore >= 8.0;
+        case 'aprobado':
+          return c.estado === 'Aprobado' || (c.promedioScore >= 6.0 && c.promedioScore < 8.0);
+        case 'reforzar':
+          return (
+            c.estado === 'Reforzar' ||
+            c.estado === 'Requiere Refuerzo' ||
+            c.estado === 'No Aprobado' ||
+            c.promedioScore < 6.0
+          );
+        case 'incidentes':
+          return totIncidentes > 0;
+        default:
+          return true;
+      }
+    });
+  }, [filteredConductores, statusFilter]);
+
+  const effectiveTotalPages = statusFilter === 'all'
+    ? initialTotalPages
+    : Math.max(1, Math.ceil(displayedConductores.length / pageSize));
+
+  const effectiveDriversPage = Math.min(Math.max(1, driversPage), effectiveTotalPages);
+
+  const pagedDrivers = statusFilter === 'all'
+    ? initialPagedDrivers
+    : displayedConductores.slice((effectiveDriversPage - 1) * pageSize, effectiveDriversPage * pageSize);
+
+  // Exportar roster de operadores a CSV
+  const handleExportCSV = () => {
+    if (displayedConductores.length === 0) {
+      alert('No hay operadores disponibles para exportar con los filtros actuales.');
+      return;
+    }
+
+    const headers = [
+      'Empresa',
+      'Sede',
+      'Operador',
+      'Evaluaciones / Sesiones',
+      'Score Promedio (0-10)',
+      'Ultimo Score (0-10)',
+      'Ultima Fecha',
+      'Colisiones',
+      'Fatalidades',
+      'Salidas de Via',
+      'Total Incidentes',
+      'Estado General',
+      'Ejercicios Realizados'
+    ];
+
+    const escapeCell = (val: any) => {
+      if (val === null || val === undefined) return '""';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const rows = displayedConductores.map((c) => {
+      const totalIncidentes = (c.colisiones || 0) + (c.fatalidades || 0) + (c.totalFueraVia || 0);
+      const exNames = Array.isArray(c.ejercicios)
+        ? c.ejercicios.map((e: any) => e.nombre || `Ejercicio ${e.numero || ''}`).join('; ')
+        : '';
+
+      return [
+        escapeCell(c.empresa || comp.nombre),
+        escapeCell(c.sede || 'Principal'),
+        escapeCell(c.nombre),
+        escapeCell(c.totalEvaluaciones || 0),
+        escapeCell(c.promedioScore?.toFixed(2) || '0.00'),
+        escapeCell(c.ultimoScore?.toFixed(2) || '0.00'),
+        escapeCell(c.ultimaFecha || ''),
+        escapeCell(c.colisiones || 0),
+        escapeCell(c.fatalidades || 0),
+        escapeCell(c.totalFueraVia || 0),
+        escapeCell(totalIncidentes),
+        escapeCell(c.estado || 'N/A'),
+        escapeCell(exNames)
+      ].join(',');
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeName = (comp.nombre || 'Flota').toLowerCase().replace(/[^a-z0-9]/gi, '_');
+    link.href = url;
+    link.setAttribute('download', `roster_operadores_${safeName}_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="card" style={{ overflow: 'hidden' }}>
-      {/* Header & Barra de Búsqueda */}
+      {/* Header, Búsqueda y Botón de Exportar */}
       <div
         style={{
           display: 'flex',
@@ -66,19 +169,20 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
               Operadores Pertenecientes a esta Flota
             </h3>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              {filteredConductores.length} operadores registrados {driverSearch && `(filtrados por "${driverSearch}")`}
+              {displayedConductores.length} operadores {statusFilter !== 'all' ? 'filtrados' : 'registrados'} {driverSearch && `(búsqueda "${driverSearch}")`}
             </span>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', width: '100%', maxWidth: '340px' }}>
-          <div style={{ position: 'relative', width: '100%' }}>
+        <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {/* Barra de Búsqueda */}
+          <div style={{ position: 'relative', width: '240px' }}>
             <span style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', opacity: 0.5, fontSize: '0.85rem' }}>
               🔍
             </span>
             <input
               type="text"
-              placeholder="Buscar operador por nombre..."
+              placeholder="Buscar operador..."
               value={driverSearch}
               onChange={(e) => {
                 onSetDriverSearch(e.target.value);
@@ -122,11 +226,124 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
               </button>
             )}
           </div>
+
+          {/* Botón Exportar CSV */}
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={handleExportCSV}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.55rem 0.85rem',
+              borderRadius: '8px',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              background: 'rgba(56, 189, 248, 0.1)',
+              border: '1px solid rgba(56, 189, 248, 0.35)',
+              color: '#38bdf8',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap'
+            }}
+            title="Exportar roster de operadores a archivo CSV"
+          >
+            <span>📥</span>
+            <span>Exportar CSV</span>
+          </button>
         </div>
       </div>
 
+      {/* Barra de Filtros Rápidos por Estado (Chips) */}
+      <div
+        className="no-print"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          padding: '0.65rem 1.5rem',
+          background: 'rgba(15, 23, 42, 0.4)',
+          borderBottom: '1px solid var(--border-subtle)',
+          overflowX: 'auto',
+          flexWrap: 'wrap'
+        }}
+      >
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, marginRight: '0.25rem' }}>
+          Filtrar estado:
+        </span>
+        {[
+          { key: 'all', label: 'Todos', count: filteredConductores.length },
+          {
+            key: 'sobresaliente',
+            label: 'Sobresalientes (≥8)',
+            count: filteredConductores.filter((c) => c.estado === 'Sobresaliente' || c.promedioScore >= 8.0).length,
+            color: '#22c55e'
+          },
+          {
+            key: 'aprobado',
+            label: 'Aprobados (6 - 7.9)',
+            count: filteredConductores.filter((c) => c.estado === 'Aprobado' || (c.promedioScore >= 6.0 && c.promedioScore < 8.0)).length,
+            color: '#38bdf8'
+          },
+          {
+            key: 'reforzar',
+            label: 'Requiere Refuerzo (<6)',
+            count: filteredConductores.filter((c) => c.estado === 'Reforzar' || c.estado === 'Requiere Refuerzo' || c.estado === 'No Aprobado' || c.promedioScore < 6.0).length,
+            color: '#f59e0b'
+          },
+          {
+            key: 'incidentes',
+            label: 'Con Incidentes',
+            count: filteredConductores.filter((c) => (c.colisiones || 0) + (c.fatalidades || 0) + (c.totalFueraVia || 0) > 0).length,
+            color: '#ef4444'
+          }
+        ].map((chip) => {
+          const isActive = statusFilter === chip.key;
+          return (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={() => {
+                setStatusFilter(chip.key as StatusFilterOption);
+                onSetDriversPage(1);
+              }}
+              style={{
+                background: isActive
+                  ? chip.color ? `${chip.color}25` : 'rgba(56, 189, 248, 0.2)'
+                  : 'rgba(255, 255, 255, 0.04)',
+                border: `1px solid ${isActive ? chip.color || '#38bdf8' : 'rgba(255, 255, 255, 0.08)'}`,
+                color: isActive ? chip.color || '#38bdf8' : '#94a3b8',
+                borderRadius: '9999px',
+                padding: '0.2rem 0.65rem',
+                fontSize: '0.75rem',
+                fontWeight: isActive ? 700 : 500,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <span>{chip.label}</span>
+              <span
+                style={{
+                  background: isActive ? (chip.color || '#38bdf8') : 'rgba(255, 255, 255, 0.1)',
+                  color: isActive ? '#0f172a' : '#cbd5e1',
+                  borderRadius: '10px',
+                  padding: '0.05rem 0.35rem',
+                  fontSize: '0.68rem',
+                  fontWeight: 700
+                }}
+              >
+                {chip.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Tabla Estilizada */}
-      <div className="table-responsive">
+      <div className="table-responsive screen-only">
         <table className="data-table" style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
           <thead>
             <tr style={{ background: 'rgba(15, 23, 42, 0.95)' }}>
@@ -151,7 +368,7 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
               <th onClick={() => onSort('estado')} style={{ cursor: 'pointer', padding: '1rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', textAlign: 'center' }}>
                 Estado {sortKey === 'estado' && (sortDir === 'asc' ? '▲' : '▼')}
               </th>
-              <th style={{ padding: '1rem 1.25rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', textAlign: 'right' }}>
+              <th className="no-print" style={{ padding: '1rem 1.25rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', textAlign: 'right' }}>
                 Acciones
               </th>
             </tr>
@@ -416,7 +633,7 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
                       </span>
                     </td>
 
-                    <td style={{ padding: '0.75rem 1rem', textAlign: 'right', verticalAlign: 'middle', width: '130px' }}>
+                    <td className="no-print" style={{ padding: '0.75rem 1rem', textAlign: 'right', verticalAlign: 'middle', width: '130px' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'stretch', justifyContent: 'center' }}>
                         <button
                           type="button"
@@ -478,8 +695,62 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
         </table>
       </div>
 
+      {/* Tabla Completa Exclusiva para Impresión / PDF (Sin Paginación, imprime TODOS los operadores) */}
+      <div className="print-only" style={{ display: 'none', padding: '0 0.5rem' }}>
+        <table className="print-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '8.5pt' }}>
+          <thead>
+            <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
+              <th style={{ padding: '6px 8px', textAlign: 'center', width: '35px' }}>#</th>
+              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Operador</th>
+              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Sede</th>
+              <th style={{ padding: '6px 8px', textAlign: 'center', width: '60px' }}>Sesiones</th>
+              <th style={{ padding: '6px 8px', textAlign: 'center', width: '80px' }}>Última Fecha</th>
+              <th style={{ padding: '6px 8px', textAlign: 'center', width: '80px' }}>Score Promedio</th>
+              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Ejercicios Realizados</th>
+              <th style={{ padding: '6px 8px', textAlign: 'center', width: '65px' }}>Incidentes</th>
+              <th style={{ padding: '6px 8px', textAlign: 'center', width: '85px' }}>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {displayedConductores.map((c, idx) => {
+              const totalIncidentes = (c.colisiones || 0) + (c.fatalidades || 0) + (c.totalFueraVia || 0);
+              const isTop = c.promedioScore >= 8.0;
+              const isPass = c.promedioScore >= 6.0;
+              const scoreColor = isTop ? '#15803d' : isPass ? '#0369a1' : '#b91c1c';
+
+              const exNames = Array.isArray(c.ejercicios) && c.ejercicios.length > 0
+                ? c.ejercicios.map((e: any) => e.nombre || `Ej. ${e.numero || ''}`).join(', ')
+                : 'Rutina estándar';
+
+              return (
+                <tr key={c.nombre + idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                  <td style={{ padding: '5px 6px', textAlign: 'center', fontWeight: 600 }}>{idx + 1}</td>
+                  <td style={{ padding: '5px 6px', fontWeight: 700 }}>{c.nombre}</td>
+                  <td style={{ padding: '5px 6px', color: '#475569' }}>{c.sede || 'Principal'}</td>
+                  <td style={{ padding: '5px 6px', textAlign: 'center' }}>{c.totalEvaluaciones || 1}</td>
+                  <td style={{ padding: '5px 6px', textAlign: 'center' }}>{c.ultimaFecha || '-'}</td>
+                  <td style={{ padding: '5px 6px', textAlign: 'center', fontWeight: 700, color: scoreColor }}>
+                    {c.promedioScore.toFixed(2)} pts
+                  </td>
+                  <td style={{ padding: '5px 6px', fontSize: '7.8pt', color: '#334155', maxWidth: '240px', wordBreak: 'break-word' }}>
+                    {exNames}
+                  </td>
+                  <td style={{ padding: '5px 6px', textAlign: 'center', color: totalIncidentes > 0 ? '#b91c1c' : '#15803d', fontWeight: 600 }}>
+                    {totalIncidentes}
+                  </td>
+                  <td style={{ padding: '5px 6px', textAlign: 'center', fontWeight: 600, fontSize: '8pt' }}>
+                    {c.estado || 'N/A'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
       {/* Barra de paginación de la tabla */}
       <div
+        className="no-print"
         style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -492,14 +763,15 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
         }}
       >
         <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-          Mostrando operadores <strong style={{ color: '#f8fafc' }}>{(driversPage - 1) * pageSize + 1}</strong> a <strong style={{ color: '#f8fafc' }}>{Math.min(driversPage * pageSize, filteredConductores.length)}</strong> de <strong style={{ color: '#38bdf8' }}>{filteredConductores.length}</strong>
+          Mostrando operadores <strong style={{ color: '#f8fafc' }}>{(effectiveDriversPage - 1) * pageSize + 1}</strong> a <strong style={{ color: '#f8fafc' }}>{Math.min(effectiveDriversPage * pageSize, displayedConductores.length)}</strong> de <strong style={{ color: '#38bdf8' }}>{displayedConductores.length}</strong>
+          {statusFilter !== 'all' && ` (filtro "${statusFilter}")`}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
           <button
             type="button"
             className="btn btn-secondary btn-sm"
             onClick={() => onSetDriversPage(1)}
-            disabled={driversPage === 1}
+            disabled={effectiveDriversPage === 1}
             style={{ borderRadius: '6px', padding: '0.35rem 0.65rem' }}
             title="Primera página"
           >
@@ -509,19 +781,19 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
             type="button"
             className="btn btn-secondary btn-sm"
             onClick={() => onSetDriversPage((prev) => prev - 1)}
-            disabled={driversPage === 1}
+            disabled={effectiveDriversPage === 1}
             style={{ borderRadius: '6px', padding: '0.35rem 0.75rem' }}
           >
             « Ant
           </button>
           <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#38bdf8', padding: '0 0.6rem' }}>
-            Pág. {driversPage} / {totalDriversPages}
+            Pág. {effectiveDriversPage} / {effectiveTotalPages}
           </span>
           <button
             type="button"
             className="btn btn-secondary btn-sm"
             onClick={() => onSetDriversPage((prev) => prev + 1)}
-            disabled={driversPage === totalDriversPages}
+            disabled={effectiveDriversPage === effectiveTotalPages}
             style={{ borderRadius: '6px', padding: '0.35rem 0.75rem' }}
           >
             Sig »
@@ -529,8 +801,8 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
           <button
             type="button"
             className="btn btn-secondary btn-sm"
-            onClick={() => onSetDriversPage(totalDriversPages)}
-            disabled={driversPage === totalDriversPages}
+            onClick={() => onSetDriversPage(effectiveTotalPages)}
+            disabled={effectiveDriversPage === effectiveTotalPages}
             style={{ borderRadius: '6px', padding: '0.35rem 0.65rem' }}
             title="Última página"
           >

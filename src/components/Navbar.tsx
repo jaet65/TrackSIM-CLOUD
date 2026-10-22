@@ -76,7 +76,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
   };
 
   return (
-    <header className="navbar">
+    <header className="navbar no-print">
       <div className="nav-left">
         <div className="brand-badge">
           <div className="brand-icon">
