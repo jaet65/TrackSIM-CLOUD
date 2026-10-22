@@ -3,6 +3,7 @@ import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { Evaluation } from '../types';
 import { findCatalogExercise } from '../services/exerciseCatalog';
+import { MISTAKE_DIMENSIONS, findCatalogMistake } from '../services/mistakeCatalog';
 import { Line, Radar, Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -39,6 +40,8 @@ export const EvolutionTab: React.FC = () => {
   const [selectedCompanyName, setSelectedCompanyName] = useState<string>('');
   const [accidentViewMode, setAccidentViewMode] = useState<'counts' | 'rate'>('counts');
   const [viewReport, setViewReport] = useState<Evaluation | null>(null);
+  const [isRadarModalOpen, setIsRadarModalOpen] = useState(false);
+  const [selectedRadarAxisId, setSelectedRadarAxisId] = useState<number | 'all'>('all');
 
   // Asegurar que al entrar a la pestaña o al cambiar de operador, se active la vista de conductor y la página suba al inicio
   useEffect(() => {
@@ -990,30 +993,98 @@ export const EvolutionTab: React.FC = () => {
     ]
   };
 
-  // Datos para Radar de Competencias
-  const latestEval = driverEvaluations[driverEvaluations.length - 1];
+  // Radar de Competencias basado en los 5 Ejes del Catálogo de Errores
+  const radarDimensions = [
+    MISTAKE_DIMENSIONS.EJE_1, // Normas de Tráfico
+    MISTAKE_DIMENSIONS.EJE_2, // Dinámica y Seguridad
+    MISTAKE_DIMENSIONS.EJE_3, // Eficiencia de Motor
+    MISTAKE_DIMENSIONS.EJE_4, // Transmisión y Embrague
+    MISTAKE_DIMENSIONS.EJE_5  // Arranque y Preparación
+  ];
+
+  // Acumular errores por eje a través de todas las evaluaciones del conductor (o de la última evaluación)
+  const axisStats = useMemo(() => {
+    const errorCounts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    const mistakeMap = new Map<string, { error: string; repeticiones: number; ejeId: number; fecha?: string }>();
+    let hasMistakeData = false;
+
+    // Recorremos las evaluaciones del conductor
+    driverEvaluations.forEach(ev => {
+      if (Array.isArray(ev.erroresFrecuentes) && ev.erroresFrecuentes.length > 0) {
+        hasMistakeData = true;
+        ev.erroresFrecuentes.forEach(item => {
+          let ejeId = item.ejeId;
+          const match = findCatalogMistake(item.error || item.errorRaw || '');
+          if (!ejeId && match) ejeId = match.ejeId;
+          const finalEjeId = ejeId || 1;
+          const errorName = match ? match.nombre : (item.error || item.errorRaw || 'Error no clasificado');
+
+          if (errorCounts[finalEjeId] != null) {
+            errorCounts[finalEjeId] += (item.repeticiones || 1);
+          }
+
+          const existing = mistakeMap.get(errorName);
+          if (existing) {
+            existing.repeticiones += (item.repeticiones || 1);
+          } else {
+            mistakeMap.set(errorName, {
+              error: errorName,
+              repeticiones: item.repeticiones || 1,
+              ejeId: finalEjeId
+            });
+          }
+        });
+      }
+    });
+
+    const mistakeDetails = Array.from(mistakeMap.values()).sort((a, b) => b.repeticiones - a.repeticiones);
+    const numEvals = Math.max(1, driverEvaluations.length);
+
+    // Si hay datos reales de errores extraídos:
+    // Puntuación sobre 10 donde 0 errores = 10, y se penaliza proporcionalmente según frecuencia promedio
+    // Penalizaciones equilibradas:
+    // Eje 1 (Normas): -0.4 por error promedio por sesión
+    // Eje 2 (Dinámica/Seguridad): -1.2 por error (colisiones, derrapes son críticos)
+    // Eje 3 (Eficiencia Motor): -0.3 por error (zonas de RPM)
+    // Eje 4 (Transmisión/Embrague): -0.6 por error
+    // Eje 5 (Arranque): -0.8 por error
+    const penalties: Record<number, number> = {
+      1: 0.4,
+      2: 1.2,
+      3: 0.3,
+      4: 0.6,
+      5: 0.8
+    };
+
+    const scores = radarDimensions.map(dim => {
+      if (hasMistakeData) {
+        const count = errorCounts[dim.id] || 0;
+        const avgErrors = count / numEvals;
+        const score = Math.max(1.0, Math.min(10.0, 10.0 - (avgErrors * (penalties[dim.id] || 0.5))));
+        return parseFloat(score.toFixed(1));
+      } else {
+        // Fallback armonioso si la evaluación es histórica sin lista de errores
+        const latest = driverEvaluations[driverEvaluations.length - 1];
+        if (!latest) return 7.0;
+        const finalScore = latest.evaluacionFinalPuntos ?? latest.calificacionExacta ?? 7.0;
+        const colFactor = Math.max(0, 10 - ((latest.colisiones || 0) * 2.5) - ((latest.fatalidades || 0) * 4));
+        if (dim.id === 1) return parseFloat(Math.min(10, Math.max(2, (latest.habilidadesManejoPct ? latest.habilidadesManejoPct / 10 : finalScore))).toFixed(1));
+        if (dim.id === 2) return parseFloat(Math.min(10, Math.max(1, colFactor)).toFixed(1));
+        if (dim.id === 3) return parseFloat(Math.min(10, Math.max(2, (latest.practicaSimuladorPct ? latest.practicaSimuladorPct / 10 : finalScore))).toFixed(1));
+        if (dim.id === 4) return parseFloat(Math.min(10, Math.max(2, finalScore * 0.95)).toFixed(1));
+        return parseFloat(Math.min(10, Math.max(2, finalScore)).toFixed(1));
+      }
+    });
+
+    return { errorCounts, hasMistakeData, scores, mistakeDetails };
+  }, [driverEvaluations, radarDimensions]);
+
   const radarData = {
-    labels: [
-      'Evaluación Final',
-      'Habilidades Manejo',
-      'Simulador',
-      'Seguridad Vial (0 Incid.)',
-      'Sierra / S3',
-      'Críticas / S4'
-    ],
+    labels: radarDimensions.map(d => `${d.icono} ${d.shortName}`),
     datasets: [
       {
         label: currentDriver ? currentDriver.nombre : 'Operador',
-        data: latestEval
-          ? [
-            latestEval.evaluacionFinalPuntos ?? latestEval.calificacionExacta ?? 0,
-            (latestEval.habilidadesManejoPct || 50) / 10,
-            (latestEval.practicaSimuladorPct || 50) / 10,
-            Math.max(0, 10 - ((latestEval.colisiones || 0) * 2) - ((latestEval.fatalidades || 0) * 3)),
-            latestEval.simulacionesDetalle?.simulacion_3 || 5,
-            latestEval.simulacionesDetalle?.simulacion_4 || 5
-          ]
-          : [5, 5, 5, 5, 5, 5],
+        data: axisStats.scores,
         borderColor: '#38bdf8',
         backgroundColor: 'rgba(56, 189, 248, 0.25)',
         borderWidth: 2,
@@ -1050,6 +1121,27 @@ export const EvolutionTab: React.FC = () => {
     plugins: {
       legend: {
         labels: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans' } }
+      },
+      tooltip: {
+        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+        titleColor: '#f8fafc',
+        bodyColor: '#cbd5e1',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderWidth: 1,
+        padding: 10,
+        callbacks: {
+          label: (ctx: any) => {
+            const dimIndex = ctx.dataIndex;
+            const dim = radarDimensions[dimIndex];
+            const score = ctx.raw;
+            const count = axisStats.errorCounts[dim.id] || 0;
+            const lines = [`Rendimiento: ${score} / 10 pts`];
+            if (axisStats.hasMistakeData) {
+              lines.push(`Errores registrados: ${count} incidencia${count === 1 ? '' : 's'}`);
+            }
+            return lines;
+          }
+        }
       }
     },
     scales: {
@@ -1058,8 +1150,8 @@ export const EvolutionTab: React.FC = () => {
         max: 10,
         angleLines: { color: 'rgba(255, 255, 255, 0.08)' },
         grid: { color: 'rgba(255, 255, 255, 0.08)' },
-        pointLabels: { color: '#cbd5e1', font: { size: 11 } },
-        ticks: { backdropColor: 'transparent', color: '#64748b' }
+        pointLabels: { color: '#cbd5e1', font: { size: 10, weight: 'bold' as const } },
+        ticks: { backdropColor: 'transparent', color: '#64748b', stepSize: 2 }
       }
     }
   };
@@ -1329,8 +1421,59 @@ export const EvolutionTab: React.FC = () => {
             </div>
 
             {/* Radar de Competencias */}
-            <div className="card" style={{ padding: '1.25rem' }}>
-              <h3 style={{ margin: '0 0 1rem', fontSize: '1.05rem', fontWeight: 700 }}>🕸️ Radar Multidimensional de Competencias</h3>
+            <div
+              className="card"
+              style={{
+                padding: '1.25rem',
+                cursor: 'pointer',
+                transition: 'transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
+                position: 'relative'
+              }}
+              onClick={() => {
+                setSelectedRadarAxisId('all');
+                setIsRadarModalOpen(true);
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.borderColor = 'rgba(56, 189, 248, 0.5)';
+                e.currentTarget.style.boxShadow = '0 8px 24px rgba(56, 189, 248, 0.15)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.borderColor = '';
+                e.currentTarget.style.boxShadow = '';
+              }}
+              title="Haz clic para ampliar el gráfico y ver el desglose de errores"
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    🕸️ Radar Multidimensional de Competencias
+                    <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 500 }}>🔍 (Clic para ampliar)</span>
+                  </h3>
+                  <p style={{ margin: '0.2rem 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    Desempeño en 5 dimensiones clave calculado a partir de errores e incidencias en simulador.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {axisStats.hasMistakeData && (
+                    <span className="badge badge-info" style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}>
+                      📊 Basado en Reportes PDF
+                    </span>
+                  )}
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedRadarAxisId('all');
+                      setIsRadarModalOpen(true);
+                    }}
+                  >
+                    🔍 Desglosar Errores
+                  </button>
+                </div>
+              </div>
               <div style={{ height: '300px', width: '100%' }}>
                 <Radar data={radarData} options={radarOptions} />
               </div>
@@ -1659,6 +1802,240 @@ export const EvolutionTab: React.FC = () => {
                     onClick={() => setViewReport(null)}
                   >
                     Cerrar Detalle
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal Detalle de Radar Ampliado y Desglose de Errores */}
+          {isRadarModalOpen && (
+            <div
+              className="modal-backdrop active"
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0, 0, 0, 0.82)',
+                backdropFilter: 'blur(8px)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 1000,
+                padding: '1rem'
+              }}
+              onClick={() => setIsRadarModalOpen(false)}
+            >
+              <div
+                className="glass-card"
+                style={{
+                  maxWidth: '920px',
+                  width: '100%',
+                  maxHeight: '92vh',
+                  overflowY: 'auto',
+                  background: '#0d1322',
+                  border: '1px solid rgba(56, 189, 248, 0.4)',
+                  borderRadius: '18px',
+                  padding: '1.75rem',
+                  boxShadow: '0 25px 60px rgba(0, 0, 0, 0.75)'
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header del Modal */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '1rem' }}>
+                  <div>
+                    <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#38bdf8', fontWeight: 700, letterSpacing: '0.06em' }}>
+                      Análisis Diagnóstico Multidimensional
+                    </span>
+                    <h2 style={{ margin: '0.2rem 0 0', fontSize: '1.45rem', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      🕸️ Radar de Competencias: {currentDriver ? currentDriver.nombre : 'Operador'}
+                    </h2>
+                    <p style={{ margin: '0.25rem 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                      Desglose detallado de los errores de simulación agrupados en las 5 dimensiones clave de conducción.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setIsRadarModalOpen(false)}
+                    style={{ fontSize: '1.2rem', lineHeight: 1, padding: '0.4rem 0.75rem' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Grid con Radar Ampliado y Resumen de Métricas */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+                  {/* Radar Ampliado */}
+                  <div style={{ background: 'rgba(15, 23, 42, 0.65)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: '12px', padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem', width: '100%' }}>
+                      Vista Ampliada del Radar
+                    </div>
+                    <div style={{ height: '360px', width: '100%' }}>
+                      <Radar data={radarData} options={radarOptions} />
+                    </div>
+                  </div>
+
+                  {/* Resumen de Calificaciones por Dimensión */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.2rem' }}>
+                      Puntajes por Dimensión Clave (0 - 10)
+                    </div>
+                    {radarDimensions.map((dim, idx) => {
+                      const score = axisStats.scores[idx] || 0;
+                      const count = axisStats.errorCounts[dim.id] || 0;
+                      const isSelected = selectedRadarAxisId === dim.id;
+
+                      return (
+                        <div
+                          key={dim.id}
+                          onClick={() => setSelectedRadarAxisId(isSelected ? 'all' : dim.id)}
+                          style={{
+                            padding: '0.75rem 1rem',
+                            background: isSelected ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                            border: `1px solid ${isSelected ? dim.color : 'rgba(255, 255, 255, 0.06)'}`,
+                            borderRadius: '10px',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                            <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <span>{dim.icono}</span>
+                              <span>{dim.nombre}</span>
+                            </span>
+                            <span style={{ fontSize: '0.95rem', fontWeight: 800, color: dim.color }}>
+                              {score.toFixed(1)} <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>/10</span>
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            <span>Incidencias registradas: <strong style={{ color: count > 0 ? '#f8fafc' : '#10b981' }}>{count}</strong></span>
+                            <span style={{ color: isSelected ? '#38bdf8' : '#64748b', fontSize: '0.72rem' }}>
+                              {isSelected ? 'Mostrando sólo este eje ▾' : 'Filtrar errores ▸'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Filtros de la Lista de Errores */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.85rem' }}>
+                  <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    📋 Desglose de Errores Detectados en Simulador
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 400 }}>
+                      ({axisStats.mistakeDetails.filter(m => selectedRadarAxisId === 'all' || m.ejeId === selectedRadarAxisId).length} tipos de error)
+                    </span>
+                  </h4>
+                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${selectedRadarAxisId === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ fontSize: '0.74rem', padding: '0.2rem 0.55rem' }}
+                      onClick={() => setSelectedRadarAxisId('all')}
+                    >
+                      Todos los Ejes
+                    </button>
+                    {radarDimensions.map(dim => (
+                      <button
+                        key={dim.id}
+                        type="button"
+                        className={`btn btn-sm ${selectedRadarAxisId === dim.id ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{
+                          fontSize: '0.74rem',
+                          padding: '0.2rem 0.55rem',
+                          borderColor: selectedRadarAxisId === dim.id ? dim.color : undefined
+                        }}
+                        onClick={() => setSelectedRadarAxisId(dim.id)}
+                      >
+                        {dim.icono} {dim.shortName}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Tabla Desglose de Errores */}
+                {axisStats.mistakeDetails.length > 0 ? (
+                  <div className="table-responsive" style={{ maxHeight: '340px', overflowY: 'auto', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '10px' }}>
+                    <table className="custom-table" style={{ margin: 0 }}>
+                      <thead>
+                        <tr style={{ background: 'rgba(15, 23, 42, 0.9)' }}>
+                          <th style={{ width: '50px' }}>#</th>
+                          <th>Error Comprobado en Simulación</th>
+                          <th style={{ width: '220px' }}>Dimensión / Eje Asignado</th>
+                          <th style={{ textAlign: 'center', width: '120px' }}>Repeticiones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {axisStats.mistakeDetails
+                          .filter(m => selectedRadarAxisId === 'all' || m.ejeId === selectedRadarAxisId)
+                          .map((m, idx) => {
+                            const dim = radarDimensions.find(d => d.id === m.ejeId) || MISTAKE_DIMENSIONS.EJE_1;
+                            return (
+                              <tr key={idx}>
+                                <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{idx + 1}</td>
+                                <td>
+                                  <span style={{ fontWeight: 600, color: '#f8fafc', fontSize: '0.86rem' }}>
+                                    {m.error}
+                                  </span>
+                                </td>
+                                <td>
+                                  <span
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.35rem',
+                                      padding: '0.2rem 0.55rem',
+                                      borderRadius: '6px',
+                                      fontSize: '0.75rem',
+                                      background: `${dim.color}18`,
+                                      color: dim.color,
+                                      border: `1px solid ${dim.color}40`,
+                                      fontWeight: 600
+                                    }}
+                                  >
+                                    <span>{dim.icono}</span>
+                                    <span>{dim.shortName}</span>
+                                  </span>
+                                </td>
+                                <td style={{ textAlign: 'center' }}>
+                                  <span
+                                    className="badge"
+                                    style={{
+                                      background: m.repeticiones >= 10 ? 'rgba(239, 68, 68, 0.2)' : m.repeticiones >= 5 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(56, 189, 248, 0.15)',
+                                      color: m.repeticiones >= 10 ? '#ef4444' : m.repeticiones >= 5 ? '#f59e0b' : '#38bdf8',
+                                      border: `1px solid ${m.repeticiones >= 10 ? 'rgba(239, 68, 68, 0.4)' : m.repeticiones >= 5 ? 'rgba(245, 158, 11, 0.4)' : 'rgba(56, 189, 248, 0.3)'}`,
+                                      fontSize: '0.82rem',
+                                      fontWeight: 700,
+                                      padding: '0.2rem 0.6rem'
+                                    }}
+                                  >
+                                    {m.repeticiones} {m.repeticiones === 1 ? 'vez' : 'veces'}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '2rem 1rem', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '10px' }}>
+                    <span style={{ fontSize: '2rem', display: 'block', marginBottom: '0.5rem' }}>✨</span>
+                    <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                      No se registran errores específicos de simulación en los reportes de este conductor.
+                    </p>
+                  </div>
+                )}
+
+                {/* Footer del Modal */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => setIsRadarModalOpen(false)}
+                  >
+                    Entendido, Cerrar
                   </button>
                 </div>
               </div>

@@ -3,6 +3,7 @@
  * Extrae y estructura automáticamente los datos de evaluaciones de operadores
  * desde reportes PDF generados por el simulador de autotransporte.
  */
+import { findCatalogMistake, getDimensionById } from './mistake-catalog.js';
 
 // Helper para concatenar el contenido de texto manteniendo el orden y saltos de línea
 export async function extractTextFromPDF(pdfDoc) {
@@ -556,6 +557,84 @@ export function extractSimulationsFromOperatorList(opList, _contentItems = []) {
 }
 
 /**
+ * Extrae los errores y su frecuencia de la gráfica de barras horizontal
+ * 'Errores con mas frecuencia en las simulaciones' ubicada en la Página 1 del reporte.
+ */
+export function extractMistakesFromCoordinates(page1Items = [], allItems = []) {
+  const sourceItems = (page1Items && page1Items.length > 0)
+    ? page1Items
+    : (allItems && allItems[0] ? allItems[0] : []);
+
+  if (!sourceItems || sourceItems.length === 0) return [];
+
+  const cleanItems = sourceItems
+    .filter(item => item.str && item.str.trim().length > 0)
+    .map(item => ({
+      str: item.str.trim(),
+      x: item.transform ? Math.round(item.transform[4]) : 0,
+      y: item.transform ? Math.round(item.transform[5]) : 0
+    }));
+
+  // Buscar el título del gráfico
+  const titleItem = cleanItems.find(it => /errores\s+con\s+m[aá]s\s+frecuencia/i.test(it.str));
+  if (!titleItem) return [];
+
+  // Los errores están verticalmente por debajo del título (y < title.y) y por encima de los números de escala X (y > 95)
+  const chartItems = cleanItems.filter(it => it.y < titleItem.y && it.y > 95);
+
+  // Agrupar items por línea horizontal similar (tolerancia ±4px en Y)
+  const rowMap = new Map();
+  for (const it of chartItems) {
+    let matchedY = null;
+    for (const y of rowMap.keys()) {
+      if (Math.abs(y - it.y) <= 4) {
+        matchedY = y;
+        break;
+      }
+    }
+    if (matchedY !== null) {
+      rowMap.get(matchedY).push(it);
+    } else {
+      rowMap.set(it.y, [it]);
+    }
+  }
+
+  const results = [];
+  const rows = Array.from(rowMap.entries()).sort((a, b) => b[0] - a[0]);
+
+  for (const [, list] of rows) {
+    list.sort((a, b) => a.x - b.x);
+
+    // El número de repeticiones está a la derecha del texto (x > 250)
+    const countItem = list.find(it => /^\d+$/.test(it.str) && it.x > 250);
+    const textItems = list.filter(it => it !== countItem);
+    const errorText = textItems.map(it => it.str).join(' ').trim();
+    const count = countItem ? parseInt(countItem.str, 10) : null;
+
+    // Descartar filas vacías o líneas que sean solo etiquetas de ejes numéricos
+    if (!errorText || count === null || isNaN(count)) continue;
+    if (/^[0-9\s]+$/.test(errorText)) continue;
+
+    // Buscar en el catálogo para clasificar por Eje / Dimensión
+    const catalogMatch = findCatalogMistake(errorText);
+    const ejeId = catalogMatch ? catalogMatch.ejeId : null;
+    const dimension = ejeId ? getDimensionById(ejeId) : null;
+
+    results.push({
+      error: catalogMatch ? catalogMatch.nombre : errorText,
+      errorRaw: errorText,
+      repeticiones: count,
+      ejeId: ejeId,
+      ejeNombre: dimension ? dimension.nombre : 'Sin Clasificar',
+      ejeShortName: dimension ? dimension.shortName : 'Otros',
+      ejeIcono: dimension ? dimension.icono : '❓'
+    });
+  }
+
+  return results;
+}
+
+/**
  * Parsea el texto extraído de las páginas del PDF y genera el objeto de evaluación
  */
 export function parseEvaluationData(pagesText, filename = '', rawPage1Items = null, rawPage4Items = null, rawPage5Items = null, allPagesItems = null, rawOpList = null) {
@@ -603,6 +682,7 @@ export function parseEvaluationData(pagesText, filename = '', rawPage1Items = nu
     },
     ejercicios: [],
     nombresSimulaciones: {},
+    erroresFrecuentes: [],
     fatalidades: 0,
     vehiculoFueraVia: 0,
     colisiones: 0,
@@ -796,7 +876,10 @@ export function parseEvaluationData(pagesText, filename = '', rawPage1Items = nu
     data.nombresSimulaciones[e.numero] = e.nombre;
   });
 
-  // 11. Estado y Observaciones
+  // 11. Errores con más frecuencia en las simulaciones (Página 1)
+  data.erroresFrecuentes = extractMistakesFromCoordinates(page1Items, allItems);
+
+  // 12. Estado y Observaciones
   const score = data.evaluacionFinalPuntos || data.calificacionExacta || 0;
   if (score >= 8.0) {
     data.estado = 'Sobresaliente';

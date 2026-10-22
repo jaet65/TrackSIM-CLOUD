@@ -12,6 +12,16 @@ export interface ExerciseItem {
   modulo?: string;
 }
 
+export interface FrequentMistakeItem {
+  error: string;
+  errorRaw?: string;
+  repeticiones: number;
+  ejeId?: number | null;
+  ejeNombre?: string;
+  ejeShortName?: string;
+  ejeIcono?: string;
+}
+
 export interface Evaluation {
   id: string;
   folio?: string;
@@ -43,6 +53,7 @@ export interface Evaluation {
   ejercicios?: ExerciseItem[];
   simulacionesDetalle?: Record<string, number>;
   nombresSimulaciones?: Record<string | number, string>;
+  erroresFrecuentes?: FrequentMistakeItem[];
   instructor?: string;
   observaciones?: string;
   estado?: 'Sobresaliente' | 'Aprobado' | 'Reforzar' | 'Requiere Refuerzo' | 'No Aprobado' | 'Pendiente' | string;

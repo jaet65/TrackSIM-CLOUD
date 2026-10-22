@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
-import { collection, getDocs, deleteDoc, doc, setDoc, query, where } from '../services/firebase';
+import { collection, getDocs, deleteDoc, doc, setDoc, query, where, writeBatch } from '../services/firebase';
 import { db } from '../services/firebase';
 import { Evaluation, CompanySummary, DriverSummary } from '../types';
 import { processCompanySummaries, processDriverSummaries, createCompanySummaryFromEvaluations } from '../services/analytics';
@@ -28,6 +28,7 @@ interface DataContextType {
   searchFilter: string;
   setSearchFilter: (s: string) => void;
   deleteEvaluation: (id: string) => Promise<void>;
+  deleteAllEvaluations: (targetEvaluations?: Evaluation[]) => Promise<number>;
   updateEvaluation: (id: string, data: Partial<Evaluation>) => Promise<void>;
 }
 
@@ -238,6 +239,60 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
+  const deleteAllEvaluations = async (targetEvaluations?: Evaluation[]): Promise<number> => {
+    // Si se especifica una lista (por ejemplo las del rol o filtradas), se eliminan esas; de lo contrario todas las permitidas
+    const toDelete = targetEvaluations || roleAllowedEvaluations;
+    if (toDelete.length === 0) return 0;
+
+    const idsToDelete = toDelete.map((e) => e.id);
+    const BATCH_SIZE = 450; // Firestore admite hasta 500 operaciones por batch
+    const successfullyDeletedIds: string[] = [];
+    let firestoreError: any = null;
+
+    for (let i = 0; i < idsToDelete.length; i += BATCH_SIZE) {
+      const chunk = idsToDelete.slice(i, i + BATCH_SIZE);
+      const batch = writeBatch(db);
+      chunk.forEach((id) => {
+        batch.delete(doc(db, 'evaluaciones', id));
+      });
+
+      try {
+        await batch.commit();
+        successfullyDeletedIds.push(...chunk);
+      } catch (e: any) {
+        console.error('Error al cometer batch de eliminación en Firestore:', e);
+        firestoreError = e;
+        break; // Detener para no reportar éxito si Firestore falló
+      }
+    }
+
+    // Actualizar estado local únicamente con los documentos que realmente se borraron en Firestore
+    if (successfullyDeletedIds.length > 0) {
+      const deleteSet = new Set(successfullyDeletedIds);
+      setEvaluations((prev) => {
+        const next = prev.filter((item) => !deleteSet.has(item.id));
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(next));
+        return next;
+      });
+    }
+
+    if (firestoreError) {
+      const errorMsg = firestoreError?.message || '';
+      const isQuota = firestoreError?.code === 'resource-exhausted' ||
+                      /quota|resource-exhausted|exceeded/i.test(errorMsg);
+      const customErr: any = new Error(
+        isQuota
+          ? 'La cuota de Firestore está agotada (Resource Exhausted). Las operaciones de eliminación fueron rechazadas por Firebase en la nube.'
+          : `Error en Firestore al eliminar: ${firestoreError?.message || 'Fallo de conexión o permisos'}`
+      );
+      customErr.code = firestoreError?.code;
+      customErr.deletedSoFar = successfullyDeletedIds.length;
+      throw customErr;
+    }
+
+    return successfullyDeletedIds.length;
+  };
+
   const updateEvaluation = async (id: string, updatedData: Partial<Evaluation>) => {
     const cleanUpdates = { ...updatedData, updatedAt: new Date().toISOString() };
     try {
@@ -272,6 +327,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         searchFilter,
         setSearchFilter,
         deleteEvaluation,
+        deleteAllEvaluations,
         updateEvaluation
       }}
     >

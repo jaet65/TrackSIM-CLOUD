@@ -61,6 +61,7 @@ export const DirectoryTab: React.FC = () => {
     filteredEvaluations,
     companies,
     deleteEvaluation,
+    deleteAllEvaluations,
     updateEvaluation,
     reloadEvaluations,
     loading
@@ -69,6 +70,7 @@ export const DirectoryTab: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<string>('');
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
 
   if (userRole !== 'admin') {
     return (
@@ -230,6 +232,41 @@ export const DirectoryTab: React.FC = () => {
       await deleteEvaluation(id);
     }
     setSelectedIds(new Set());
+  };
+
+  const handleDeleteAllEvaluations = async () => {
+    const total = filteredEvaluations.length;
+    if (total === 0) {
+      alert('No hay evaluaciones para eliminar.');
+      return;
+    }
+
+    const isFiltered = total !== evaluations.length;
+    const confirmMessage = isFiltered
+      ? `⚠️ ATENCIÓN: Tienes filtros activos.\n\n¿Deseas eliminar definitivamente las ${total} evaluaciones actualmente filtradas?\n\nEsta acción borrará los registros de Firestore y no se puede deshacer.`
+      : `⚠️ PELIGRO: ESTA ACCIÓN NO SE PUEDE DESHACER.\n\n¿Estás completamente seguro de eliminar TODAS las evaluaciones de la base de datos (${total} registros)?\n\nSe eliminarán de Firestore y de la nube.`;
+
+    if (!window.confirm(confirmMessage)) return;
+
+    // Doble confirmación de seguridad para evitar eliminaciones accidentales
+    const userInput = window.prompt(`Para confirmar la eliminación de ${total} evaluaciones, escribe la palabra "ELIMINAR":`);
+    if (userInput?.trim().toUpperCase() !== 'ELIMINAR') {
+      alert('Operación cancelada. El texto ingresado no coincide.');
+      return;
+    }
+
+    try {
+      setIsDeletingAll(true);
+      const deletedCount = await deleteAllEvaluations(isFiltered ? filteredEvaluations : undefined);
+      setSelectedIds(new Set());
+      alert(`Se eliminaron exitosamente ${deletedCount} evaluaciones en Firestore.`);
+    } catch (err: any) {
+      console.error('Error eliminando todas las evaluaciones:', err);
+      const msg = err?.message || 'Error desconocido';
+      alert(`⚠️ No se completó la eliminación:\n\n${msg}\n\nSi la cuota de Firebase está agotada, las operaciones se reanudarán al reiniciarse la cuota diaria.`);
+    } finally {
+      setIsDeletingAll(false);
+    }
   };
 
   const handleBatchUpdateSubmit = async (e: React.FormEvent) => {
@@ -580,6 +617,32 @@ export const DirectoryTab: React.FC = () => {
               <line x1="12" y1="15" x2="12" y2="3"></line>
             </svg>
             Exportar CSV
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-danger"
+            onClick={handleDeleteAllEvaluations}
+            disabled={isDeletingAll || filteredEvaluations.length === 0}
+            title="Eliminar todas las evaluaciones de la base de datos o las filtradas"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              background: 'rgba(239, 68, 68, 0.18)',
+              color: '#f87171',
+              border: '1px solid rgba(239, 68, 68, 0.4)'
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              <line x1="10" y1="11" x2="10" y2="17"></line>
+              <line x1="14" y1="11" x2="14" y2="17"></line>
+            </svg>
+            {isDeletingAll ? 'Eliminando...' : 'Eliminar Todas'}
           </button>
         </div>
       </div>
