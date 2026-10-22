@@ -47,16 +47,18 @@ setPersistence(auth, browserLocalPersistence).catch((err) => {
 
 export const db = initializeFirestore(app, {});
 
-// Habilitar persistencia offline con soporte multitestaña en IndexedDB
-enableMultiTabIndexedDbPersistence(db).catch((err) => {
-  if (err.code === 'failed-precondition') {
-    console.warn('Persistencia Firestore: Múltiples pestañas abiertas al mismo tiempo.');
-  } else if (err.code === 'unimplemented') {
-    console.warn('El navegador actual no soporta persistencia IndexedDB.');
-  } else {
-    console.warn('Aviso de persistencia Firestore:', err);
-  }
-});
+// Habilitar persistencia offline con soporte multitestaña en IndexedDB (solo en cliente web real)
+if (typeof window !== 'undefined' && import.meta.env.MODE !== 'test') {
+  enableMultiTabIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('Persistencia Firestore: Múltiples pestañas abiertas al mismo tiempo.');
+    } else if (err.code === 'unimplemented') {
+      console.warn('El navegador actual no soporta persistencia IndexedDB.');
+    } else {
+      console.warn('Aviso de persistencia Firestore:', err);
+    }
+  });
+}
 
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
