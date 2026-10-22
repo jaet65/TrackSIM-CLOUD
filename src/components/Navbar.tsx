@@ -35,7 +35,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
           }}
         >
           <span>👑</span>
-          <span>ADMINISTRADOR</span>
+          <span>Admin</span>
           {selectedCompany && selectedCompany !== 'all' && (
             <span style={{ color: '#fff', fontWeight: 500, opacity: 0.9 }}>
               • {selectedCompany}
@@ -146,8 +146,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
           disabled={isSyncing}
           title={lastSyncTime ? `Última sincronización: ${new Date(lastSyncTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}\nHaz clic para buscar cambios recientes` : 'Sincronizar datos con Cloud Firestore'}
           style={{
-            background: 'rgba(255, 255, 255, 0.05)',
-            border: '1px solid rgba(255, 255, 255, 0.15)',
+            background: 'rgba(255, 255, 255, 0)',
             color: isSyncing ? '#38bdf8' : 'var(--text-muted, #94a3b8)',
             padding: '0.45rem 0.75rem',
             borderRadius: '8px',
@@ -166,7 +165,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
           }}
         >
           <span style={{ display: 'inline-block', animation: isSyncing ? 'spin 1s linear infinite' : 'none' }}>🔄</span>
-          <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar'}</span>
+          <span>{isSyncing ? 'Syncing...' : 'Sync'}</span>
         </button>
 
         {/* Badge contextual de Empresa o Administrador */}

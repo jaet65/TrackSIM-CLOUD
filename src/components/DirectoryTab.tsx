@@ -1,17 +1,74 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
-import { Evaluation } from '../types';
+import { Evaluation, ExerciseItem } from '../types';
+import { findCatalogExercise } from '../services/exerciseCatalog';
+
+/** Escapa un valor para CSV (comillas dobles, comas y saltos de línea) */
+function csvCell(v: any): string {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** Parser CSV (soporta comillas, saltos de línea en celdas y delimitador , o ;) */
+function parseCSV(text: string): string[][] {
+  text = text.replace(/^\uFEFF/, '');
+  const firstLine = text.split(/\r?\n/)[0] || '';
+  const delim = (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length ? ';' : ',';
+  const rows: string[][] = [];
+  let row: string[] = [], cell = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { cell += '"'; i++; } else inQ = false;
+      } else cell += c;
+    } else if (c === '"') inQ = true;
+    else if (c === delim) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell); cell = '';
+      if (row.some(x => x !== '')) rows.push(row);
+      row = [];
+    } else cell += c;
+  }
+  row.push(cell);
+  if (row.some(x => x !== '')) rows.push(row);
+  return rows;
+}
+
+/** Obtiene los ejercicios de una evaluación como mapa numero -> ejercicio */
+function getEvaluationExerciseMap(e: Evaluation): Record<number, ExerciseItem> {
+  const map: Record<number, ExerciseItem> = {};
+  if (Array.isArray(e.ejercicios) && e.ejercicios.length > 0) {
+    e.ejercicios.forEach(ex => { if (ex && ex.numero != null) map[ex.numero] = ex; });
+  } else {
+    Object.keys(e.simulacionesDetalle || {}).forEach(k => {
+      const n = parseInt(k.replace('simulacion_', ''), 10);
+      if (!isNaN(n)) {
+        map[n] = { numero: n, nombre: e.nombresSimulaciones?.[n] || '', calificacion: (e.simulacionesDetalle as any)[k] };
+      }
+    });
+  }
+  return map;
+}
 
 export const DirectoryTab: React.FC = () => {
   const { userRole } = useAuth();
   const {
+    evaluations,
     filteredEvaluations,
     companies,
     deleteEvaluation,
     updateEvaluation,
+    reloadEvaluations,
     loading
   } = useData();
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<string>('');
 
   if (userRole !== 'admin') {
     return (
@@ -97,6 +154,240 @@ export const DirectoryTab: React.FC = () => {
     setEditingItem(null);
   };
 
+  /**
+   * Exportar a CSV con columnas completas y formateo para edición masiva
+   */
+  const handleExportCSV = () => {
+    if (displayList.length === 0) {
+      alert('No hay datos disponibles para exportar con los filtros seleccionados.');
+      return;
+    }
+
+    const exMaps = displayList.map(getEvaluationExerciseMap);
+    let maxSim = 4;
+    exMaps.forEach(m => Object.keys(m).forEach(k => { if (+k > maxSim) maxSim = +k; }));
+
+    const headers = [
+      'ID', 'Conductor', 'Empresa', 'Sede', 'Fecha', 'Curso', 'Nombre Curso', 'Instructor', 'Folio Grupo',
+      'Habilidades Manejo (Puntos)', 'Habilidades Manejo (%)',
+      'Simulador (Puntos)', 'Simulador (%)'
+    ];
+    for (let n = 2; n <= maxSim; n++) {
+      headers.push(`Sim ${n} Titulo`, `Sim ${n} Nota`);
+    }
+    headers.push(
+      'Evaluacion Final',
+      'Colisiones', 'Fatalidades', 'Fuera de Via',
+      'Estado'
+    );
+
+    const rows = displayList.map((e, idx) => {
+      const row: any[] = [
+        e.id,
+        e.conductor || e.operador || '',
+        e.empresa || '',
+        e.sede || '',
+        e.fechaCapacitacionFormato || e.fechaCapacitacion || e.fechaReporte || e.fecha || '',
+        (e as any).cursoCodigo || '',
+        (e as any).cursoNombre || '',
+        e.instructor || '',
+        (e as any).folioGrupo || '',
+        e.habilidadesManejoPuntos || 0,
+        e.habilidadesManejoPct || 0,
+        e.practicaSimuladorPuntos || 0,
+        e.practicaSimuladorPct || 0
+      ];
+      for (let n = 2; n <= maxSim; n++) {
+        const ex = exMaps[idx][n];
+        row.push(ex?.nombre ?? '', ex?.calificacion ?? '');
+      }
+      row.push(
+        e.evaluacionFinalPuntos ?? e.calificacionExacta ?? 0,
+        e.colisiones || 0,
+        e.fatalidades || 0,
+        e.vehiculoFueraVia || 0,
+        e.estado || ''
+      );
+      return row.map(csvCell);
+    });
+
+    const csvContent = '\uFEFF' + [headers.map(csvCell).join(','), ...rows.map(r => r.join(','))].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `TrackSIM_Evaluaciones_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  /**
+   * Importar evaluaciones modificadas desde archivo CSV
+   */
+  const handleImportCSV = async (file: File) => {
+    try {
+      const text = await file.text();
+      const rows = parseCSV(text);
+      if (rows.length < 2) {
+        alert('El archivo CSV está vacío.');
+        return;
+      }
+
+      const headers = rows[0].map(h => h.trim());
+      const col = (name: string) => headers.indexOf(name);
+      const idCol = col('ID');
+      if (idCol < 0) {
+        alert('El CSV no tiene la columna "ID". Usa un archivo previamente exportado desde TrackSIM.');
+        return;
+      }
+
+      const simNums: number[] = [];
+      headers.forEach(h => {
+        const m = h.match(/^Sim (\d+) Titulo$/);
+        if (m) simNums.push(parseInt(m[1], 10));
+      });
+
+      const num = (v: any, fallback: number) => {
+        const n = parseFloat(String(v ?? '').replace(',', '.'));
+        return isNaN(n) ? fallback : n;
+      };
+
+      const updates: { id: string; fields: Partial<Evaluation> }[] = [];
+      let skipped = 0;
+
+      rows.slice(1).forEach(r => {
+        const id = (r[idCol] || '').trim();
+        const item = evaluations.find(e => e.id === id);
+        if (!item) {
+          skipped++;
+          return;
+        }
+
+        const get = (name: string) => {
+          const i = col(name);
+          return i >= 0 ? (r[i] ?? '').trim() : undefined;
+        };
+
+        const f: any = {};
+        const setStr = (field: string, header: string) => {
+          const v = get(header);
+          if (v !== undefined) f[field] = v;
+        };
+
+        setStr('conductor', 'Conductor');
+        setStr('empresa', 'Empresa');
+        setStr('sede', 'Sede');
+        setStr('cursoCodigo', 'Curso');
+        setStr('cursoNombre', 'Nombre Curso');
+        setStr('instructor', 'Instructor');
+        setStr('folioGrupo', 'Folio Grupo');
+
+        const fecha = get('Fecha');
+        if (fecha) {
+          let iso = '', fmt = '';
+          if (/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+            const [y, m, d] = fecha.split('-');
+            iso = fecha;
+            fmt = `${d}/${m}/${y}`;
+          } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(fecha)) {
+            const [d, m, y] = fecha.split('/');
+            fmt = `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+            iso = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+          }
+          if (iso) {
+            f.fechaCapacitacion = iso;
+            f.fechaCapacitacionFormato = fmt;
+            f.fechaReporte = fmt;
+          }
+        }
+
+        // Ejercicios
+        if (simNums.length > 0) {
+          const map = getEvaluationExerciseMap(item);
+          Object.keys(map).forEach(k => {
+            if (+k >= 2 && !simNums.includes(+k)) delete map[+k];
+          });
+          simNums.forEach(n => {
+            const titulo = get(`Sim ${n} Titulo`) || '';
+            const notaStr = get(`Sim ${n} Nota`) ?? '';
+            if (!titulo && notaStr === '') {
+              delete map[n];
+              return;
+            }
+            const desc = findCatalogExercise(titulo)?.descripcion || map[n]?.comentarios || '';
+            map[n] = {
+              numero: n,
+              nombre: titulo,
+              calificacion: notaStr === '' ? undefined : num(notaStr, 0),
+              comentarios: desc
+            };
+          });
+
+          const ejercicios = Object.values(map).sort((a, b) => (a.numero || 0) - (b.numero || 0));
+          f.ejercicios = ejercicios;
+          f.simulacionesDetalle = {};
+          f.nombresSimulaciones = {};
+          ejercicios.forEach(ex => {
+            if (ex.numero != null) {
+              f.simulacionesDetalle[`simulacion_${ex.numero}`] = ex.calificacion ?? null;
+              f.nombresSimulaciones[ex.numero] = ex.nombre;
+            }
+          });
+        }
+
+        // Calificaciones y dictamen
+        const hab = num(get('Habilidades Manejo (Puntos)'), item.habilidadesManejoPuntos || 0);
+        const sim = num(get('Simulador (Puntos)'), item.practicaSimuladorPuntos || 0);
+        let finalPts = num(get('Evaluacion Final'), NaN);
+        if (isNaN(finalPts)) finalPts = Number((hab + sim).toFixed(2));
+
+        f.habilidadesManejoPuntos = hab;
+        f.habilidadesManejoPct = Math.round((hab / 3.0) * 10000) / 100;
+        f.practicaSimuladorPuntos = sim;
+        f.practicaSimuladorPct = Math.round((sim / 7.0) * 10000) / 100;
+        f.evaluacionFinalPuntos = finalPts;
+        f.evaluacionFinalPct = Math.round((finalPts / 10.0) * 10000) / 100;
+        f.calificacionExacta = Number(finalPts.toFixed(4));
+        f.estado = finalPts >= 8 ? 'Sobresaliente' : finalPts >= 6 ? 'Aprobado' : finalPts >= 5 ? 'Reforzar' : 'No Aprobado';
+        f.colisiones = parseInt(get('Colisiones') || '0', 10) || 0;
+        f.fatalidades = parseInt(get('Fatalidades') || '0', 10) || 0;
+        f.vehiculoFueraVia = parseInt(get('Fuera de Via') || '0', 10) || 0;
+
+        updates.push({ id, fields: f });
+      });
+
+      if (updates.length === 0) {
+        alert('Ninguna fila del CSV coincide con evaluaciones existentes (revisa la columna ID).');
+        return;
+      }
+
+      if (!window.confirm(`Se actualizarán ${updates.length} evaluaciones en Firestore${skipped ? ` (${skipped} filas ignoradas por ID desconocido)` : ''}.\n\n¿Deseas continuar?`)) {
+        return;
+      }
+
+      setIsImporting(true);
+      let done = 0;
+      setImportProgress(`0 / ${updates.length}`);
+
+      for (const u of updates) {
+        await updateEvaluation(u.id, u.fields);
+        done++;
+        setImportProgress(`${done} / ${updates.length}`);
+      }
+
+      await reloadEvaluations(false);
+      alert(`¡${updates.length} evaluaciones actualizadas exitosamente desde el CSV!`);
+    } catch (err) {
+      console.error('Error al importar CSV:', err);
+      alert('Ocurrió un error al procesar el archivo CSV.');
+    } finally {
+      setIsImporting(false);
+      setImportProgress('');
+    }
+  };
+
   return (
     <div className="view-section active">
       <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
@@ -106,16 +397,63 @@ export const DirectoryTab: React.FC = () => {
             {displayList.length} registros encontrados • Paginación de 30 por página
           </p>
         </div>
-        {selectedIds.size > 0 && (
+        
+        {/* Acciones de Cabecera: Exportar, Importar y Eliminar Lote */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept=".csv,text/csv"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file) handleImportCSV(file);
+            }}
+          />
+
           <button
             type="button"
-            className="btn btn-danger"
-            onClick={handleBatchDelete}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            className="btn btn-secondary"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isImporting}
+            title="Sube un archivo CSV modificado para actualizar masivamente por ID"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.85rem' }}
           >
-            🗑️ Eliminar ({selectedIds.size}) seleccionados
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            {isImporting ? `Importando ${importProgress}...` : 'Importar CSV'}
           </button>
-        )}
+
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={handleExportCSV}
+            title="Descargar evaluaciones con filtros actuales en CSV"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.85rem' }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Exportar CSV
+          </button>
+
+          {selectedIds.size > 0 && (
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={handleBatchDelete}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}
+            >
+              🗑️ Eliminar ({selectedIds.size}) seleccionados
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Barra de Filtros */}
