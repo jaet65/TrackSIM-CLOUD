@@ -435,6 +435,7 @@ export function normalizeMistakeName(str: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .trim()
     .replace(/[.:;,\-_]+$/g, '')
     .replace(/\s+/g, ' ')
     .trim();

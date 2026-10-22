@@ -46,6 +46,7 @@ export function normalizeExerciseName(str?: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .trim()
     .replace(/[.:]+$/g, '')
     .replace(/\s+/g, ' ')
     .trim();

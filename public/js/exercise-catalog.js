@@ -15,7 +15,7 @@ export const EXERCISE_CATALOG = [
 export function normalizeExerciseName(str) {
   return (str || '')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase().replace(/[.:]+$/g, '').replace(/\s+/g, ' ').trim();
+    .toLowerCase().trim().replace(/[.:]+$/g, '').replace(/\s+/g, ' ').trim();
 }
 
 /**
