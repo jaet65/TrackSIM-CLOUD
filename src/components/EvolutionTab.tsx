@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
+import { useAuth } from '../context/AuthContext';
 import { Evaluation } from '../types';
 import { Line, Radar, Bar } from 'react-chartjs-2';
 import {
@@ -30,12 +31,82 @@ ChartJS.register(
 );
 
 export const EvolutionTab: React.FC = () => {
+  const { userRole } = useAuth();
   const { driverSummaries, companiesSummaries, filteredEvaluations } = useData();
 
   const [activeSubtab, setActiveSubtab] = useState<'driver' | 'company'>('driver');
   const [selectedDriverName, setSelectedDriverName] = useState<string>('');
   const [selectedCompanyName, setSelectedCompanyName] = useState<string>('');
+  const [accidentViewMode, setAccidentViewMode] = useState<'counts' | 'rate'>('counts');
   const [viewReport, setViewReport] = useState<Evaluation | null>(null);
+
+  // Resumen Consolidado Global "Todas las empresas" para administradores
+  const allCompaniesSummary = useMemo(() => {
+    if (userRole !== 'admin' || !companiesSummaries || companiesSummaries.length === 0) return null;
+
+    const allSedes = new Set<string>();
+    let totalEvals = 0;
+    const allConductoresMap = new Map<string, any>();
+    let totalScoreSum = 0;
+    let approvedCount = 0;
+    let totalCol = 0;
+    let totalFat = 0;
+    let totalOff = 0;
+
+    companiesSummaries.forEach((c) => {
+      (c.sedes || []).forEach((s) => allSedes.add(s));
+      (c.conductores || []).forEach((cond) => {
+        if (!allConductoresMap.has(cond.nombre)) {
+          allConductoresMap.set(cond.nombre, cond);
+        }
+      });
+    });
+
+    filteredEvaluations.forEach((e) => {
+      totalEvals += 1;
+      const score = e.evaluacionFinalPuntos ?? e.calificacionExacta ?? e.promedioScore ?? 0;
+      totalScoreSum += score;
+      if (score >= 6.0) approvedCount += 1;
+      totalCol += (e.colisiones || e.totalColisiones || 0);
+      totalFat += (e.fatalidades || 0);
+      totalOff += (e.vehiculoFueraVia || 0);
+    });
+
+    const avgScore = totalEvals > 0 ? Number((totalScoreSum / totalEvals).toFixed(2)) : 0;
+    const passRate = totalEvals > 0 ? Number(((approvedCount / totalEvals) * 100).toFixed(1)) : 0;
+
+    return {
+      nombre: 'Todas las empresas',
+      slug: 'todas-las-empresas',
+      esGlobal: true,
+      totalEvaluaciones: totalEvals,
+      totalConductores: allConductoresMap.size,
+      promedioFinal: avgScore,
+      promedioHabilidades: 0,
+      promedioSimulador: 0,
+      tasaAprobacion: passRate,
+      totalColisiones: totalCol,
+      totalFatalidades: totalFat,
+      totalFueraVia: totalOff,
+      sedes: Array.from(allSedes),
+      conductores: Array.from(allConductoresMap.values()),
+      simulacionesPromedio: {
+        simulacion_2: 0,
+        simulacion_3: 0,
+        simulacion_4: 0
+      },
+      nombresSimulaciones: {}
+    };
+  }, [userRole, companiesSummaries, filteredEvaluations]);
+
+  // Lista disponible de flotas / empresas en el selector
+  const availableCompanies = useMemo(() => {
+    const list = [...(companiesSummaries || [])];
+    if (userRole === 'admin' && allCompaniesSummary) {
+      return [allCompaniesSummary, ...list];
+    }
+    return list;
+  }, [userRole, allCompaniesSummary, companiesSummaries]);
 
   // Filtrar únicamente conductores con historial comparable (al menos 2 sesiones)
   const eligibleDrivers = useMemo(() => {
@@ -51,10 +122,10 @@ export const EvolutionTab: React.FC = () => {
 
   // Empresa seleccionada (por defecto la primera disponible)
   const currentCompany = useMemo(() => {
-    if (!companiesSummaries || companiesSummaries.length === 0) return null;
-    if (!selectedCompanyName) return companiesSummaries[0];
-    return companiesSummaries.find((c) => c.nombre.trim().toLowerCase() === selectedCompanyName.trim().toLowerCase()) || companiesSummaries[0];
-  }, [companiesSummaries, selectedCompanyName]);
+    if (!availableCompanies || availableCompanies.length === 0) return null;
+    if (!selectedCompanyName) return availableCompanies[0];
+    return availableCompanies.find((c) => c.nombre.trim().toLowerCase() === selectedCompanyName.trim().toLowerCase()) || availableCompanies[0];
+  }, [availableCompanies, selectedCompanyName]);
 
   // Evaluaciones exclusivas de la empresa seleccionada
   const companyEvaluations = useMemo(() => {
@@ -97,16 +168,22 @@ export const EvolutionTab: React.FC = () => {
         fueraViaByYear: [] as number[],
         fatalidadesByYear: [] as number[],
         totalIncidentesByYear: [] as number[],
-        accidentTrendDirection: 'estable' as 'mejora' | 'deterioro' | 'estable',
-        accidentPercentChange: 0,
-        accidentDifference: 0,
-        accidentTrendLine: [] as number[]
+        operatorCountsByYear: [] as number[],
+        accidentRatesByYear: [] as number[],
+        // Tendencia en Conteo Absoluto de Siniestros
+        incidentCountTrendDirection: 'estable' as 'mejora' | 'deterioro' | 'estable',
+        incidentCountPercentChange: 0,
+        incidentCountDifference: 0,
+        // Tendencia en Tasa de Accidentes por Conductor
+        rateTrendDirection: 'estable' as 'mejora' | 'deterioro' | 'estable',
+        ratePercentChange: 0,
+        rateDifference: 0
       };
     }
 
     const yearDataMap = new Map<
       string,
-      { totalScore: number; count: number; colisiones: number; fatalidades: number; fueraVia: number }
+      { totalScore: number; count: number; colisiones: number; fatalidades: number; fueraVia: number; operators: Set<string> }
     >();
 
     companyEvaluations.forEach((e) => {
@@ -118,13 +195,15 @@ export const EvolutionTab: React.FC = () => {
       const col = e.colisiones || e.totalColisiones || 0;
       const fat = e.fatalidades || 0;
       const off = e.vehiculoFueraVia || 0;
+      const op = (e.conductor || e.operador || 'Sin Asignar').trim();
 
-      const current = yearDataMap.get(year) || { totalScore: 0, count: 0, colisiones: 0, fatalidades: 0, fueraVia: 0 };
+      const current = yearDataMap.get(year) || { totalScore: 0, count: 0, colisiones: 0, fatalidades: 0, fueraVia: 0, operators: new Set<string>() };
       current.totalScore += score;
       current.count += 1;
       current.colisiones += col;
       current.fatalidades += fat;
       current.fueraVia += off;
+      current.operators.add(op);
       yearDataMap.set(year, current);
     });
 
@@ -140,6 +219,11 @@ export const EvolutionTab: React.FC = () => {
     const fatalidadesByYear = labels.map((yr) => yearDataMap.get(yr)?.fatalidades || 0);
     const fueraViaByYear = labels.map((yr) => yearDataMap.get(yr)?.fueraVia || 0);
     const totalIncidentesByYear = labels.map((_, i) => colisionesByYear[i] + fatalidadesByYear[i] + fueraViaByYear[i]);
+    const operatorCountsByYear = labels.map((yr) => yearDataMap.get(yr)?.operators.size || 0);
+    const accidentRatesByYear = labels.map((_, i) => {
+      const ops = operatorCountsByYear[i];
+      return ops > 0 ? Number((totalIncidentesByYear[i] / ops).toFixed(2)) : 0;
+    });
 
     // Calcular Dirección de Tendencia y Cambio en Calificación
     const n = averages.length;
@@ -162,43 +246,47 @@ export const EvolutionTab: React.FC = () => {
       }
     }
 
-    // Calcular Tendencia de Siniestralidad (basada en el Total de Siniestros)
-    let accidentTrendDirection: 'mejora' | 'deterioro' | 'estable' = 'estable';
-    let accidentPercentChange = 0;
-    let accidentDifference = 0;
-    const accidentTrendLine: number[] = [];
+    // 1. Tendencia en Conteo Absoluto de Siniestros (Menos siniestros = Favorable)
+    let incidentCountTrendDirection: 'mejora' | 'deterioro' | 'estable' = 'estable';
+    let incidentCountPercentChange = 0;
+    let incidentCountDifference = 0;
 
     if (n >= 2) {
-      const initialAccidents = totalIncidentesByYear[0];
-      const finalAccidents = totalIncidentesByYear[n - 1];
-      accidentDifference = finalAccidents - initialAccidents;
-      accidentPercentChange = initialAccidents > 0
-        ? Number(((accidentDifference / initialAccidents) * 100).toFixed(1))
-        : (finalAccidents > 0 ? 100 : 0);
+      const initialIncidents = totalIncidentesByYear[0];
+      const finalIncidents = totalIncidentesByYear[n - 1];
+      incidentCountDifference = finalIncidents - initialIncidents;
+      incidentCountPercentChange = initialIncidents > 0
+        ? Number(((incidentCountDifference / initialIncidents) * 100).toFixed(1))
+        : (finalIncidents > 0 ? 100 : 0);
 
-      // Regresión lineal simple para la línea de tendencia de siniestros
-      let sumX = 0;
-      let sumY = 0;
-      let sumXY = 0;
-      let sumXX = 0;
-      for (let i = 0; i < n; i++) {
-        sumX += i;
-        sumY += totalIncidentesByYear[i];
-        sumXY += i * totalIncidentesByYear[i];
-        sumXX += i * i;
-      }
-      const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX || 1);
-      const intercept = (sumY - slope * sumX) / n;
-      for (let i = 0; i < n; i++) {
-        accidentTrendLine.push(Number(Math.max(0, slope * i + intercept).toFixed(2)));
-      }
-
-      if (accidentDifference < 0) {
-        accidentTrendDirection = 'mejora';
-      } else if (accidentDifference > 0) {
-        accidentTrendDirection = 'deterioro';
+      if (incidentCountDifference < 0) {
+        incidentCountTrendDirection = 'mejora';
+      } else if (incidentCountDifference > 0) {
+        incidentCountTrendDirection = 'deterioro';
       } else {
-        accidentTrendDirection = 'estable';
+        incidentCountTrendDirection = 'estable';
+      }
+    }
+
+    // 2. Tendencia en Tasa de Accidentes por Conductor (Menor tasa = Favorable)
+    let rateTrendDirection: 'mejora' | 'deterioro' | 'estable' = 'estable';
+    let ratePercentChange = 0;
+    let rateDifference = 0;
+
+    if (n >= 2) {
+      const initialRate = accidentRatesByYear[0];
+      const finalRate = accidentRatesByYear[n - 1];
+      rateDifference = Number((finalRate - initialRate).toFixed(2));
+      ratePercentChange = initialRate > 0
+        ? Number(((rateDifference / initialRate) * 100).toFixed(1))
+        : (finalRate > 0 ? 100 : 0);
+
+      if (rateDifference < -0.05) {
+        rateTrendDirection = 'mejora';
+      } else if (rateDifference > 0.05) {
+        rateTrendDirection = 'deterioro';
+      } else {
+        rateTrendDirection = 'estable';
       }
     }
 
@@ -213,84 +301,128 @@ export const EvolutionTab: React.FC = () => {
       fatalidadesByYear,
       fueraViaByYear,
       totalIncidentesByYear,
-      accidentTrendDirection,
-      accidentPercentChange,
-      accidentDifference,
-      accidentTrendLine
+      operatorCountsByYear,
+      accidentRatesByYear,
+      incidentCountTrendDirection,
+      incidentCountPercentChange,
+      incidentCountDifference,
+      rateTrendDirection,
+      ratePercentChange,
+      rateDifference
     };
   }, [currentCompany, companyEvaluations]);
 
-  // Datos para Gráfico de Siniestralidad Anual de la Flota (Múltiples curvas: Colisiones, Fuera de Vía, Fatalidades)
-  const fleetAccidentsChartData = {
-    labels: companyAnnualEvolution.labels.map((y) => `Año ${y}`),
-    datasets: [
-      {
-        label: 'Total Siniestros (Suma)',
-        data: companyAnnualEvolution.totalIncidentesByYear,
-        borderColor: '#f43f5e',
-        backgroundColor: 'rgba(244, 63, 94, 0.12)',
-        fill: true,
-        tension: 0.35,
-        borderWidth: 3,
-        pointBackgroundColor: '#f43f5e',
-        pointBorderColor: '#ffffff',
-        pointRadius: 6
-      },
-      {
-        label: '💥 Colisiones',
-        data: companyAnnualEvolution.colisionesByYear,
-        borderColor: '#f59e0b',
-        backgroundColor: 'transparent',
-        tension: 0.35,
-        borderWidth: 2.5,
-        pointBackgroundColor: '#f59e0b',
-        pointBorderColor: '#0e1422',
-        pointRadius: 5
-      },
-      {
-        label: '🛑 Vehículos Fuera de la Vía',
-        data: companyAnnualEvolution.fueraViaByYear,
-        borderColor: '#06b6d4',
-        backgroundColor: 'transparent',
-        borderDash: [3, 3],
-        tension: 0.35,
-        borderWidth: 2.5,
-        pointBackgroundColor: '#06b6d4',
-        pointBorderColor: '#0e1422',
-        pointRadius: 5
-      },
-      {
-        label: '💀 Fatalidades',
-        data: companyAnnualEvolution.fatalidadesByYear,
-        borderColor: '#a855f7',
-        backgroundColor: 'transparent',
-        borderDash: [5, 4],
-        tension: 0.35,
-        borderWidth: 2.5,
-        pointBackgroundColor: '#a855f7',
-        pointBorderColor: '#0e1422',
-        pointRadius: 5
-      },
-      ...((companyAnnualEvolution.accidentTrendLine?.length || 0) > 0
-        ? [
+  // Datos para Gráfico de Siniestralidad según el modo seleccionado ('counts' o 'rate')
+  const fleetAccidentsChartData = useMemo(() => {
+    const labels = companyAnnualEvolution.labels.map((y) => `Año ${y}`);
+
+    if (accidentViewMode === 'rate') {
+      return {
+        labels,
+        datasets: [
           {
-            label: '📈 Línea de Tendencia (Siniestros)',
-            data: companyAnnualEvolution.accidentTrendLine || [],
-            borderColor: '#94a3b8',
-            backgroundColor: 'transparent',
-            borderDash: [6, 6],
-            borderWidth: 2,
-            pointRadius: 0,
-            tension: 0
+            type: 'line' as const,
+            label: '📊 Tasa de Accidentes por Conductor',
+            data: companyAnnualEvolution.accidentRatesByYear,
+            borderColor: '#38bdf8',
+            backgroundColor: 'rgba(56, 189, 248, 0.12)',
+            fill: true,
+            tension: 0.35,
+            borderWidth: 3,
+            pointBackgroundColor: '#38bdf8',
+            pointBorderColor: '#ffffff',
+            pointBorderWidth: 2,
+            pointRadius: 6,
+            pointHoverRadius: 8
           }
         ]
-        : [])
-    ]
-  };
+      };
+    }
 
-  // Indicadores de Tendencia de Siniestralidad
-  const isAccidentTrendPositive = companyAnnualEvolution.accidentTrendDirection === 'mejora'; // menos siniestros
-  const isAccidentTrendNegative = companyAnnualEvolution.accidentTrendDirection === 'deterioro'; // más siniestros
+    // Modo 'counts': Conteo Absoluto de Siniestros (Total, Colisiones, Fuera de Vía, Fatalidades)
+    return {
+      labels,
+      datasets: [
+        {
+          type: 'line' as const,
+          label: 'Total Siniestros (Suma)',
+          data: companyAnnualEvolution.totalIncidentesByYear,
+          borderColor: '#f43f5e',
+          backgroundColor: 'rgba(244, 63, 94, 0.12)',
+          fill: true,
+          tension: 0.35,
+          borderWidth: 3,
+          pointBackgroundColor: '#f43f5e',
+          pointBorderColor: '#ffffff',
+          pointRadius: 6
+        },
+        {
+          type: 'line' as const,
+          label: '💥 Colisiones',
+          data: companyAnnualEvolution.colisionesByYear,
+          borderColor: '#f59e0b',
+          backgroundColor: 'transparent',
+          tension: 0.35,
+          borderWidth: 2.5,
+          pointBackgroundColor: '#f59e0b',
+          pointBorderColor: '#0e1422',
+          pointRadius: 5
+        },
+        {
+          type: 'line' as const,
+          label: '🛑 Vehículos Fuera de la Vía',
+          data: companyAnnualEvolution.fueraViaByYear,
+          borderColor: '#06b6d4',
+          backgroundColor: 'transparent',
+          borderDash: [3, 3],
+          tension: 0.35,
+          borderWidth: 2.5,
+          pointBackgroundColor: '#06b6d4',
+          pointBorderColor: '#0e1422',
+          pointRadius: 5
+        },
+        {
+          type: 'line' as const,
+          label: '💀 Fatalidades',
+          data: companyAnnualEvolution.fatalidadesByYear,
+          borderColor: '#a855f7',
+          backgroundColor: 'transparent',
+          borderDash: [5, 4],
+          tension: 0.35,
+          borderWidth: 2.5,
+          pointBackgroundColor: '#a855f7',
+          pointBorderColor: '#0e1422',
+          pointRadius: 5
+        }
+      ]
+    };
+  }, [accidentViewMode, companyAnnualEvolution]);
+
+  // Indicadores de Tendencia de Siniestralidad según el modo activo
+  const activeAccidentTrend = useMemo(() => {
+    if (accidentViewMode === 'rate') {
+      const isPositive = companyAnnualEvolution.rateTrendDirection === 'mejora';
+      const isNegative = companyAnnualEvolution.rateTrendDirection === 'deterioro';
+      return {
+        direction: companyAnnualEvolution.rateTrendDirection,
+        isPositive,
+        isNegative,
+        percent: companyAnnualEvolution.ratePercentChange,
+        diff: companyAnnualEvolution.rateDifference,
+        unit: '/ operador'
+      };
+    }
+    const isPositive = companyAnnualEvolution.incidentCountTrendDirection === 'mejora';
+    const isNegative = companyAnnualEvolution.incidentCountTrendDirection === 'deterioro';
+    return {
+      direction: companyAnnualEvolution.incidentCountTrendDirection,
+      isPositive,
+      isNegative,
+      percent: companyAnnualEvolution.incidentCountPercentChange,
+      diff: companyAnnualEvolution.incidentCountDifference,
+      unit: 'siniestros'
+    };
+  }, [accidentViewMode, companyAnnualEvolution]);
 
   // Datos para Gráfico de Líneas de Evolución Anual de Flota
   const isTrendPositive = companyAnnualEvolution.trendDirection === 'mejora';
@@ -1526,9 +1658,9 @@ export const EvolutionTab: React.FC = () => {
                   onChange={(e) => setSelectedCompanyName(e.target.value)}
                   style={{ width: '100%', padding: '0.55rem 0.85rem', background: '#0e1422', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#38bdf8', fontWeight: 600, fontSize: '0.9rem' }}
                 >
-                  {companiesSummaries.map((c) => (
+                  {availableCompanies.map((c) => (
                     <option key={c.nombre} value={c.nombre}>
-                      {c.nombre} ({c.totalConductores} operadores evaluados)
+                      {c.esGlobal ? '🌐 ' : ''}{c.nombre} ({c.totalConductores} operadores evaluados)
                     </option>
                   ))}
                 </select>
@@ -1812,20 +1944,71 @@ export const EvolutionTab: React.FC = () => {
             </div>
           )}
 
-          {/* Gráfico: Curva de Siniestralidad y Accidentabilidad de la Flota */}
+          {/* Gráfico: Curva de Siniestralidad y Accidentabilidad de la Flota con Selector */}
           {currentCompany && (
             <div className="glass-card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.85rem' }}>
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span>🚨</span> Curva de Siniestralidad y Accidentabilidad Anual
+                    <span>🚨</span> {accidentViewMode === 'counts' ? 'Conteo Anual de Siniestros' : 'Tasa de Accidentes por Conductor'}
                   </h3>
                   <p style={{ margin: '0.2rem 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                    Evolución histórica y desglose anual de siniestros: colisiones, salidas de vía y fatalidades registradas en el simulador.
+                    {accidentViewMode === 'counts'
+                      ? 'Historial y desglose anual de siniestros: total, colisiones, salidas de vía y fatalidades.'
+                      : 'Promedio de incidentes por operador evaluado a lo largo de los años.'}
                   </p>
                 </div>
+
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
-                  {/* Badge de Tendencia de Siniestralidad (Menos siniestros = Positivo / Verde) */}
+                  {/* Selector Segmentado de Vista */}
+                  <div
+                    style={{
+                      display: 'inline-flex',
+                      background: 'rgba(15, 23, 42, 0.65)',
+                      padding: '3px',
+                      borderRadius: '10px',
+                      border: '1px solid rgba(255, 255, 255, 0.08)'
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setAccidentViewMode('counts')}
+                      style={{
+                        padding: '0.4rem 0.85rem',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        border: 'none',
+                        borderRadius: '7px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        background: accidentViewMode === 'counts' ? '#f43f5e' : 'transparent',
+                        color: accidentViewMode === 'counts' ? '#ffffff' : '#94a3b8',
+                        boxShadow: accidentViewMode === 'counts' ? '0 2px 8px rgba(244, 63, 94, 0.35)' : 'none'
+                      }}
+                    >
+                      💥 Conteo de Siniestros
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAccidentViewMode('rate')}
+                      style={{
+                        padding: '0.4rem 0.85rem',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        border: 'none',
+                        borderRadius: '7px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        background: accidentViewMode === 'rate' ? '#38bdf8' : 'transparent',
+                        color: accidentViewMode === 'rate' ? '#0f172a' : '#94a3b8',
+                        boxShadow: accidentViewMode === 'rate' ? '0 2px 8px rgba(56, 189, 248, 0.35)' : 'none'
+                      }}
+                    >
+                      📊 Tasa por Conductor
+                    </button>
+                  </div>
+
+                  {/* Badge de Tendencia de Siniestralidad según la vista activa */}
                   <div
                     style={{
                       display: 'inline-flex',
@@ -1835,37 +2018,37 @@ export const EvolutionTab: React.FC = () => {
                       borderRadius: '9999px',
                       fontSize: '0.88rem',
                       fontWeight: 800,
-                      background: isAccidentTrendPositive
+                      background: activeAccidentTrend.isPositive
                         ? 'rgba(34, 197, 94, 0.15)'
-                        : isAccidentTrendNegative
+                        : activeAccidentTrend.isNegative
                           ? 'rgba(239, 68, 68, 0.15)'
                           : 'rgba(148, 163, 184, 0.15)',
-                      border: `1px solid ${isAccidentTrendPositive
+                      border: `1px solid ${activeAccidentTrend.isPositive
                         ? 'rgba(34, 197, 94, 0.4)'
-                        : isAccidentTrendNegative
+                        : activeAccidentTrend.isNegative
                           ? 'rgba(239, 68, 68, 0.4)'
                           : 'rgba(148, 163, 184, 0.4)'
                         }`,
-                      color: isAccidentTrendPositive ? '#22c55e' : isAccidentTrendNegative ? '#ef4444' : '#94a3b8',
-                      boxShadow: `0 0 15px ${isAccidentTrendPositive
+                      color: activeAccidentTrend.isPositive ? '#22c55e' : activeAccidentTrend.isNegative ? '#ef4444' : '#94a3b8',
+                      boxShadow: `0 0 15px ${activeAccidentTrend.isPositive
                         ? 'rgba(34, 197, 94, 0.2)'
-                        : isAccidentTrendNegative
+                        : activeAccidentTrend.isNegative
                           ? 'rgba(239, 68, 68, 0.2)'
                           : 'rgba(148, 163, 184, 0.2)'
                         }`
                     }}
                   >
-                    <span>{isAccidentTrendPositive ? '📉' : isAccidentTrendNegative ? '📈' : '➡️'}</span>
+                    <span>{activeAccidentTrend.isPositive ? '📉' : activeAccidentTrend.isNegative ? '📈' : '➡️'}</span>
                     <span>
-                      {isAccidentTrendPositive
-                        ? `Tendencia Favorable (${companyAnnualEvolution.accidentPercentChange}%)`
-                        : isAccidentTrendNegative
-                          ? `Tendencia en Aumento (+${companyAnnualEvolution.accidentPercentChange}%)`
+                      {activeAccidentTrend.isPositive
+                        ? `Tendencia Favorable (${activeAccidentTrend.percent}%)`
+                        : activeAccidentTrend.isNegative
+                          ? `Tendencia en Aumento (+${activeAccidentTrend.percent}%)`
                           : 'Tendencia Estable'}
                     </span>
-                    {companyAnnualEvolution.accidentDifference !== 0 && (
+                    {activeAccidentTrend.diff !== 0 && (
                       <span style={{ fontSize: '0.78rem', opacity: 0.85, fontWeight: 600 }}>
-                        ({companyAnnualEvolution.accidentDifference > 0 ? `+${companyAnnualEvolution.accidentDifference}` : companyAnnualEvolution.accidentDifference} siniestros)
+                        ({activeAccidentTrend.diff > 0 ? `+${activeAccidentTrend.diff}` : activeAccidentTrend.diff} {activeAccidentTrend.unit})
                       </span>
                     )}
                   </div>
@@ -1880,8 +2063,14 @@ export const EvolutionTab: React.FC = () => {
                     scales: {
                       y: {
                         min: 0,
+                        title: {
+                          display: true,
+                          text: accidentViewMode === 'rate' ? 'Tasa de Incidentes / Conductor' : 'Total de Siniestros',
+                          color: accidentViewMode === 'rate' ? '#38bdf8' : '#94a3b8',
+                          font: { size: 11, weight: 'bold' }
+                        },
                         ticks: {
-                          stepSize: 1,
+                          stepSize: accidentViewMode === 'rate' ? 0.5 : 1,
                           color: '#64748b'
                         },
                         grid: { color: 'rgba(255, 255, 255, 0.05)' }
@@ -1992,23 +2181,8 @@ export const EvolutionTab: React.FC = () => {
                     <span>📑</span> Desglose Anual Consolidado • Métricas Globales
                   </h3>
                   <p style={{ margin: '0.2rem 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                    Historial consolidado por año de evaluaciones, calificaciones, tasa de aprobación, desglose vertical de siniestros y evolución interanual.
+                    Historial consolidado por año de evaluaciones, calificaciones, tasa de aprobación, desglose de siniestros y evolución interanual.
                   </p>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span
-                    style={{
-                      fontSize: '0.78rem',
-                      fontWeight: 700,
-                      color: '#38bdf8',
-                      background: 'rgba(56, 189, 248, 0.1)',
-                      border: '1px solid rgba(56, 189, 248, 0.25)',
-                      padding: '0.35rem 0.75rem',
-                      borderRadius: '8px'
-                    }}
-                  >
-                    🏢 {currentCompany.nombre}
-                  </span>
                 </div>
               </div>
 
