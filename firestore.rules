@@ -2,11 +2,12 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Función para verificar si el usuario es Administrador (@corporativomaf.com)
+    // Función para verificar si el usuario es Administrador verificado (@corporativomaf.com)
     function isAdmin() {
       return request.auth != null && 
              request.auth.token.email != null && 
-             request.auth.token.email.matches('.*@corporativomaf[.]com$');
+             request.auth.token.email.matches('.*@corporativomaf[.]com$') &&
+             request.auth.token.email_verified == true;
     }
 
     // Evaluaciones: lectura para cualquier usuario autenticado, escritura exclusiva para administradores
@@ -15,28 +16,30 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
-    // Fichas de conductores
+    // Fichas de conductores: lectura autenticada, escritura para admin
     match /conductores/{conductorId} {
       allow read: if request.auth != null;
       allow write: if isAdmin();
     }
 
-    // Registro de usuarios: creación por el propio usuario (autoregistro como viewer) o gestión total por administradores
+    // Registro de usuarios: cada usuario lee su propio perfil o admin lee todos.
+    // Creación por el propio usuario como viewer o gestión por admin.
     match /usuarios/{userId} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
       allow create: if request.auth != null && 
                     request.auth.uid == userId && 
                     request.resource.data.role == 'viewer';
       allow update, delete: if isAdmin();
     }
 
-    // Mapeo automático de dominios a empresas
+    // Mapeo automático de dominios a empresas (usado durante login/registro)
     match /dominios_empresas/{domainId} {
       allow read: if request.auth != null;
       allow write: if isAdmin();
     }
 
-    match /{document=**} {
+    // Registro de eliminaciones (tombstones de sincronización incremental)
+    match /_eliminaciones/{delId} {
       allow read: if request.auth != null;
       allow write: if isAdmin();
     }
