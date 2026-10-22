@@ -12,6 +12,7 @@ import {
 } from "firebase/auth";
 import {
   initializeFirestore,
+  enableMultiTabIndexedDbPersistence,
   collection,
   doc,
   setDoc,
@@ -43,8 +44,17 @@ setPersistence(auth, browserLocalPersistence).catch((err) => {
   console.warn("Error estableciendo persistencia local de sesión:", err);
 });
 
-export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true
+export const db = initializeFirestore(app, {});
+
+// Habilitar persistencia offline con soporte multitestaña en IndexedDB
+enableMultiTabIndexedDbPersistence(db).catch((err) => {
+  if (err.code === 'failed-precondition') {
+    console.warn('Persistencia Firestore: Múltiples pestañas abiertas al mismo tiempo.');
+  } else if (err.code === 'unimplemented') {
+    console.warn('El navegador actual no soporta persistencia IndexedDB.');
+  } else {
+    console.warn('Aviso de persistencia Firestore:', err);
+  }
 });
 
 export const googleProvider = new GoogleAuthProvider();

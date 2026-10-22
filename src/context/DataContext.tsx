@@ -1,16 +1,21 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
-import { collection, getDocs, deleteDoc, doc, setDoc } from '../services/firebase';
+import { collection, getDocs, deleteDoc, doc, setDoc, query, where } from '../services/firebase';
 import { db } from '../services/firebase';
 import { Evaluation, CompanySummary, DriverSummary } from '../types';
 import { processCompanySummaries, processDriverSummaries, createCompanySummaryFromEvaluations } from '../services/analytics';
 import { useAuth } from './AuthContext';
 
 const LOCAL_STORAGE_KEY = 'tracksim_cloud_evaluaciones';
+const LOCAL_STORAGE_SYNC_TIME_KEY = 'tracksim_cloud_last_sync_time';
+// Tiempo de validez de la caché antes de consultar cambios (ej. 30 minutos)
+const CACHE_TTL_MS = 30 * 60 * 1000;
 
 interface DataContextType {
   evaluations: Evaluation[];
   loading: boolean;
-  reloadEvaluations: () => Promise<void>;
+  isSyncing: boolean;
+  lastSyncTime: string | null;
+  reloadEvaluations: (forceFull?: boolean) => Promise<void>;
   filteredEvaluations: Evaluation[];
   companies: string[];
   companiesSummaries: CompanySummary[];
@@ -39,58 +44,104 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   });
   const [loading, setLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(() => {
+    return localStorage.getItem(LOCAL_STORAGE_SYNC_TIME_KEY);
+  });
   const [selectedCompany, setSelectedCompany] = useState<string>('all');
   const [selectedDriverName, setSelectedDriverName] = useState<string>('');
   const [searchFilter, setSearchFilter] = useState<string>('');
 
-  const fetchEvaluations = async () => {
+  // Sincronización inteligente (Incremental o Completa)
+  const fetchEvaluations = async (forceFull = false) => {
     if (!user) return;
-    setLoading(true);
-    try {
-      // Consultar la colección completa directamente para asegurar que ningún documento
-      // quede filtrado por no tener un campo de ordenamiento específico (como 'fecha' vs 'fechaCapacitacion')
-      const snap = await getDocs(collection(db, 'evaluaciones'));
-      const items: Evaluation[] = [];
-      snap.forEach((d) => {
-        const data = d.data();
-        items.push({
-          id: d.id,
-          ...data
-        } as Evaluation);
-      });
+    
+    // Si ya tenemos datos en memoria/localStorage y no es carga forzada, marcamos isSyncing para no bloquear la UI
+    const hasLocalData = evaluations.length > 0;
+    if (hasLocalData) {
+      setIsSyncing(true);
+    } else {
+      setLoading(true);
+    }
 
-      // Ordenar por fecha cronológica descendente en memoria de forma segura
-      items.sort((a, b) => {
+    try {
+      const storedLastSync = localStorage.getItem(LOCAL_STORAGE_SYNC_TIME_KEY);
+      const isIncremental = !forceFull && hasLocalData && !!storedLastSync;
+
+      let itemsMap = new Map<string, Evaluation>();
+      evaluations.forEach((item) => itemsMap.set(item.id, item));
+
+      if (isIncremental) {
+        // Consulta incremental: únicamente documentos actualizados o creados después de la última sincronización
+        console.log(`[Firestore Cache] Buscando actualizaciones incrementales desde: ${storedLastSync}`);
+        const incrementalQuery = query(
+          collection(db, 'evaluaciones'),
+          where('updatedAt', '>', storedLastSync)
+        );
+        const snap = await getDocs(incrementalQuery);
+        console.log(`[Firestore Sync] ${snap.docs.length} documentos nuevos/modificados recibidos.`);
+
+        if (snap.docs.length > 0) {
+          snap.forEach((d) => {
+            itemsMap.set(d.id, { id: d.id, ...d.data() } as Evaluation);
+          });
+        }
+      } else {
+        // Carga inicial completa o forzada
+        console.log('[Firestore] Descarga completa de evaluaciones...');
+        const snap = await getDocs(collection(db, 'evaluaciones'));
+        itemsMap.clear();
+        snap.forEach((d) => {
+          itemsMap.set(d.id, { id: d.id, ...d.data() } as Evaluation);
+        });
+        console.log(`[Firestore] ${itemsMap.size} evaluaciones descargadas.`);
+      }
+
+      const mergedList = Array.from(itemsMap.values());
+      // Ordenar cronológicamente descendente
+      mergedList.sort((a, b) => {
         const da = a.fechaCapacitacion || a.fechaReporte || a.fecha || '';
         const dbDate = b.fechaCapacitacion || b.fechaReporte || b.fecha || '';
         return dbDate.localeCompare(da);
       });
 
-      console.log(`[Firestore] ${items.length} evaluaciones cargadas exitosamente.`);
-      setEvaluations(items);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(items));
+      const nowIso = new Date().toISOString();
+      setEvaluations(mergedList);
+      setLastSyncTime(nowIso);
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(mergedList));
+      localStorage.setItem(LOCAL_STORAGE_SYNC_TIME_KEY, nowIso);
     } catch (err) {
-      console.error('Error cargando evaluaciones de Firestore:', err);
-      // Fallback a localStorage si la red falla
-      try {
-        const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setEvaluations(parsed);
-          }
-        }
-      } catch (cacheErr) {
-        console.warn('Error leyendo caché local:', cacheErr);
-      }
+      console.error('Error sincronizando evaluaciones de Firestore:', err);
+      // Mantener los datos locales existentes
     } finally {
       setLoading(false);
+      setIsSyncing(false);
     }
   };
 
   useEffect(() => {
     if (user) {
-      fetchEvaluations();
+      // Verificar si tenemos datos locales y si el TTL sigue vigente
+      const storedLastSync = localStorage.getItem(LOCAL_STORAGE_SYNC_TIME_KEY);
+      const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
+      const hasCached = cached && cached !== '[]';
+
+      if (hasCached && storedLastSync) {
+        const lastSyncDate = new Date(storedLastSync).getTime();
+        const now = Date.now();
+        const isCacheValid = now - lastSyncDate < CACHE_TTL_MS;
+
+        if (isCacheValid) {
+          console.log('[Cache] Datos locales activos dentro del TTL (no se consulta Firestore en esta recarga).');
+          return;
+        } else {
+          // Si el TTL expiró, consultar únicamente cambios incrementales de forma transparente en background
+          fetchEvaluations(false);
+        }
+      } else {
+        // Primera vez o caché vacía: carga completa
+        fetchEvaluations(false);
+      }
     } else {
       setEvaluations([]);
     }
@@ -206,6 +257,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         evaluations,
         loading,
+        isSyncing,
+        lastSyncTime,
         reloadEvaluations: fetchEvaluations,
         filteredEvaluations,
         companies,
