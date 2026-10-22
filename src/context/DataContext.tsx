@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
-import { collection, getDocs, deleteDoc, doc, setDoc, query, where, writeBatch } from '../services/firebase';
+import { collection, getDocs, doc, setDoc, query, where, writeBatch } from '../services/firebase';
 import { db } from '../services/firebase';
 import { Evaluation, CompanySummary, DriverSummary } from '../types';
 import { processCompanySummaries, processDriverSummaries, createCompanySummaryFromEvaluations } from '../services/analytics';
@@ -7,8 +7,6 @@ import { useAuth } from './AuthContext';
 
 const LOCAL_STORAGE_KEY = 'tracksim_cloud_evaluaciones';
 const LOCAL_STORAGE_SYNC_TIME_KEY = 'tracksim_cloud_last_sync_time';
-// Tiempo de validez de la caché antes de consultar cambios (ej. 30 minutos)
-const CACHE_TTL_MS = 30 * 60 * 1000;
 
 interface DataContextType {
   evaluations: Evaluation[];
