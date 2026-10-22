@@ -122,6 +122,12 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
                 >
                   <span>📥</span> Ingesta PDF
                 </li>
+                <li
+                  className={`nav-item ${currentTab === 'usuarios' ? 'active' : ''}`}
+                  onClick={() => onTabChange('usuarios')}
+                >
+                  <span>👥</span> Usuarios
+                </li>
               </>
             )}
           </ul>
@@ -129,16 +135,6 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
       </div>
 
       <div className="nav-right">
-        {userRole === 'admin' && (
-          <button
-            type="button"
-            className="nav-mgmt-btn"
-            onClick={() => onTabChange('usuarios')}
-          >
-            <span>👥</span> Gestión de Usuarios
-          </button>
-        )}
-
         {/* Botón de Sincronización Inteligente de Datos */}
         <button
           type="button"

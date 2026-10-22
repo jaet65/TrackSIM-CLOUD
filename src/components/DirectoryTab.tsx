@@ -89,6 +89,26 @@ export const DirectoryTab: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingItem, setEditingItem] = useState<Evaluation | null>(null);
+  const [viewingReport, setViewingReport] = useState<Evaluation | null>(null);
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+  const [batchEmpresa, setBatchEmpresa] = useState('');
+  const [batchSede, setBatchSede] = useState('__KEEP__');
+  const [batchInstructor, setBatchInstructor] = useState('__KEEP__');
+  const [isSavingBatch, setIsSavingBatch] = useState(false);
+
+  // Ordenamiento interactivo por columnas
+  type SortColumn = 'conductor' | 'empresa' | 'sede' | 'fecha' | 'score' | 'estado';
+  const [sortCol, setSortCol] = useState<SortColumn>('fecha');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (col: SortColumn) => {
+    if (sortCol === col) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortCol(col);
+      setSortDir(col === 'conductor' || col === 'empresa' ? 'asc' : 'desc');
+    }
+  };
 
   const PAGE_SIZE = 30;
 
@@ -101,9 +121,9 @@ export const DirectoryTab: React.FC = () => {
     return Array.from(set).sort();
   }, [filteredEvaluations]);
 
-  // Filtrado multi-criterio
+  // Filtrado multi-criterio y ordenamiento interactivo
   const displayList = useMemo(() => {
-    return filteredEvaluations.filter((item) => {
+    const filtered = filteredEvaluations.filter((item) => {
       if (selectedEmpresa !== 'all' && item.empresa !== selectedEmpresa) return false;
       if (selectedSede !== 'all' && item.sede !== selectedSede) return false;
       if (selectedEstado !== 'all' && item.estado !== selectedEstado) return false;
@@ -116,14 +136,79 @@ export const DirectoryTab: React.FC = () => {
       }
       return true;
     });
-  }, [filteredEvaluations, selectedEmpresa, selectedSede, selectedEstado, search]);
+
+    return filtered.sort((a, b) => {
+      let cmp = 0;
+      switch (sortCol) {
+        case 'conductor':
+          cmp = (a.conductor || a.operador || '').localeCompare(b.conductor || b.operador || '', 'es', { numeric: true, sensitivity: 'base' });
+          break;
+        case 'empresa':
+          cmp = (a.empresa || '').localeCompare(b.empresa || '', 'es', { numeric: true, sensitivity: 'base' });
+          break;
+        case 'sede':
+          cmp = (a.sede || '').localeCompare(b.sede || '', 'es', { numeric: true, sensitivity: 'base' });
+          break;
+        case 'fecha': {
+          const da = a.fechaCapacitacion || a.fechaReporte || a.fecha || '';
+          const db = b.fechaCapacitacion || b.fechaReporte || b.fecha || '';
+          cmp = da.localeCompare(db);
+          break;
+        }
+        case 'score': {
+          const sa = a.evaluacionFinalPuntos ?? a.calificacionExacta ?? a.promedioScore ?? 0;
+          const sb = b.evaluacionFinalPuntos ?? b.calificacionExacta ?? b.promedioScore ?? 0;
+          cmp = sa - sb;
+          break;
+        }
+        case 'estado': {
+          const rank: Record<string, number> = {
+            'Sobresaliente': 4,
+            'Aprobado': 3,
+            'Reforzar': 2,
+            'Requiere Refuerzo': 2,
+            'No Aprobado': 1
+          };
+          const ra = rank[a.estado || ''] || 0;
+          const rb = rank[b.estado || ''] || 0;
+          cmp = ra - rb;
+          break;
+        }
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [filteredEvaluations, selectedEmpresa, selectedSede, selectedEstado, search, sortCol, sortDir]);
+
+  // Resumen métrico (KPIs) en tiempo real según filtros aplicados
+  const stats = useMemo(() => {
+    const total = displayList.length;
+    if (total === 0) return { total: 0, promedio: 0, aprobados: 0, tasaAprobacion: 0, incidentes: 0 };
+    let sumScore = 0;
+    let aprobados = 0;
+    let incidentes = 0;
+    displayList.forEach((e) => {
+      const sc = e.evaluacionFinalPuntos ?? e.calificacionExacta ?? e.promedioScore ?? 0;
+      sumScore += sc;
+      if (sc >= 6.0 || e.estado === 'Aprobado' || e.estado === 'Sobresaliente') {
+        aprobados++;
+      }
+      incidentes += (e.colisiones || 0) + (e.fatalidades || 0) + (e.vehiculoFueraVia || 0);
+    });
+    return {
+      total,
+      promedio: Number((sumScore / total).toFixed(2)),
+      aprobados,
+      tasaAprobacion: Math.round((aprobados / total) * 100),
+      incidentes
+    };
+  }, [displayList]);
 
   const totalPages = Math.max(1, Math.ceil(displayList.length / PAGE_SIZE));
   const activePage = Math.min(Math.max(1, currentPage), totalPages);
   const pagedList = displayList.slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE);
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === pagedList.length) {
+    if (selectedIds.size === pagedList.length && pagedList.length > 0) {
       setSelectedIds(new Set());
     } else {
       setSelectedIds(new Set(pagedList.map((e) => e.id)));
@@ -147,11 +232,62 @@ export const DirectoryTab: React.FC = () => {
     setSelectedIds(new Set());
   };
 
+  const handleBatchUpdateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
+    const updates: Partial<Evaluation> = {};
+    if (batchEmpresa.trim()) updates.empresa = batchEmpresa.trim();
+    if (batchSede !== '__KEEP__') updates.sede = batchSede;
+    if (batchInstructor !== '__KEEP__' && batchInstructor.trim()) updates.instructor = batchInstructor.trim();
+
+    if (Object.keys(updates).length === 0) {
+      alert('Por favor selecciona o introduce al menos un campo para actualizar.');
+      return;
+    }
+
+    if (!window.confirm(`Se actualizarán ${ids.length} evaluaciones seleccionadas. ¿Continuar?`)) return;
+
+    setIsSavingBatch(true);
+    try {
+      for (const id of ids) {
+        await updateEvaluation(id, updates);
+      }
+      setIsBatchModalOpen(false);
+      setSelectedIds(new Set());
+      setBatchEmpresa('');
+      setBatchSede('__KEEP__');
+      setBatchInstructor('__KEEP__');
+      alert(`¡${ids.length} evaluaciones actualizadas correctamente en Firestore!`);
+    } catch (err) {
+      console.error('Error al actualizar en lote:', err);
+      alert('Ocurrió un error al actualizar los registros seleccionados.');
+    } finally {
+      setIsSavingBatch(false);
+    }
+  };
+
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingItem) return;
     await updateEvaluation(editingItem.id, editingItem);
     setEditingItem(null);
+  };
+
+  /** Helper para obtener color del Badge según estado */
+  const getBadgeStyle = (estado?: string, score?: number) => {
+    const s = score ?? 0;
+    if (estado === 'Sobresaliente' || s >= 8.0) {
+      return { bg: 'rgba(34, 197, 94, 0.15)', text: '#4ade80', border: 'rgba(34, 197, 94, 0.35)', label: estado || 'Sobresaliente' };
+    }
+    if (estado === 'Aprobado' || s >= 6.0) {
+      return { bg: 'rgba(56, 189, 248, 0.15)', text: '#38bdf8', border: 'rgba(56, 189, 248, 0.35)', label: estado || 'Aprobado' };
+    }
+    if (estado === 'Reforzar' || estado === 'Requiere Refuerzo' || s >= 5.0) {
+      return { bg: 'rgba(245, 158, 11, 0.15)', text: '#fbbf24', border: 'rgba(245, 158, 11, 0.35)', label: estado || 'Reforzar' };
+    }
+    return { bg: 'rgba(239, 68, 68, 0.15)', text: '#f87171', border: 'rgba(239, 68, 68, 0.35)', label: estado || 'No Aprobado' };
   };
 
   /**
@@ -390,15 +526,18 @@ export const DirectoryTab: React.FC = () => {
 
   return (
     <div className="view-section active">
-      <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
+      {/* Encabezado Principal y Acciones */}
+      <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800 }}>📋 Directorio de Evaluaciones</h2>
-          <p style={{ margin: '0.25rem 0 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            {displayList.length} registros encontrados • Paginación de 30 por página
+          <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <span>📋</span> Directorio de Evaluaciones
+          </h2>
+          <p style={{ margin: '0.25rem 0 0', color: 'var(--text-muted)', fontSize: '0.88rem' }}>
+            Explora, filtra, audita reportes detallados y realiza ediciones individuales o masivas en Firestore.
           </p>
         </div>
         
-        {/* Acciones de Cabecera: Exportar, Importar y Eliminar Lote */}
+        {/* Acciones de Cabecera: Exportar e Importar CSV */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
           <input
             type="file"
@@ -442,25 +581,49 @@ export const DirectoryTab: React.FC = () => {
             </svg>
             Exportar CSV
           </button>
+        </div>
+      </div>
 
-          {selectedIds.size > 0 && (
-            <button
-              type="button"
-              className="btn btn-danger"
-              onClick={handleBatchDelete}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}
-            >
-              🗑️ Eliminar ({selectedIds.size}) seleccionados
-            </button>
-          )}
+      {/* KPI Cards de Resumen en Tiempo Real */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+        <div className="glass-card" style={{ padding: '0.9rem 1.1rem', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Total Registros</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#38bdf8', marginTop: '0.2rem' }}>
+            {stats.total.toLocaleString()}
+          </div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>Evaluaciones visibles</div>
+        </div>
+
+        <div className="glass-card" style={{ padding: '0.9rem 1.1rem', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Promedio Calificación</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: stats.promedio >= 6.0 ? '#4ade80' : '#f87171', marginTop: '0.2rem' }}>
+            {stats.promedio.toFixed(2)} <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>/ 10</span>
+          </div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>Flota consultada</div>
+        </div>
+
+        <div className="glass-card" style={{ padding: '0.9rem 1.1rem', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Tasa Aprobación</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: stats.tasaAprobacion >= 70 ? '#4ade80' : '#fbbf24', marginTop: '0.2rem' }}>
+            {stats.tasaAprobacion}%
+          </div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>{stats.aprobados} de {stats.total} aprobados</div>
+        </div>
+
+        <div className="glass-card" style={{ padding: '0.9rem 1.1rem', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Total Incidentes</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: stats.incidentes > 0 ? '#f87171' : '#4ade80', marginTop: '0.2rem' }}>
+            {stats.incidentes}
+          </div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>Colisiones / Fuera de Vía</div>
         </div>
       </div>
 
       {/* Barra de Filtros */}
-      <div className="card" style={{ padding: '1rem 1.25rem', marginBottom: '1.5rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+      <div className="glass-card" style={{ padding: '1rem 1.25rem', marginBottom: '1rem', borderRadius: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', alignItems: 'flex-end' }}>
           <div>
-            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Búsqueda</label>
+            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>🔍 Búsqueda Rápida</label>
             <input
               type="text"
               placeholder="Operador, Folio o Instructor..."
@@ -469,95 +632,234 @@ export const DirectoryTab: React.FC = () => {
                 setSearch(e.target.value);
                 setCurrentPage(1);
               }}
-              style={{ width: '100%', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#fff' }}
+              style={{ width: '100%', padding: '0.55rem 0.85rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#fff', fontSize: '0.88rem' }}
             />
           </div>
+
           {companies.length > 1 && (
             <div>
-              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Empresa</label>
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>🏢 Empresa</label>
               <select
                 value={selectedEmpresa}
                 onChange={(e) => {
                   setSelectedEmpresa(e.target.value);
                   setCurrentPage(1);
                 }}
-                style={{ width: '100%', padding: '0.5rem 0.75rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#fff' }}
+                style={{ width: '100%', padding: '0.55rem 0.85rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#fff', fontSize: '0.88rem' }}
               >
-                <option value="all">Todas las Empresas</option>
+                <option value="all">Todas las Empresas ({companies.length})</option>
                 {companies.map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
             </div>
           )}
+
           <div>
-            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Sede</label>
+            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>📍 Sede</label>
             <select
               value={selectedSede}
               onChange={(e) => {
                 setSelectedSede(e.target.value);
                 setCurrentPage(1);
               }}
-              style={{ width: '100%', padding: '0.5rem 0.75rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#fff' }}
+              style={{ width: '100%', padding: '0.55rem 0.85rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#fff', fontSize: '0.88rem' }}
             >
-              <option value="all">Todas las Sedes</option>
+              <option value="all">Todas las Sedes ({sedes.length})</option>
               {sedes.map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
           </div>
+
           <div>
-            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>Estado</label>
+            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>🎯 Estado Dictamen</label>
             <select
               value={selectedEstado}
               onChange={(e) => {
                 setSelectedEstado(e.target.value);
                 setCurrentPage(1);
               }}
-              style={{ width: '100%', padding: '0.5rem 0.75rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#fff' }}
+              style={{ width: '100%', padding: '0.55rem 0.85rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#fff', fontSize: '0.88rem' }}
             >
               <option value="all">Todos los Estados</option>
-              <option value="Sobresaliente">Sobresaliente (8.0+)</option>
-              <option value="Aprobado">Aprobado (6.0 - 7.9)</option>
-              <option value="Reforzar">Reforzar (5.0 - 5.9)</option>
-              <option value="No Aprobado">No Aprobado (&lt; 5.0)</option>
+              <option value="Sobresaliente">⭐ Sobresaliente (8.0+)</option>
+              <option value="Aprobado">✅ Aprobado (6.0 - 7.9)</option>
+              <option value="Reforzar">⚠️ Reforzar (5.0 - 5.9)</option>
+              <option value="No Aprobado">❌ No Aprobado (&lt; 5.0)</option>
             </select>
           </div>
         </div>
       </div>
 
+      {/* Barra de Acciones por Lote (cuando hay checkboxes activos) */}
+      {selectedIds.size > 0 && (
+        <div
+          style={{
+            background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.12), rgba(99, 102, 241, 0.12))',
+            border: '1px solid rgba(56, 189, 248, 0.35)',
+            borderRadius: '10px',
+            padding: '0.8rem 1.25rem',
+            marginBottom: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '0.8rem'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(56, 189, 248, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
+              ⚡
+            </div>
+            <div>
+              <strong style={{ color: '#fff', fontSize: '0.92rem' }}>
+                {selectedIds.size} {selectedIds.size === 1 ? 'evaluación seleccionada' : 'evaluaciones seleccionadas'}
+              </strong>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                Aplica cambios masivos directos a Firestore o elimina los registros seleccionados
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                setBatchEmpresa('');
+                setBatchSede('__KEEP__');
+                setBatchInstructor('__KEEP__');
+                setIsBatchModalOpen(true);
+              }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem' }}
+            >
+              ✏️ Modificar en Lote ({selectedIds.size})
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-danger btn-sm"
+              onClick={handleBatchDelete}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem' }}
+            >
+              🗑️ Eliminar ({selectedIds.size})
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setSelectedIds(new Set())}
+              style={{ fontSize: '0.82rem' }}
+            >
+              ✕ Deseleccionar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Tabla de Directorio */}
-      <div className="card">
-        <div className="table-responsive">
-          <table className="data-table">
+      <div className="card" style={{ borderRadius: '12px', overflow: 'hidden', width: '100%' }}>
+        <div className="table-responsive" style={{ width: '100%' }}>
+          <table className="custom-table" style={{ width: '100%', minWidth: '1000px' }}>
             <thead>
               <tr>
-                <th style={{ width: '40px', textAlign: 'center' }}>
+                <th style={{ width: '44px', textAlign: 'center' }}>
                   <input
                     type="checkbox"
                     checked={pagedList.length > 0 && selectedIds.size === pagedList.length}
                     onChange={toggleSelectAll}
+                    style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#38bdf8' }}
+                    title="Seleccionar todo en esta página"
                   />
                 </th>
-                <th>Operador</th>
-                <th>Empresa</th>
-                <th>Sede</th>
-                <th>Fecha</th>
-                <th>Calificación</th>
-                <th>Estado</th>
+                <th
+                  onClick={() => handleSort('conductor')}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  title="Ordenar por Operador"
+                >
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <span>Operador</span>
+                    <span style={{ fontSize: '0.75rem', opacity: sortCol === 'conductor' ? 1 : 0.4, color: sortCol === 'conductor' ? '#38bdf8' : undefined }}>
+                      {sortCol === 'conductor' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                    </span>
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('empresa')}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  title="Ordenar por Empresa"
+                >
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <span>Empresa</span>
+                    <span style={{ fontSize: '0.75rem', opacity: sortCol === 'empresa' ? 1 : 0.4, color: sortCol === 'empresa' ? '#38bdf8' : undefined }}>
+                      {sortCol === 'empresa' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                    </span>
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('sede')}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  title="Ordenar por Sede"
+                >
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <span>Sede</span>
+                    <span style={{ fontSize: '0.75rem', opacity: sortCol === 'sede' ? 1 : 0.4, color: sortCol === 'sede' ? '#38bdf8' : undefined }}>
+                      {sortCol === 'sede' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                    </span>
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('fecha')}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  title="Ordenar por Fecha"
+                >
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <span>Fecha</span>
+                    <span style={{ fontSize: '0.75rem', opacity: sortCol === 'fecha' ? 1 : 0.4, color: sortCol === 'fecha' ? '#38bdf8' : undefined }}>
+                      {sortCol === 'fecha' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                    </span>
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('score')}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  title="Ordenar por Calificación Final"
+                >
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <span>Calificación</span>
+                    <span style={{ fontSize: '0.75rem', opacity: sortCol === 'score' ? 1 : 0.4, color: sortCol === 'score' ? '#38bdf8' : undefined }}>
+                      {sortCol === 'score' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                    </span>
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('estado')}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  title="Ordenar por Estado"
+                >
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <span>Estado</span>
+                    <span style={{ fontSize: '0.75rem', opacity: sortCol === 'estado' ? 1 : 0.4, color: sortCol === 'estado' ? '#38bdf8' : undefined }}>
+                      {sortCol === 'estado' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                    </span>
+                  </div>
+                </th>
                 <th style={{ textAlign: 'right' }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
-                    Cargando evaluaciones...
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                    <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>⏳</div>
+                    Cargando directorio de evaluaciones...
                   </td>
                 </tr>
               ) : pagedList.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                    <div style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>🔍</div>
                     No se encontraron evaluaciones con los filtros actuales.
                   </td>
                 </tr>
@@ -566,55 +868,98 @@ export const DirectoryTab: React.FC = () => {
                   const score = item.evaluacionFinalPuntos ?? item.calificacionExacta ?? item.promedioScore ?? 0;
                   const opName = item.conductor || item.operador || 'Sin Asignar';
                   const isChecked = selectedIds.has(item.id);
+                  const badge = getBadgeStyle(item.estado, score);
 
                   return (
-                    <tr key={item.id} style={{ background: isChecked ? 'rgba(56, 189, 248, 0.08)' : undefined }}>
+                    <tr
+                      key={item.id}
+                      style={{
+                        background: isChecked ? 'rgba(56, 189, 248, 0.08)' : undefined,
+                        transition: 'background 0.2s ease'
+                      }}
+                    >
                       <td style={{ textAlign: 'center' }}>
                         <input
                           type="checkbox"
                           checked={isChecked}
                           onChange={() => toggleSelectRow(item.id)}
+                          style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#38bdf8' }}
                         />
                       </td>
                       <td>
                         <div style={{ fontWeight: 600, color: '#ffffff' }}>{opName}</div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                          ID: {item.id.substring(0, 14)}
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', gap: '0.4rem', marginTop: '0.1rem' }}>
+                          <span>{item.folio || item.id.substring(0, 10)}</span>
+                          {item.instructor && <span>• Ins: {item.instructor}</span>}
                         </div>
                       </td>
-                      <td>{item.empresa || 'N/A'}</td>
-                      <td>{item.sede || 'N/A'}</td>
-                      <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                      <td>
+                        <div style={{ fontWeight: 500, color: '#e2e8f0' }}>{item.empresa || 'N/A'}</div>
+                      </td>
+                      <td>
+                        {item.sede ? (
+                          <span style={{ fontSize: '0.78rem', color: '#38bdf8', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+                            📍 {item.sede}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>-</span>
+                        )}
+                      </td>
+                      <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                         {item.fechaCapacitacionFormato || item.fechaCapacitacion || item.fechaReporte || item.fecha || 'N/A'}
                       </td>
                       <td>
-                        <span style={{ color: '#38bdf8', fontWeight: 700 }}>
+                        <span style={{ color: score >= 6.0 ? '#38bdf8' : '#f87171', fontWeight: 700, fontSize: '0.92rem' }}>
                           {score.toFixed(2)}
                           <small style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}> / 10</small>
                         </span>
                       </td>
                       <td>
-                        <span className="badge badge-info">{item.estado || 'Evaluado'}</span>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            padding: '0.22rem 0.65rem',
+                            borderRadius: '9999px',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            backgroundColor: badge.bg,
+                            color: badge.text,
+                            border: `1px solid ${badge.border}`
+                          }}
+                        >
+                          {badge.label}
+                        </span>
                       </td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => setViewingReport(item)}
+                            title="Ver reporte digital completo"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.78rem', padding: '0.25rem 0.6rem' }}
+                          >
+                            📄 Ver
+                          </button>
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm"
                             onClick={() => setEditingItem(item)}
                             title="Editar evaluación"
+                            style={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.35)', padding: '0.25rem 0.55rem', fontSize: '0.78rem' }}
                           >
-                            ✏️ Editar
+                            ✏️
                           </button>
                           <button
                             type="button"
                             className="btn btn-danger btn-sm"
                             onClick={async () => {
-                              if (window.confirm(`¿Eliminar la evaluación de ${opName}?`)) {
+                              if (window.confirm(`¿Eliminar definitivamente la evaluación de ${opName}?`)) {
                                 await deleteEvaluation(item.id);
                               }
                             }}
                             title="Eliminar registro"
+                            style={{ padding: '0.25rem 0.55rem', fontSize: '0.78rem' }}
                           >
                             🗑️
                           </button>
@@ -631,7 +976,7 @@ export const DirectoryTab: React.FC = () => {
         {/* Paginación */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem', borderTop: '1px solid var(--border-subtle)', flexWrap: 'wrap', gap: '0.75rem' }}>
           <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-            Mostrando {(activePage - 1) * PAGE_SIZE + 1}-{Math.min(activePage * PAGE_SIZE, displayList.length)} de {displayList.length} evaluaciones
+            Mostrando {(activePage - 1) * PAGE_SIZE + (displayList.length > 0 ? 1 : 0)}-{Math.min(activePage * PAGE_SIZE, displayList.length)} de {displayList.length} evaluaciones
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <button
@@ -673,44 +1018,287 @@ export const DirectoryTab: React.FC = () => {
         </div>
       </div>
 
+      {/* Modal: Ver Reporte Digital Detallado */}
+      {viewingReport && (
+        <div className="modal-backdrop active" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="modal-dialog card" style={{ maxWidth: '780px', width: '92%', padding: '1.75rem', maxHeight: '90vh', overflowY: 'auto', borderRadius: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.75rem' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800, color: '#fff' }}>
+                  📄 Reporte Oficial de Conducción
+                </h3>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  ID Registro: {viewingReport.id}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setViewingReport(null)}
+                style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Metadatos Generales */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.85rem', marginBottom: '1.25rem' }}>
+              <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Operador / Conductor</div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', marginTop: '0.2rem' }}>
+                  {viewingReport.conductor || viewingReport.operador || 'Sin Asignar'}
+                </div>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Empresa & Sede</div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#38bdf8', marginTop: '0.2rem' }}>
+                  {viewingReport.empresa} {viewingReport.sede ? `• 📍 ${viewingReport.sede}` : ''}
+                </div>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Fecha Capacitación</div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', marginTop: '0.2rem' }}>
+                  {viewingReport.fechaCapacitacionFormato || viewingReport.fechaCapacitacion || viewingReport.fechaReporte || 'N/A'}
+                </div>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Instructor & Folio</div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', marginTop: '0.2rem' }}>
+                  {viewingReport.instructor || 'Oficial'} {viewingReport.folio ? `• Grupo: ${viewingReport.folio}` : ''}
+                </div>
+              </div>
+            </div>
+
+            {/* Puntuaciones Principales */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1.25rem', textAlign: 'center' }}>
+              <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '0.85rem', borderRadius: '10px' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>HABILIDADES DE MANEJO</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#10b981', marginTop: '0.2rem' }}>
+                  {(viewingReport.habilidadesManejoPuntos || 0).toFixed(2)} <span style={{ fontSize: '0.75rem' }}>/ 3.0</span>
+                </div>
+              </div>
+              <div style={{ background: 'rgba(168, 85, 247, 0.08)', border: '1px solid rgba(168, 85, 247, 0.25)', padding: '0.85rem', borderRadius: '10px' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>PRÁCTICA EN SIMULADOR</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#c084fc', marginTop: '0.2rem' }}>
+                  {(viewingReport.practicaSimuladorPuntos || 0).toFixed(2)} <span style={{ fontSize: '0.75rem' }}>/ 7.0</span>
+                </div>
+              </div>
+              <div style={{ background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)', padding: '0.85rem', borderRadius: '10px' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>CALIFICACIÓN FINAL</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#38bdf8', marginTop: '0.2rem' }}>
+                  {(viewingReport.evaluacionFinalPuntos ?? viewingReport.calificacionExacta ?? 0).toFixed(2)} <span style={{ fontSize: '0.75rem' }}>/ 10.0</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Registro de Incidentes */}
+            <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '10px', padding: '0.85rem', marginBottom: '1.25rem' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#f87171', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+                🚨 Incidentes en Simulador
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', textAlign: 'center' }}>
+                <div style={{ background: 'rgba(0,0,0,0.25)', padding: '0.5rem', borderRadius: '8px' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>💥 Colisiones</div>
+                  <strong style={{ fontSize: '1.1rem', color: (viewingReport.colisiones || 0) > 0 ? '#f87171' : '#4ade80' }}>
+                    {viewingReport.colisiones || 0}
+                  </strong>
+                </div>
+                <div style={{ background: 'rgba(0,0,0,0.25)', padding: '0.5rem', borderRadius: '8px' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>💀 Fatalidades</div>
+                  <strong style={{ fontSize: '1.1rem', color: (viewingReport.fatalidades || 0) > 0 ? '#f87171' : '#4ade80' }}>
+                    {viewingReport.fatalidades || 0}
+                  </strong>
+                </div>
+                <div style={{ background: 'rgba(0,0,0,0.25)', padding: '0.5rem', borderRadius: '8px' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>🛑 Fuera de Vía</div>
+                  <strong style={{ fontSize: '1.1rem', color: (viewingReport.vehiculoFueraVia || 0) > 0 ? '#f87171' : '#4ade80' }}>
+                    {viewingReport.vehiculoFueraVia || 0}
+                  </strong>
+                </div>
+              </div>
+            </div>
+
+            {/* Ejercicios de Simulador */}
+            {Array.isArray(viewingReport.ejercicios) && viewingReport.ejercicios.length > 0 && (
+              <div style={{ marginBottom: '1.25rem' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '0.6rem' }}>
+                  🎮 Ejercicios Evaluados ({viewingReport.ejercicios.length})
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {viewingReport.ejercicios.map((ex, idx) => {
+                    const catalog = findCatalogExercise(ex.nombre);
+                    const desc = catalog?.descripcion || ex.comentarios;
+                    return (
+                      <div key={idx} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '0.6rem 0.85rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontWeight: 600, color: '#fff', fontSize: '0.85rem' }}>
+                            {ex.numero ? `#${ex.numero} • ` : ''}{ex.nombre}
+                          </span>
+                          <span style={{ color: '#38bdf8', fontWeight: 700, fontSize: '0.88rem' }}>
+                            {typeof ex.calificacion === 'number' ? `${ex.calificacion.toFixed(1)} pts` : 'Realizado'}
+                          </span>
+                        </div>
+                        {desc && (
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.3rem', lineHeight: 1.4 }}>
+                            {desc}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Firma Digital y Estado */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '1rem', borderTop: '1px solid var(--border-subtle)', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Dictamen Oficial: </span>
+                <span className={`badge badge-${viewingReport.estado === 'Sobresaliente' ? 'success' : viewingReport.estado === 'Aprobado' ? 'info' : 'warning'}`}>
+                  {viewingReport.estado || 'Evaluado'}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setViewingReport(null)}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edición Masiva en Lote */}
+      {isBatchModalOpen && (
+        <div className="modal-backdrop active" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="modal-dialog card" style={{ maxWidth: '540px', width: '90%', padding: '1.75rem', borderRadius: '16px' }}>
+            <h3 style={{ marginTop: 0, fontWeight: 800, fontSize: '1.25rem', color: '#fff' }}>
+              ⚡ Edición Masiva en Lote
+            </h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '0.25rem', marginBottom: '1.25rem' }}>
+              Modificarás {selectedIds.size} evaluaciones simultáneamente en Firestore.
+            </p>
+
+            <form onSubmit={handleBatchUpdateSubmit}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem' }}>
+                    🏢 Nueva Empresa (dejar en blanco para conservar actual)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Escribe la nueva empresa..."
+                    value={batchEmpresa}
+                    onChange={(e) => setBatchEmpresa(e.target.value)}
+                    style={{ width: '100%', padding: '0.55rem 0.85rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#fff' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem' }}>
+                    📍 Sede
+                  </label>
+                  <select
+                    value={batchSede}
+                    onChange={(e) => setBatchSede(e.target.value)}
+                    style={{ width: '100%', padding: '0.55rem 0.85rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#fff' }}
+                  >
+                    <option value="__KEEP__">-- Conservar Sede Actual --</option>
+                    <option value="">-- Sin Sede (Limpiar) --</option>
+                    {sedes.map((s) => (
+                      <option key={s} value={s}>📍 {s}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem' }}>
+                    👨‍🏫 Instructor (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Dejar en blanco para conservar actual..."
+                    value={batchInstructor === '__KEEP__' ? '' : batchInstructor}
+                    onChange={(e) => setBatchInstructor(e.target.value || '__KEEP__')}
+                    style={{ width: '100%', padding: '0.55rem 0.85rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#fff' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setIsBatchModalOpen(false)}
+                  disabled={isSavingBatch}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={isSavingBatch}
+                >
+                  {isSavingBatch ? 'Guardando en Firestore...' : `Guardar en ${selectedIds.size} Registros`}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal de Edición Individual */}
       {editingItem && (
         <div className="modal-backdrop active" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="modal-dialog card" style={{ maxWidth: '600px', width: '90%', padding: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
-            <h3 style={{ marginTop: 0, fontWeight: 700 }}>✏️ Editar Evaluación</h3>
+          <div className="modal-dialog card" style={{ maxWidth: '640px', width: '90%', padding: '1.75rem', maxHeight: '90vh', overflowY: 'auto', borderRadius: '16px' }}>
+            <h3 style={{ marginTop: 0, fontWeight: 800, fontSize: '1.25rem', color: '#fff' }}>✏️ Editar Evaluación Individual</h3>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+              Modificando evaluación ID: {editingItem.id}
+            </p>
             <form onSubmit={handleSaveEdit}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
-                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Conductor / Operador</label>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Conductor / Operador</label>
                   <input
                     type="text"
                     value={editingItem.conductor || editingItem.operador || ''}
                     onChange={(e) => setEditingItem({ ...editingItem, conductor: e.target.value, operador: e.target.value })}
-                    style={{ width: '100%', padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#fff' }}
+                    style={{ width: '100%', padding: '0.55rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#fff' }}
                     required
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Empresa</label>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Empresa</label>
                   <input
                     type="text"
                     value={editingItem.empresa || ''}
                     onChange={(e) => setEditingItem({ ...editingItem, empresa: e.target.value })}
-                    style={{ width: '100%', padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#fff' }}
+                    style={{ width: '100%', padding: '0.55rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#fff' }}
                     required
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Sede</label>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Sede</label>
                   <input
                     type="text"
                     value={editingItem.sede || ''}
                     onChange={(e) => setEditingItem({ ...editingItem, sede: e.target.value })}
-                    style={{ width: '100%', padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#fff' }}
+                    style={{ width: '100%', padding: '0.55rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#fff' }}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Calificación Final (0 - 10)</label>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Instructor</label>
+                  <input
+                    type="text"
+                    value={editingItem.instructor || ''}
+                    onChange={(e) => setEditingItem({ ...editingItem, instructor: e.target.value })}
+                    style={{ width: '100%', padding: '0.55rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#fff' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Calificación Final (0 - 10)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -719,20 +1307,37 @@ export const DirectoryTab: React.FC = () => {
                     value={editingItem.evaluacionFinalPuntos ?? editingItem.calificacionExacta ?? 0}
                     onChange={(e) => {
                       const val = parseFloat(e.target.value) || 0;
-                      setEditingItem({ ...editingItem, evaluacionFinalPuntos: val, calificacionExacta: val });
+                      let est = 'No Aprobado';
+                      if (val >= 8.0) est = 'Sobresaliente';
+                      else if (val >= 6.0) est = 'Aprobado';
+                      else if (val >= 5.0) est = 'Reforzar';
+                      setEditingItem({ ...editingItem, evaluacionFinalPuntos: val, calificacionExacta: val, estado: est });
                     }}
-                    style={{ width: '100%', padding: '0.5rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#fff' }}
+                    style={{ width: '100%', padding: '0.55rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#fff' }}
                     required
                   />
                 </div>
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Dictamen / Estado</label>
+                  <select
+                    value={editingItem.estado || 'Aprobado'}
+                    onChange={(e) => setEditingItem({ ...editingItem, estado: e.target.value })}
+                    style={{ width: '100%', padding: '0.55rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#fff' }}
+                  >
+                    <option value="Sobresaliente">Sobresaliente</option>
+                    <option value="Aprobado">Aprobado</option>
+                    <option value="Reforzar">Reforzar</option>
+                    <option value="No Aprobado">No Aprobado</option>
+                  </select>
+                </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.5rem', borderTop: '1px solid var(--border-subtle)', paddingTop: '1rem' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setEditingItem(null)}>
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-primary">
-                  Guardar Cambios
+                  💾 Guardar Cambios en Firestore
                 </button>
               </div>
             </form>

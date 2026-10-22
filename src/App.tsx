@@ -65,7 +65,10 @@ export const App: React.FC = () => {
     <DataProvider>
       <div id="appContainer">
         <Navbar currentTab={currentTab} onTabChange={handleTabChange} />
-        <main className="main-content">
+        <main
+          className="main-content"
+          style={currentTab === 'directorio' || currentTab === 'usuarios' ? { maxWidth: '100%', padding: '1.5rem 2rem' } : undefined}
+        >
           {currentTab === 'dashboard' && <DashboardTab onNavigate={handleTabChange} />}
           {currentTab === 'evolucion' && <EvolutionTab />}
           {currentTab === 'empresas' && <CompanyTab onNavigate={handleTabChange} />}

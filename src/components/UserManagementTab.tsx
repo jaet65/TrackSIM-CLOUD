@@ -312,12 +312,12 @@ export const UserManagementTab: React.FC = () => {
 
       {/* Tabla de Dominios Registrados */}
       {domains.length > 0 && (
-        <div className="card" style={{ marginBottom: '2rem' }}>
+        <div className="card" style={{ marginBottom: '2rem', width: '100%', borderRadius: '12px', overflow: 'hidden' }}>
           <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--border-subtle)' }}>
             <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>🌐 Dominios Corporativos Vinculados ({domains.length})</h3>
           </div>
-          <div className="table-responsive">
-            <table className="data-table">
+          <div className="table-responsive" style={{ width: '100%' }}>
+            <table className="custom-table" style={{ width: '100%', minWidth: '700px' }}>
               <thead>
                 <tr>
                   <th>Dominio</th>
@@ -350,12 +350,12 @@ export const UserManagementTab: React.FC = () => {
       )}
 
       {/* Tabla de Usuarios Registrados */}
-      <div className="card">
+      <div className="card" style={{ width: '100%', borderRadius: '12px', overflow: 'hidden' }}>
         <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--border-subtle)' }}>
           <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>👥 Cuentas de Usuario Registradas ({users.length})</h3>
         </div>
-        <div className="table-responsive">
-          <table className="data-table">
+        <div className="table-responsive" style={{ width: '100%' }}>
+          <table className="custom-table" style={{ width: '100%', minWidth: '850px' }}>
             <thead>
               <tr>
                 <th>Usuario</th>
@@ -426,51 +426,76 @@ export const UserManagementTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal Editar Usuario */}
+      {/* Modal Editar Usuario Centrada */}
       {editingUser && (
-        <div className="modal-backdrop active" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="modal-dialog card" style={{ maxWidth: '480px', width: '90%', padding: '1.5rem' }}>
-            <h3 style={{ marginTop: 0, fontWeight: 700 }}>✏️ Editar Permisos de Usuario</h3>
+        <div className="modal-overlay active" onClick={(e) => { if (e.target === e.currentTarget) setEditingUser(null); }}>
+          <div className="modal-dialog card" style={{ maxWidth: '500px', width: '92%', padding: 0, borderRadius: '16px', overflow: 'hidden' }}>
+            <div className="modal-header" style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#fff' }}>✏️ Editar Permisos de Usuario</h3>
+                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Configuración de rol y empresa permitida</span>
+              </div>
+              <button
+                type="button"
+                className="close-btn"
+                onClick={() => setEditingUser(null)}
+                style={{ fontSize: '1.3rem', lineHeight: 1 }}
+              >
+                &times;
+              </button>
+            </div>
+
             <form onSubmit={handleSaveEditUser}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Correo Electrónico</label>
-                <input
-                  type="text"
-                  value={editingUser.email}
-                  disabled
-                  style={{ width: '100%', padding: '0.5rem', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#94a3b8' }}
-                />
+              <div className="modal-body" style={{ padding: '1.5rem' }}>
+                <div style={{ marginBottom: '1.1rem' }}>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
+                    Correo Electrónico
+                  </label>
+                  <input
+                    type="text"
+                    value={editingUser.email}
+                    disabled
+                    style={{ width: '100%', padding: '0.6rem 0.85rem', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#94a3b8', fontSize: '0.88rem' }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '1.1rem' }}>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
+                    Rol de Acceso
+                  </label>
+                  <select
+                    value={editingUser.role}
+                    onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value as any })}
+                    style={{ width: '100%', padding: '0.6rem 0.85rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#fff', fontSize: '0.88rem' }}
+                  >
+                    <option value="viewer">👤 Lector (Solo Lectura Restringida)</option>
+                    <option value="admin">👑 Administrador (Acceso Total)</option>
+                  </select>
+                </div>
+
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>
+                    Empresa Asignada
+                  </label>
+                  <select
+                    value={editingUser.empresaPermitida || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, empresaPermitida: e.target.value, empresasPermitidas: [e.target.value] })}
+                    style={{ width: '100%', padding: '0.6rem 0.85rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#fff', fontSize: '0.88rem' }}
+                  >
+                    <option value="all">🌐 Todas las Empresas (Global)</option>
+                    {companies.map((c) => (
+                      <option key={c} value={c}>🏢 {c}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Rol</label>
-                <select
-                  value={editingUser.role}
-                  onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value as any })}
-                  style={{ width: '100%', padding: '0.5rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#fff' }}
-                >
-                  <option value="viewer">Lector (Restringido)</option>
-                  <option value="admin">Administrador (Total)</option>
-                </select>
-              </div>
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Empresa Asignada</label>
-                <select
-                  value={editingUser.empresaPermitida || ''}
-                  onChange={(e) => setEditingUser({ ...editingUser, empresaPermitida: e.target.value, empresasPermitidas: [e.target.value] })}
-                  style={{ width: '100%', padding: '0.5rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#fff' }}
-                >
-                  <option value="all">🌐 Todas las Empresas</option>
-                  {companies.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+
+              <div className="modal-footer" style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', background: 'rgba(0,0,0,0.15)' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setEditingUser(null)}>
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-primary">
-                  Guardar Permisos
+                  💾 Guardar Permisos
                 </button>
               </div>
             </form>
