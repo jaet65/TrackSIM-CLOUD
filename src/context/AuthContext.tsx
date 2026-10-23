@@ -15,6 +15,7 @@ import {
   onSnapshot
 } from '../services/firebase';
 import { UserProfile } from '../types';
+import { isVerifiedCorporateAdmin } from '../services/authorization';
 
 interface AuthContextType {
   user: User | null;
@@ -58,7 +59,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const email = (currentUser.email || '').toLowerCase().trim();
       const isGoogleAuth = currentUser.providerData?.some((p) => p.providerId === 'google.com');
 
-      if (email.endsWith('@corporativomaf.com')) {
+      if (isVerifiedCorporateAdmin(currentUser.email, currentUser.emailVerified)) {
         setUserRole('admin');
         setAllowedCompanies(['all']);
         setProfile({

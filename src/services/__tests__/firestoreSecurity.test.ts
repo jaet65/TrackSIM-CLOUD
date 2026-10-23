@@ -124,6 +124,14 @@ describe('Firestore Security Rules', () => {
     await assertSucceeds(setDoc(evaluation, { empresa: 'Empresa A' }));
     await assertSucceeds(updateDoc(evaluation, { empresa: 'Empresa B' }));
     await assertSucceeds(deleteDoc(evaluation));
+
+    const uppercaseEmailAdmin = testEnv.authenticatedContext('uppercase-admin', {
+      email: 'ADMIN@CORPORATIVOMAF.COM',
+      email_verified: true
+    }).firestore();
+    await assertSucceeds(setDoc(doc(uppercaseEmailAdmin, 'evaluaciones/uppercase-admin-evaluation'), {
+      empresa: 'Empresa A'
+    }));
   });
 
   it('denies evaluation writes to an unverified corporate email', async () => {

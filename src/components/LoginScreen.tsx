@@ -78,7 +78,7 @@ export const LoginScreen: React.FC = () => {
             <span>{loadingGoogle ? 'Conectando con Google...' : 'Acceso con Google'}</span>
           </button>
           <div className="domain-hint">
-            * Cuentas <strong>@corporativomaf.com</strong> ingresan automáticamente como Administrador.
+            * Cuentas verificadas <strong>@corporativomaf.com</strong> ingresan como Administrador.
           </div>
         </div>
 

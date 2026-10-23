@@ -13,8 +13,8 @@ service cloud.firestore {
     // Administrador verificado (@corporativomaf.com)
     function isAdmin() {
       return request.auth != null &&
-             request.auth.token.email != null &&
-             request.auth.token.email.matches('.*@corporativomaf[.]com$') &&
+             request.auth.token.email is string &&
+             request.auth.token.email.lower().matches('.*@corporativomaf[.]com$') &&
              request.auth.token.email_verified == true;
     }
 
