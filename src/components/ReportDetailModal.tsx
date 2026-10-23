@@ -182,7 +182,7 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
             <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.6rem' }}>
               🎮 Ejercicios Evaluados ({evaluation.ejercicios.length})
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '250px', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {evaluation.ejercicios.map((ex, exIdx) => {
                 const exName = ex.nombre || `Ejercicio ${exIdx + 1}`;
                 const catalogItem = findCatalogExercise(exName);
