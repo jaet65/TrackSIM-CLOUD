@@ -57,6 +57,56 @@ function getEvaluationExerciseMap(e: Evaluation): Record<number, ExerciseItem> {
   return map;
 }
 
+const parseNota = (v: any, fallback: number) => {
+  const n = parseFloat(String(v ?? '').replace(',', '.'));
+  return isNaN(n) ? fallback : n;
+};
+
+/** Aplica las columnas "Sim N Titulo/Nota" del CSV sobre los ejercicios de una evaluación */
+function buildExerciseFields(
+  item: Evaluation,
+  simNums: number[],
+  get: (name: string) => string | undefined
+): Partial<Evaluation> {
+  const map = getEvaluationExerciseMap(item);
+  Object.keys(map).forEach(k => {
+    if (+k >= 2 && !simNums.includes(+k)) delete map[+k];
+  });
+  simNums.forEach(n => {
+    const titulo = get(`Sim ${n} Titulo`) || '';
+    const notaStr = get(`Sim ${n} Nota`) ?? '';
+    if (!titulo && notaStr === '') {
+      delete map[n];
+      return;
+    }
+    const desc = findCatalogExercise(titulo)?.descripcion || map[n]?.comentarios || '';
+    const isDashNotDone = /^[-\u2010-\u2015\u2212]+$/.test(notaStr.trim()) || /^no\s*realizado$/i.test(notaStr.trim());
+
+    map[n] = {
+      numero: n,
+      nombre: titulo,
+      calificacion: isDashNotDone ? undefined : (notaStr === '' ? undefined : parseNota(notaStr, 0)),
+      score: isDashNotDone ? undefined : (notaStr === '' ? undefined : parseNota(notaStr, 0)),
+      estado: isDashNotDone ? 'No Realizado' : 'Realizado',
+      noRealizado: isDashNotDone,
+      comentarios: isDashNotDone ? (desc ? `${desc} [No Realizado]` : 'Ejercicio no realizado en simulador.') : desc
+    };
+  });
+
+  const ejercicios = Object.values(map)
+    .map(ex => Object.fromEntries(Object.entries(ex).filter(([, v]) => v !== undefined)) as ExerciseItem)
+    .sort((a, b) => (a.numero || 0) - (b.numero || 0));
+  const simulacionesDetalle: any = {};
+  const nombresSimulaciones: any = {};
+  ejercicios.forEach(ex => {
+    if (ex.numero != null) {
+      simulacionesDetalle[`simulacion_${ex.numero}`] = ex.calificacion ?? null;
+      nombresSimulaciones[ex.numero] = ex.nombre;
+    }
+  });
+  return { ejercicios, simulacionesDetalle, nombresSimulaciones };
+}
+
 function getEvaluationYear(evaluation: Evaluation): string | null {
   const date = evaluation.fechaCapacitacion || evaluation.fechaReporte || evaluation.fecha || '';
   return String(date).match(/\b\d{4}\b/)?.[0] || null;
@@ -581,6 +631,12 @@ export const DirectoryTab: React.FC = () => {
         return;
       }
 
+      const simNums: number[] = [];
+      headers.forEach(h => {
+        const m = h.match(/^Sim (\d+) Titulo$/);
+        if (m) simNums.push(parseInt(m[1], 10));
+      });
+
       const backupCol = col('Datos completos (JSON)');
       if (backupCol >= 0) {
         const backupEvaluations = rows.slice(1).map((row, index) => {
@@ -597,6 +653,14 @@ export const DirectoryTab: React.FC = () => {
           }
           if (parsed.id !== (row[idCol] || '').trim()) {
             throw new Error(`El ID del respaldo no coincide en la fila ${index + 2}.`);
+          }
+          // Las columnas Sim N del CSV (editables en Excel) prevalecen sobre el JSON
+          if (simNums.length > 0) {
+            const get = (name: string) => {
+              const i = col(name);
+              return i >= 0 ? (row[i] ?? '').trim() : undefined;
+            };
+            return { ...parsed, ...buildExerciseFields(parsed, simNums, get) };
           }
           return parsed;
         });
@@ -656,16 +720,7 @@ export const DirectoryTab: React.FC = () => {
         return;
       }
 
-      const simNums: number[] = [];
-      headers.forEach(h => {
-        const m = h.match(/^Sim (\d+) Titulo$/);
-        if (m) simNums.push(parseInt(m[1], 10));
-      });
-
-      const num = (v: any, fallback: number) => {
-        const n = parseFloat(String(v ?? '').replace(',', '.'));
-        return isNaN(n) ? fallback : n;
-      };
+      const num = parseNota;
 
       const updates: { id: string; fields: Partial<Evaluation> }[] = [];
       let skipped = 0;
@@ -717,43 +772,7 @@ export const DirectoryTab: React.FC = () => {
         }
 
         // Ejercicios
-        if (simNums.length > 0) {
-          const map = getEvaluationExerciseMap(item);
-          Object.keys(map).forEach(k => {
-            if (+k >= 2 && !simNums.includes(+k)) delete map[+k];
-          });
-          simNums.forEach(n => {
-            const titulo = get(`Sim ${n} Titulo`) || '';
-            const notaStr = get(`Sim ${n} Nota`) ?? '';
-            if (!titulo && notaStr === '') {
-              delete map[n];
-              return;
-            }
-            const desc = findCatalogExercise(titulo)?.descripcion || map[n]?.comentarios || '';
-            const isDashNotDone = /^-+$/.test(notaStr.trim()) || /^no\s*realizado$/i.test(notaStr.trim());
-
-            map[n] = {
-              numero: n,
-              nombre: titulo,
-              calificacion: isDashNotDone ? undefined : (notaStr === '' ? undefined : num(notaStr, 0)),
-              score: isDashNotDone ? undefined : (notaStr === '' ? undefined : num(notaStr, 0)),
-              estado: isDashNotDone ? 'No Realizado' : 'Realizado',
-              noRealizado: isDashNotDone,
-              comentarios: isDashNotDone ? (desc ? `${desc} [No Realizado]` : 'Ejercicio no realizado en simulador.') : desc
-            };
-          });
-
-          const ejercicios = Object.values(map).sort((a, b) => (a.numero || 0) - (b.numero || 0));
-          f.ejercicios = ejercicios;
-          f.simulacionesDetalle = {};
-          f.nombresSimulaciones = {};
-          ejercicios.forEach(ex => {
-            if (ex.numero != null) {
-              f.simulacionesDetalle[`simulacion_${ex.numero}`] = ex.calificacion ?? null;
-              f.nombresSimulaciones[ex.numero] = ex.nombre;
-            }
-          });
-        }
+        if (simNums.length > 0) Object.assign(f, buildExerciseFields(item, simNums, get));
 
         // Calificaciones y dictamen
         const hab = num(get('Habilidades Manejo (Puntos)'), item.habilidadesManejoPuntos || 0);
