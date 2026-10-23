@@ -87,7 +87,9 @@ export function initializeActiveCatalog(customExercises?: CatalogExercise[]): Ca
         return activeExerciseCatalog;
       }
     }
-  } catch (_) {}
+  } catch {
+    // localStorage no disponible o JSON inválido
+  }
 
   activeExerciseCatalog = [...EXERCISE_CATALOG];
   return activeExerciseCatalog;
@@ -100,7 +102,9 @@ export function persistCatalogLocally(exercises: CatalogExercise[]): void {
   activeExerciseCatalog = exercises;
   try {
     localStorage.setItem(LOCAL_STORAGE_KEY_EXERCISES, JSON.stringify(exercises));
-  } catch (_) {}
+  } catch {
+    // almacenamiento no disponible
+  }
 }
 
 /**

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from 'react';
 import { collection, getDocs, doc, setDoc, query, where, writeBatch } from '../services/firebase';
 import { db } from '../services/firebase';
 import { Evaluation, CompanySummary, DriverSummary } from '../types';
@@ -6,20 +6,14 @@ import { processCompanySummaries, processDriverSummaries, createCompanySummaryFr
 import { initializeActiveCatalog } from '../services/exerciseCatalog';
 import { useAuth } from './AuthContext';
 
-const LOCAL_STORAGE_KEY = 'tracksim_cloud_evaluaciones';
-const LOCAL_STORAGE_SYNC_TIME_KEY = 'tracksim_cloud_last_sync_time';
+import { loadEvalCache, saveEvalCache, clearEvalCache, EvalCacheRecord } from '../services/evalCache';
 
-const safeStorageSet = (key: string, value: string): void => {
-  try {
-    localStorage.setItem(key, value);
-  } catch (err: any) {
-    if (err?.name === 'QuotaExceededError' || err?.code === 22) {
-      console.warn(`[Storage Quota] Espacio de localStorage excedido al guardar ${key}. Se conserva la copia en memoria y caché IndexedDB de Firestore.`);
-    } else {
-      console.warn(`[Storage] No se pudo guardar ${key} en localStorage:`, err);
-    }
-  }
-};
+// Claves heredadas de localStorage (versiones anteriores); se eliminan al migrar a IndexedDB
+const LEGACY_STORAGE_KEYS = [
+  'tracksim_cloud_evaluaciones',
+  'tracksim_cloud_last_sync_time',
+  'tracksim_cloud_cache_scope'
+];
 
 interface DataContextType {
   evaluations: Evaluation[];
@@ -43,65 +37,102 @@ interface DataContextType {
   deleteEvaluation: (id: string) => Promise<void>;
   deleteAllEvaluations: (targetEvaluations?: Evaluation[]) => Promise<number>;
   updateEvaluation: (id: string, data: Partial<Evaluation>) => Promise<void>;
+  resetCacheAndReload: () => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType>({} as DataContextType);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, profile, userRole, allowedCompanies } = useAuth();
-  const [evaluations, setEvaluations] = useState<Evaluation[]>(() => {
-    try {
-      const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
+  const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
+  // Caché en IndexedDB: se carga una vez; fetchEvaluations espera a cacheReadyRef antes de sincronizar
+  const cacheRef = useRef<EvalCacheRecord | null>(null);
+  const cacheReadyRef = useRef<Promise<void> | null>(null);
+  const ensureCache = () => {
+    if (!cacheReadyRef.current) {
+      cacheReadyRef.current = (async () => {
+        try {
+          LEGACY_STORAGE_KEYS.forEach((k) => localStorage.removeItem(k));
+        } catch { /* sin acceso a localStorage */ }
+        cacheRef.current = await loadEvalCache();
+      })();
     }
-  });
+    return cacheReadyRef.current;
+  };
+  const persistItems = (items: Evaluation[]) => {
+    const rec: EvalCacheRecord = {
+      items,
+      syncTime: cacheRef.current?.syncTime ?? null,
+      scope: cacheRef.current?.scope ?? null
+    };
+    cacheRef.current = rec;
+    void saveEvalCache(rec);
+  };
   const [loading, setLoading] = useState(false);
   const [initialLoaded, setInitialLoaded] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSyncTime, setLastSyncTime] = useState<string | null>(() => {
-    return localStorage.getItem(LOCAL_STORAGE_SYNC_TIME_KEY);
-  });
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [selectedCompany, setSelectedCompany] = useState<string>('all');
   const [selectedDriverName, setSelectedDriverName] = useState<string>('');
   const [searchFilter, setSearchFilter] = useState<string>('');
 
+  // Descarga restringida: los no-admin consultan solo sus empresas (las reglas de Firestore lo exigen)
+  const isUnrestricted = userRole === 'admin' || allowedCompanies.includes('all');
+  const queryEvaluations = async (extra: any[] = []) => {
+    if (isUnrestricted) {
+      return getDocs(query(collection(db, 'evaluaciones'), ...extra));
+    }
+    const snaps = await Promise.all(
+      allowedCompanies.map((emp) =>
+        getDocs(query(collection(db, 'evaluaciones'), where('empresa', '==', emp), ...extra))
+      )
+    );
+    return { docs: snaps.flatMap((s) => s.docs) };
+  };
+
   // Sincronización inteligente (Incremental o Completa)
   const fetchEvaluations = async (forceFull = false) => {
     if (!user) return;
+    if (!isUnrestricted && allowedCompanies.length === 0) {
+      // Aún sin empresa asignada/cargada: no consultar (las reglas lo denegarían)
+      setInitialLoaded(true);
+      return;
+    }
     
-    // Si ya tenemos datos en memoria/localStorage y no es carga forzada, marcamos isSyncing para no bloquear la UI
-    const hasLocalData = evaluations.length > 0;
+    // Esperar la lectura del caché en IndexedDB y validar que corresponde al alcance actual (uid + empresas)
+    await ensureCache();
+    const scopeKey = `${user.uid}|${isUnrestricted ? 'all' : [...allowedCompanies].sort().join(',')}`;
+    const cache = cacheRef.current;
+    const scopeChanged = !cache || cache.scope !== scopeKey;
+    const cachedItems = !scopeChanged && cache ? cache.items : [];
+    const hasLocalData = cachedItems.length > 0;
     if (hasLocalData) {
+      // Mostrar de inmediato los datos en caché y sincronizar en segundo plano
+      setEvaluations((prev) => (prev.length === 0 ? cachedItems : prev));
       setIsSyncing(true);
     } else {
       setLoading(true);
     }
 
     try {
-      const storedLastSync = localStorage.getItem(LOCAL_STORAGE_SYNC_TIME_KEY);
-      const isIncremental = !forceFull && hasLocalData && !!storedLastSync;
+      const storedLastSync = !scopeChanged && cache ? cache.syncTime : null;
+      const isIncremental = !forceFull && !scopeChanged && hasLocalData && !!storedLastSync;
 
       let itemsMap = new Map<string, Evaluation>();
-      evaluations.forEach((item) => itemsMap.set(item.id, item));
+      cachedItems.forEach((item) => itemsMap.set(item.id, item));
 
       if (isIncremental) {
         // Consulta incremental: únicamente documentos actualizados o creados después de la última sincronización
         console.log(`[Firestore Cache] Buscando actualizaciones incrementales desde: ${storedLastSync}`);
-        const incrementalQuery = query(
-          collection(db, 'evaluaciones'),
-          where('updatedAt', '>', storedLastSync)
-        );
         const [snapUpdates, snapDeletions] = await Promise.all([
-          getDocs(incrementalQuery),
+          queryEvaluations([where('updatedAt', '>', storedLastSync)]),
           getDocs(query(collection(db, '_eliminaciones'), where('deletedAt', '>', storedLastSync)))
         ]);
 
         console.log(`[Firestore Sync] ${snapUpdates.docs.length} documentos nuevos/modificados y ${snapDeletions.docs.length} eliminaciones recibidas.`);
 
         if (snapUpdates.docs.length > 0) {
-          snapUpdates.forEach((d) => {
+          snapUpdates.docs.forEach((d: any) => {
             itemsMap.set(d.id, { id: d.id, ...d.data() } as Evaluation);
           });
         }
@@ -122,9 +153,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         // Carga inicial completa o forzada
         console.log('[Firestore] Descarga completa de evaluaciones...');
-        const snap = await getDocs(collection(db, 'evaluaciones'));
+        const snap = await queryEvaluations();
         itemsMap.clear();
-        snap.forEach((d) => {
+        snap.docs.forEach((d: any) => {
           itemsMap.set(d.id, { id: d.id, ...d.data() } as Evaluation);
         });
         console.log(`[Firestore] ${itemsMap.size} evaluaciones descargadas.`);
@@ -141,8 +172,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const nowIso = new Date().toISOString();
       setEvaluations(mergedList);
       setLastSyncTime(nowIso);
-      safeStorageSet(LOCAL_STORAGE_KEY, JSON.stringify(mergedList));
-      safeStorageSet(LOCAL_STORAGE_SYNC_TIME_KEY, nowIso);
+      const newRec: EvalCacheRecord = { items: mergedList, syncTime: nowIso, scope: scopeKey };
+      cacheRef.current = newRec;
+      void saveEvalCache(newRec);
     } catch (err) {
       console.error('Error sincronizando evaluaciones de Firestore:', err);
       // Mantener los datos locales existentes
@@ -163,7 +195,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } else {
       setEvaluations([]);
     }
-  }, [user]);
+  }, [user, userRole, allowedCompanies.join('|')]);
 
   // Evaluaciones permitidas según rol de usuario
   const roleAllowedEvaluations = useMemo(() => {
@@ -258,7 +290,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setEvaluations((prev) => {
       const next = prev.filter((item) => item.id !== id);
-      safeStorageSet(LOCAL_STORAGE_KEY, JSON.stringify(next));
+      persistItems(next);
       return next;
     });
   };
@@ -311,7 +343,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const deleteSet = new Set(successfullyDeletedIds);
       setEvaluations((prev) => {
         const next = prev.filter((item) => !deleteSet.has(item.id));
-        safeStorageSet(LOCAL_STORAGE_KEY, JSON.stringify(next));
+        persistItems(next);
         return next;
       });
     }
@@ -358,9 +390,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setEvaluations((prev) => {
       const next = prev.map((item) => (item.id === id ? { ...item, ...cleanUpdates } : item));
-      safeStorageSet(LOCAL_STORAGE_KEY, JSON.stringify(next));
+      persistItems(next);
       return next;
     });
+  };
+
+  const resetCacheAndReload = async () => {
+    await ensureCache();
+    cacheRef.current = null;
+    await clearEvalCache();
+    setLastSyncTime(null);
+    await fetchEvaluations(true);
   };
 
   return (
@@ -386,7 +426,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSearchFilter,
         deleteEvaluation,
         deleteAllEvaluations,
-        updateEvaluation
+        updateEvaluation,
+        resetCacheAndReload
       }}
     >
       {children}

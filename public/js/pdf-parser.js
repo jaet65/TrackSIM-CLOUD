@@ -955,7 +955,9 @@ export async function parsePDFFile(fileOrBuffer, filename = '') {
     if (loadingTask && typeof loadingTask.destroy === 'function') {
       try {
         await loadingTask.destroy();
-      } catch (_) {}
+      } catch {
+        // ignorar errores al destruir
+      }
     }
   }
 }

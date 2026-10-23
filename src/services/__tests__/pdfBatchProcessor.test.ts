@@ -38,7 +38,7 @@ describe('pdfBatchProcessor - Pruebas de estrés y carga masiva', () => {
     });
 
     const progressUpdates: number[] = [];
-    const results = await parsePDFBatch(files, (current, total) => {
+    const results = await parsePDFBatch(files, (current) => {
       progressUpdates.push(current);
     });
 

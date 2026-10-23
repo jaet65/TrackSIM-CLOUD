@@ -38,7 +38,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let unsubProfile: (() => void) | null = null;
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      // Cancelar el listener del perfil anterior (evita permission-denied tras cerrar sesión)
+      if (unsubProfile) {
+        unsubProfile();
+        unsubProfile = null;
+      }
       if (!currentUser) {
         setUser(null);
         setProfile(null);
@@ -112,7 +118,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         // Suscribirse en tiempo real al documento del usuario para detectar asignaciones inmediatas del admin
-        const unsubProfile = onSnapshot(userDocRef, (snap) => {
+        unsubProfile = onSnapshot(userDocRef, (snap) => {
           let allowed: string[] = [];
           if (domainMatchedCompany) {
             allowed = domainMatchedCompany === 'all' ? ['all'] : [domainMatchedCompany];
@@ -132,7 +138,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setLoading(false);
         });
 
-        return () => unsubProfile();
       } catch (err) {
         console.warn('Error determinando empresa de usuario:', err);
         setAllowedCompanies([]);
@@ -140,7 +145,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      if (unsubProfile) unsubProfile();
+      unsubscribe();
+    };
   }, []);
 
   const loginWithGoogle = async () => {

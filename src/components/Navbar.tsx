@@ -10,7 +10,7 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
   const { user, userRole, allowedCompanies, profile, logout } = useAuth();
-  const { selectedCompany, reloadEvaluations, isSyncing, lastSyncTime } = useData();
+  const { selectedCompany } = useData();
 
   // Calcular el texto y estilo del badge de empresa/rol
   const renderStatusBadge = () => {
@@ -135,35 +135,6 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
       </div>
 
       <div className="nav-right">
-        {/* Botón de Sincronización Inteligente de Datos */}
-        <button
-          type="button"
-          onClick={() => reloadEvaluations(false)}
-          disabled={isSyncing}
-          title={lastSyncTime ? `Última sincronización: ${new Date(lastSyncTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}\nHaz clic para buscar cambios recientes` : 'Sincronizar datos con Cloud Firestore'}
-          style={{
-            background: 'rgba(255, 255, 255, 0)',
-            color: isSyncing ? '#38bdf8' : 'var(--text-muted, #94a3b8)',
-            padding: '0.45rem 0.75rem',
-            borderRadius: '8px',
-            fontSize: '0.8rem',
-            cursor: isSyncing ? 'not-allowed' : 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.4rem',
-            transition: 'all 0.2s ease'
-          }}
-          onMouseEnter={(e) => {
-            if (!isSyncing) e.currentTarget.style.color = '#fff';
-          }}
-          onMouseLeave={(e) => {
-            if (!isSyncing) e.currentTarget.style.color = 'var(--text-muted, #94a3b8)';
-          }}
-        >
-          <span style={{ display: 'inline-block', animation: isSyncing ? 'spin 1s linear infinite' : 'none' }}>🔄</span>
-          <span>{isSyncing ? 'Syncing...' : 'Sync'}</span>
-        </button>
-
         {/* Badge contextual de Empresa o Administrador */}
         {renderStatusBadge()}
 

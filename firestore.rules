@@ -1,46 +1,107 @@
 rules_version = '2';
 
+// Modelo de datos asumido:
+//  - evaluaciones/{id}: { empresa: string, updatedAt: string(ISO), ... }
+//  - usuarios/{uid}: { role: 'viewer', empresaPermitida: string ('' | 'all' | nombre),
+//                      empresasPermitidas: string[], email, ... } (asignación de empresa solo por admin)
+//  - dominios_empresas/{dominio}: { empresa: string }  (dominio en minúsculas, ej. "cliente.com")
+//  - configuracion/{doc}: catálogos compartidos (ej. catalogo_ejercicios)
+//  - _eliminaciones/{id}, conductores/{id}
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Función para verificar si el usuario es Administrador verificado (@corporativomaf.com)
+    // Administrador verificado (@corporativomaf.com)
     function isAdmin() {
-      return request.auth != null && 
-             request.auth.token.email != null && 
+      return request.auth != null &&
+             request.auth.token.email != null &&
              request.auth.token.email.matches('.*@corporativomaf[.]com$') &&
              request.auth.token.email_verified == true;
     }
 
-    // Evaluaciones: lectura para cualquier usuario autenticado, escritura exclusiva para administradores
-    match /evaluaciones/{evalId} {
-      allow read: if request.auth != null;
-      allow write: if isAdmin();
+    function signedIn() {
+      return request.auth != null;
     }
-    
-    // Fichas de conductores: lectura autenticada, escritura para admin
-    match /conductores/{conductorId} {
-      allow read: if request.auth != null;
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+    }
+
+    function hasUserDoc() {
+      return exists(/databases/$(database)/documents/usuarios/$(request.auth.uid));
+    }
+
+    function emailDomain() {
+      return request.auth.token.email.lower().split('@')[1];
+    }
+
+    function domainPath() {
+      return /databases/$(database)/documents/dominios_empresas/$(emailDomain());
+    }
+
+    // Empresa asignada por dominio de correo (vacía si no hay mapeo)
+    function domainEmpresa() {
+      return (request.auth.token.email != null && exists(domainPath()))
+        ? get(domainPath()).data.get('empresa', '')
+        : '';
+    }
+
+    // ¿El usuario puede leer datos de la empresa indicada?
+    function canReadEmpresa(empresa) {
+      return isAdmin() ||
+             (signedIn() && (
+               domainEmpresa() == 'all' ||
+               domainEmpresa() == empresa ||
+               (hasUserDoc() && (
+                 userDoc().get('empresaPermitida', '') == 'all' ||
+                 userDoc().get('empresaPermitida', '') == empresa ||
+                 empresa in userDoc().get('empresasPermitidas', [])
+               ))
+             ));
+    }
+
+    // Evaluaciones: lectura solo de la(s) empresa(s) permitida(s), escritura solo admin
+    match /evaluaciones/{evalId} {
+      allow read: if canReadEmpresa(resource.data.empresa);
       allow write: if isAdmin();
     }
 
-    // Registro de usuarios: cada usuario lee su propio perfil o admin lee todos.
-    // Creación por el propio usuario como viewer o gestión por admin.
+    // Fichas de conductores: lectura autenticada, escritura para admin
+    match /conductores/{conductorId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // Usuarios: cada usuario lee su perfil o admin lee todos.
+    // Autoregistro solo como viewer, SIN asignarse empresas arbitrarias
+    // (solo vacía o la derivada de su dominio de correo).
     match /usuarios/{userId} {
-      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-      allow create: if request.auth != null && 
-                    request.auth.uid == userId && 
-                    request.resource.data.role == 'viewer';
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if isAdmin() || (
+                      signedIn() &&
+                      request.auth.uid == userId &&
+                      request.resource.data.role == 'viewer' &&
+                      request.resource.data.get('empresaPermitida', '') in ['', domainEmpresa()] &&
+                      request.resource.data.get('empresasPermitidas', []).size() <= 1 &&
+                      (request.resource.data.get('empresasPermitidas', []).size() == 0 ||
+                       request.resource.data.empresasPermitidas[0] == domainEmpresa())
+                    );
       allow update, delete: if isAdmin();
     }
 
-    // Mapeo automático de dominios a empresas (usado durante login/registro)
+    // Mapeo de dominios a empresas
     match /dominios_empresas/{domainId} {
-      allow read: if request.auth != null;
+      allow read: if signedIn();
       allow write: if isAdmin();
     }
 
-    // Registro de eliminaciones (tombstones de sincronización incremental)
+    // Configuración compartida (catálogo de ejercicios, etc.)
+    match /configuracion/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // Tombstones de sincronización incremental
     match /_eliminaciones/{delId} {
-      allow read: if request.auth != null;
+      allow read: if signedIn();
       allow write: if isAdmin();
     }
   }
