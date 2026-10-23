@@ -1,8 +1,26 @@
 import React, { useMemo, useState } from 'react';
 import { Radar } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  RadialLinearScale,
+  PointElement,
+  LineElement,
+  Filler,
+  Tooltip,
+  Legend
+} from 'chart.js';
 import { Evaluation } from '../types';
 import { calculateSingleSessionRadar } from '../services/sessionRadar';
 import { MISTAKE_DIMENSIONS } from '../services/mistakeCatalog';
+
+ChartJS.register(
+  RadialLinearScale,
+  PointElement,
+  LineElement,
+  Filler,
+  Tooltip,
+  Legend
+);
 
 interface SessionRadarProps {
   evaluation: Evaluation;
