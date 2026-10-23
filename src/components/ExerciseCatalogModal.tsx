@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CatalogExercise, getActiveCatalog, persistCatalogLocally, EXERCISE_CATALOG } from '../services/exerciseCatalog';
-import { db, doc, getDoc, setDoc } from '../services/firebase';
+import { db, doc, getDoc, setDoc } from '../services/firebaseFirestore';
 
 interface ExerciseCatalogModalProps {
   isOpen: boolean;

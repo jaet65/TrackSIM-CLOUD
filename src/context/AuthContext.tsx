@@ -2,18 +2,13 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User } from 'firebase/auth';
 import {
   auth,
-  db,
   onAuthStateChanged,
   signInWithPopup,
   signOut,
   googleProvider,
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  doc,
-  getDoc,
-  setDoc,
-  onSnapshot
-} from '../services/firebase';
+  createUserWithEmailAndPassword
+} from '../services/firebaseAuth';
 import { UserProfile } from '../types';
 import { isVerifiedCorporateAdmin } from '../services/authorization';
 
@@ -79,6 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let domainMatchedCompany: string | null = null;
 
       try {
+        const { db, doc, getDoc, onSnapshot, setDoc } = await import('../services/firebaseFirestore');
         const emailParts = email.split('@');
         const userDomain = emailParts.length > 1 ? emailParts[1].trim() : '';
 

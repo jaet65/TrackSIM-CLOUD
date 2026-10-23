@@ -2,13 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { ExerciseCatalogModal } from './ExerciseCatalogModal';
-
-// Declare global PDF.js lib
-declare global {
-  interface Window {
-    pdfjsLib?: any;
-  }
-}
+import { loadPdfJs } from '../services/pdfJsLoader';
 
 export const IngestaTab: React.FC = () => {
   const { userRole } = useAuth();
@@ -49,6 +43,7 @@ export const IngestaTab: React.FC = () => {
     setProgress({ current: 0, total: pdfFiles.length, text: 'Iniciando procesamiento de reportes...' });
 
     try {
+      await loadPdfJs();
       const { parsePDFBatch } = await import('../services/pdfBatchProcessor');
       const results = await parsePDFBatch(pdfFiles, (current, total, text) => {
         setProgress({ current, total, text });
@@ -107,7 +102,7 @@ export const IngestaTab: React.FC = () => {
     setProgress({ current: 0, total: stagingFiles.length, text: 'Guardando evaluaciones en Cloud Firestore...' });
 
     try {
-      const { db, setDoc, doc } = await import('../services/firebase');
+      const { db, setDoc, doc } = await import('../services/firebaseFirestore');
       for (let i = 0; i < stagingFiles.length; i++) {
         const item = stagingFiles[i];
         setProgress({

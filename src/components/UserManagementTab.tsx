@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { UserProfile } from '../types';
-import { db, collection, getDocs, doc, setDoc, deleteDoc } from '../services/firebase';
+import { db, collection, getDocs, doc, setDoc, deleteDoc } from '../services/firebaseFirestore';
 
 interface DomainRecord {
   dominio: string;
