@@ -55,6 +55,11 @@ function getEvaluationExerciseMap(e: Evaluation): Record<number, ExerciseItem> {
   return map;
 }
 
+function getEvaluationYear(evaluation: Evaluation): string | null {
+  const date = evaluation.fechaCapacitacion || evaluation.fechaReporte || evaluation.fecha || '';
+  return String(date).match(/\b\d{4}\b/)?.[0] || null;
+}
+
 export const DirectoryTab: React.FC = () => {
   const { userRole } = useAuth();
   const {
@@ -86,6 +91,7 @@ export const DirectoryTab: React.FC = () => {
 
   const [search, setSearch] = useState('');
   const [selectedEmpresa, setSelectedEmpresa] = useState('all');
+  const [selectedYear, setSelectedYear] = useState('all');
   const [selectedEstado, setSelectedEstado] = useState('all');
   const [selectedSede, setSelectedSede] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
@@ -123,10 +129,20 @@ export const DirectoryTab: React.FC = () => {
     return Array.from(set).sort();
   }, [evaluations, selectedEmpresa]);
 
+  const years = useMemo(() => {
+    const availableYears = new Set<string>();
+    evaluations.forEach((evaluation) => {
+      const year = getEvaluationYear(evaluation);
+      if (year) availableYears.add(year);
+    });
+    return Array.from(availableYears).sort((a, b) => Number(b) - Number(a));
+  }, [evaluations]);
+
   // Filtrado multi-criterio y ordenamiento interactivo
   const displayList = useMemo(() => {
     const filtered = evaluations.filter((item) => {
       if (selectedEmpresa !== 'all' && item.empresa !== selectedEmpresa) return false;
+      if (selectedYear !== 'all' && getEvaluationYear(item) !== selectedYear) return false;
       if (selectedSede !== 'all' && item.sede !== selectedSede) return false;
       if (selectedEstado !== 'all' && item.estado !== selectedEstado) return false;
       if (search.trim()) {
@@ -179,7 +195,7 @@ export const DirectoryTab: React.FC = () => {
       }
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [evaluations, selectedEmpresa, selectedSede, selectedEstado, search, sortCol, sortDir]);
+  }, [evaluations, selectedEmpresa, selectedYear, selectedSede, selectedEstado, search, sortCol, sortDir]);
 
   // Resumen métrico (KPIs) en tiempo real según filtros aplicados
   const stats = useMemo(() => {
@@ -724,6 +740,23 @@ export const DirectoryTab: React.FC = () => {
               </select>
             </div>
           )}
+
+          <div>
+            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>📅 Año</label>
+            <select
+              value={selectedYear}
+              onChange={(e) => {
+                setSelectedYear(e.target.value);
+                setCurrentPage(1);
+              }}
+              style={{ width: '100%', padding: '0.55rem 0.85rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#fff', fontSize: '0.88rem' }}
+            >
+              <option value="all">Todos los Años</option>
+              {years.map((year) => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+          </div>
 
           <div>
             <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>📍 Sede</label>
