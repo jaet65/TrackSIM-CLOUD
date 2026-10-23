@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
-import { Evaluation } from '../types';
 
 // Declare global PDF.js lib
 declare global {
@@ -116,12 +115,12 @@ export const IngestaTab: React.FC = () => {
         });
 
         const evalId = item.id || `eval_${Date.now()}_${i}`;
-        const cleanData: Evaluation = {
+        const cleanPayload = JSON.parse(JSON.stringify({
           ...item,
           id: evalId,
           updatedAt: new Date().toISOString()
-        };
-        await setDoc(doc(db, 'evaluaciones', evalId), cleanData, { merge: true });
+        }));
+        await setDoc(doc(db, 'evaluaciones', evalId), cleanPayload, { merge: true });
       }
 
       await reloadEvaluations();

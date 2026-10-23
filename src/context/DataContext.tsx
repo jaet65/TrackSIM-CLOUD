@@ -330,8 +330,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return successfullyDeletedIds.length;
   };
 
+  const sanitizeForFirestore = (obj: any): any => {
+    if (obj === undefined) return null;
+    if (obj === null || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) {
+      return obj.map(sanitizeForFirestore);
+    }
+    const cleaned: Record<string, any> = {};
+    for (const [key, val] of Object.entries(obj)) {
+      if (val !== undefined) {
+        cleaned[key] = sanitizeForFirestore(val);
+      }
+    }
+    return cleaned;
+  };
+
   const updateEvaluation = async (id: string, updatedData: Partial<Evaluation>) => {
-    const cleanUpdates = { ...updatedData, updatedAt: new Date().toISOString() };
+    const rawUpdates = { ...updatedData, updatedAt: new Date().toISOString() };
+    const cleanUpdates = sanitizeForFirestore(rawUpdates);
     try {
       await setDoc(doc(db, 'evaluaciones', id), cleanUpdates, { merge: true });
     } catch (e) {
