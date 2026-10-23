@@ -203,8 +203,27 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
                       <span style={{ color: '#fff', fontWeight: 600 }}>
                         {ex.numero ? `#${ex.numero} • ` : ''}{exName}
                       </span>
-                      <span style={{ color: '#38bdf8', fontWeight: 700 }}>
-                        {typeof ex.calificacion === 'number'
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          color: (ex.noRealizado || ex.estado?.toLowerCase() === 'no realizado')
+                            ? '#94a3b8'
+                            : '#38bdf8',
+                          background: (ex.noRealizado || ex.estado?.toLowerCase() === 'no realizado')
+                            ? 'rgba(148, 163, 184, 0.12)'
+                            : 'transparent',
+                          padding: (ex.noRealizado || ex.estado?.toLowerCase() === 'no realizado')
+                            ? '0.15rem 0.5rem'
+                            : '0',
+                          borderRadius: '4px',
+                          fontSize: (ex.noRealizado || ex.estado?.toLowerCase() === 'no realizado')
+                            ? '0.74rem'
+                            : '0.84rem'
+                        }}
+                      >
+                        {(ex.noRealizado || ex.estado?.toLowerCase() === 'no realizado')
+                          ? '⊘ No Realizado'
+                          : typeof ex.calificacion === 'number'
                           ? `${ex.calificacion.toFixed(1)} pts`
                           : typeof (ex as any).score === 'number'
                             ? `${(ex as any).score.toFixed(1)} pts`

@@ -7,6 +7,8 @@ export interface ExerciseItem {
   infracciones?: number;
   calificacion?: number;
   score?: number;
+  estado?: 'Realizado' | 'No Realizado' | string;
+  noRealizado?: boolean;
   comentarios?: string;
   fecha?: string;
   modulo?: string;

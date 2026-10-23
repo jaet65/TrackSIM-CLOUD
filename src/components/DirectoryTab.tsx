@@ -373,7 +373,9 @@ export const DirectoryTab: React.FC = () => {
       ];
       for (let n = 2; n <= maxSim; n++) {
         const ex = exMaps[idx][n];
-        row.push(ex?.nombre ?? '', ex?.calificacion ?? '');
+        const isNotDone = ex?.noRealizado || ex?.estado?.toLowerCase() === 'no realizado';
+        const califVal = isNotDone ? '-' : (ex?.calificacion ?? '');
+        row.push(ex?.nombre ?? '', califVal);
       }
       row.push(
         e.evaluacionFinalPuntos ?? e.calificacionExacta ?? 0,
@@ -491,11 +493,16 @@ export const DirectoryTab: React.FC = () => {
               return;
             }
             const desc = findCatalogExercise(titulo)?.descripcion || map[n]?.comentarios || '';
+            const isDashNotDone = /^-+$/.test(notaStr.trim()) || /^no\s*realizado$/i.test(notaStr.trim());
+
             map[n] = {
               numero: n,
               nombre: titulo,
-              calificacion: notaStr === '' ? undefined : num(notaStr, 0),
-              comentarios: desc
+              calificacion: isDashNotDone ? undefined : (notaStr === '' ? undefined : num(notaStr, 0)),
+              score: isDashNotDone ? undefined : (notaStr === '' ? undefined : num(notaStr, 0)),
+              estado: isDashNotDone ? 'No Realizado' : 'Realizado',
+              noRealizado: isDashNotDone,
+              comentarios: isDashNotDone ? (desc ? `${desc} [No Realizado]` : 'Ejercicio no realizado en simulador.') : desc
             };
           });
 
