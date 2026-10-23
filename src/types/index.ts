@@ -66,6 +66,9 @@ export interface Evaluation {
   createdAt?: string;
   updatedAt?: string;
   origen?: string;
+  cursoCodigo?: string;
+  cursoNombre?: string;
+  folioGrupo?: string;
 }
 
 export interface ParsedPdfEvaluation extends Omit<Evaluation, 'id'> {

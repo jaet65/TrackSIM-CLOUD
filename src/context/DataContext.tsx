@@ -35,6 +35,8 @@ interface DataContextType {
   setSearchFilter: (s: string) => void;
   deleteEvaluation: (id: string) => Promise<void>;
   deleteAllEvaluations: (targetEvaluations?: Evaluation[]) => Promise<number>;
+  getEvaluationsBackup: () => Promise<Evaluation[]>;
+  restoreEvaluationsBackup: (backupEvaluations: Evaluation[]) => Promise<void>;
   updateEvaluation: (id: string, data: Partial<Evaluation>) => Promise<void>;
   resetCacheAndReload: () => Promise<void>;
 }
@@ -444,6 +446,49 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
+  const getEvaluationsBackup = async (): Promise<Evaluation[]> => {
+    if (userRole !== 'admin') {
+      throw new Error('Solo el personal administrativo puede exportar un respaldo completo.');
+    }
+
+    const snapshot = await queryEvaluations();
+    return snapshot.docs.map((evaluationDoc) => ({
+      ...evaluationDoc.data(),
+      id: evaluationDoc.id
+    } as Evaluation));
+  };
+
+  const restoreEvaluationsBackup = async (backupEvaluations: Evaluation[]): Promise<void> => {
+    if (userRole !== 'admin') {
+      throw new Error('Solo el personal administrativo puede restaurar un respaldo completo.');
+    }
+
+    const BATCH_SIZE = 450;
+    const restoredAt = new Date().toISOString();
+    for (let i = 0; i < backupEvaluations.length; i += BATCH_SIZE) {
+      const batch = writeBatch(db);
+      backupEvaluations.slice(i, i + BATCH_SIZE).forEach((evaluation) => {
+        const { id, ...data } = evaluation;
+        batch.set(doc(db, 'evaluaciones', id), {
+          ...data,
+          updatedAt: restoredAt
+        });
+      });
+      await batch.commit();
+    }
+
+    setEvaluations((current) => {
+      const restoredById = new Map(current.map((evaluation) => [evaluation.id, evaluation]));
+      backupEvaluations.forEach((evaluation) => restoredById.set(evaluation.id, {
+        ...evaluation,
+        updatedAt: restoredAt
+      }));
+      const restored = Array.from(restoredById.values());
+      persistItems(restored);
+      return restored;
+    });
+  };
+
   const resetCacheAndReload = async () => {
     await ensureCache();
     cacheRef.current = null;
@@ -475,6 +520,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSearchFilter,
         deleteEvaluation,
         deleteAllEvaluations,
+        getEvaluationsBackup,
+        restoreEvaluationsBackup,
         updateEvaluation,
         resetCacheAndReload
       }}

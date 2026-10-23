@@ -33,6 +33,8 @@ describe('Navbar component', () => {
       initialLoaded: true,
       deleteEvaluation: vi.fn(),
       deleteAllEvaluations: vi.fn(),
+      getEvaluationsBackup: vi.fn(),
+      restoreEvaluationsBackup: vi.fn(),
       updateEvaluation: vi.fn(),
       resetCacheAndReload: vi.fn()
     });

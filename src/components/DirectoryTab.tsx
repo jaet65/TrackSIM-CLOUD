@@ -5,6 +5,7 @@ import { Evaluation, ExerciseItem } from '../types';
 import { findCatalogExercise } from '../services/exerciseCatalog';
 import { ReportDetailModal } from './ReportDetailModal';
 import { getMassDeleteReauthMethod } from '../services/authorization';
+import { isEvaluationBackup, parseEvaluationBackup, serializeEvaluationBackup } from '../services/evaluationBackup';
 
 /** Escapa un valor para CSV (comillas dobles, comas y saltos de línea) */
 function csvCell(v: any): string {
@@ -69,12 +70,15 @@ export const DirectoryTab: React.FC = () => {
     deleteEvaluation,
     deleteAllEvaluations,
     updateEvaluation,
+    getEvaluationsBackup,
+    restoreEvaluationsBackup,
     reloadEvaluations,
     loading
   } = useData();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [isExportingBackup, setIsExportingBackup] = useState(false);
   const [importProgress, setImportProgress] = useState<string>('');
   const [isDeletingAll, setIsDeletingAll] = useState(false);
 
@@ -225,6 +229,13 @@ export const DirectoryTab: React.FC = () => {
   const totalPages = Math.max(1, Math.ceil(displayList.length / PAGE_SIZE));
   const activePage = Math.min(Math.max(1, currentPage), totalPages);
   const pagedList = displayList.slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE);
+  const hasActiveFilters = Boolean(
+    search.trim() ||
+    selectedEmpresa !== 'all' ||
+    selectedYear !== 'all' ||
+    selectedEstado !== 'all' ||
+    selectedSede !== 'all'
+  );
 
   const toggleSelectAll = () => {
     if (selectedIds.size === pagedList.length && pagedList.length > 0) {
@@ -362,72 +373,84 @@ export const DirectoryTab: React.FC = () => {
   /**
    * Exportar a CSV con columnas completas y formateo para edición masiva
    */
-  const handleExportCSV = () => {
-    if (displayList.length === 0) {
-      alert('No hay datos disponibles para exportar con los filtros seleccionados.');
-      return;
-    }
+  const handleExportCSV = async () => {
+    setIsExportingBackup(true);
+    try {
+      const backupEvaluations = hasActiveFilters ? [...displayList] : await getEvaluationsBackup();
+      if (backupEvaluations.length === 0) {
+        alert(hasActiveFilters
+          ? 'No hay evaluaciones que coincidan con los filtros seleccionados.'
+          : 'No hay evaluaciones en la base de datos para respaldar.');
+        return;
+      }
 
-    const exMaps = displayList.map(getEvaluationExerciseMap);
-    let maxSim = 4;
-    exMaps.forEach(m => Object.keys(m).forEach(k => { if (+k > maxSim) maxSim = +k; }));
+      const exMaps = backupEvaluations.map(getEvaluationExerciseMap);
+      let maxSim = 4;
+      exMaps.forEach(m => Object.keys(m).forEach(k => { if (+k > maxSim) maxSim = +k; }));
 
-    const headers = [
-      'ID', 'Conductor', 'Empresa', 'Sede', 'Fecha', 'Curso', 'Nombre Curso', 'Instructor', 'Folio Grupo',
-      'Habilidades Manejo (Puntos)', 'Habilidades Manejo (%)',
-      'Simulador (Puntos)', 'Simulador (%)'
-    ];
-    for (let n = 2; n <= maxSim; n++) {
-      headers.push(`Sim ${n} Titulo`, `Sim ${n} Nota`);
-    }
-    headers.push(
-      'Evaluacion Final',
-      'Colisiones', 'Fatalidades', 'Fuera de Via',
-      'Estado'
-    );
-
-    const rows = displayList.map((e, idx) => {
-      const row: any[] = [
-        e.id,
-        e.conductor || e.operador || '',
-        e.empresa || '',
-        e.sede || '',
-        e.fechaCapacitacionFormato || e.fechaCapacitacion || e.fechaReporte || e.fecha || '',
-        (e as any).cursoCodigo || '',
-        (e as any).cursoNombre || '',
-        e.instructor || '',
-        (e as any).folioGrupo || '',
-        e.habilidadesManejoPuntos || 0,
-        e.habilidadesManejoPct || 0,
-        e.practicaSimuladorPuntos || 0,
-        e.practicaSimuladorPct || 0
+      const headers = [
+        'ID', 'Conductor', 'Empresa', 'Sede', 'Fecha', 'Curso', 'Nombre Curso', 'Instructor', 'Folio Grupo',
+        'Habilidades Manejo (Puntos)', 'Habilidades Manejo (%)',
+        'Simulador (Puntos)', 'Simulador (%)'
       ];
       for (let n = 2; n <= maxSim; n++) {
-        const ex = exMaps[idx][n];
-        const isNotDone = ex?.noRealizado || ex?.estado?.toLowerCase() === 'no realizado';
-        const califVal = isNotDone ? '-' : (ex?.calificacion ?? '');
-        row.push(ex?.nombre ?? '', califVal);
+        headers.push(`Sim ${n} Titulo`, `Sim ${n} Nota`);
       }
-      row.push(
-        e.evaluacionFinalPuntos ?? e.calificacionExacta ?? 0,
-        e.colisiones || 0,
-        e.fatalidades || 0,
-        e.vehiculoFueraVia || 0,
-        e.estado || ''
+      headers.push(
+        'Evaluacion Final',
+        'Colisiones', 'Fatalidades', 'Fuera de Via',
+        'Estado', 'Datos completos (JSON)'
       );
-      return row.map(csvCell);
-    });
 
-    const csvContent = '\uFEFF' + [headers.map(csvCell).join(','), ...rows.map(r => r.join(','))].join('\r\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `TrackSIM_Evaluaciones_${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+      const rows = backupEvaluations.map((e, idx) => {
+        const row: unknown[] = [
+          e.id,
+          e.conductor || e.operador || '',
+          e.empresa || '',
+          e.sede || '',
+          e.fechaCapacitacionFormato || e.fechaCapacitacion || e.fechaReporte || e.fecha || '',
+          e.cursoCodigo || '',
+          e.cursoNombre || '',
+          e.instructor || '',
+          e.folioGrupo || '',
+          e.habilidadesManejoPuntos || 0,
+          e.habilidadesManejoPct || 0,
+          e.practicaSimuladorPuntos || 0,
+          e.practicaSimuladorPct || 0
+        ];
+        for (let n = 2; n <= maxSim; n++) {
+          const ex = exMaps[idx][n];
+          const isNotDone = ex?.noRealizado || ex?.estado?.toLowerCase() === 'no realizado';
+          const califVal = isNotDone ? '-' : (ex?.calificacion ?? '');
+          row.push(ex?.nombre ?? '', califVal);
+        }
+        row.push(
+          e.evaluacionFinalPuntos ?? e.calificacionExacta ?? 0,
+          e.colisiones || 0,
+          e.fatalidades || 0,
+          e.vehiculoFueraVia || 0,
+          e.estado || '',
+          serializeEvaluationBackup(e)
+        );
+        return row.map(csvCell);
+      });
+
+      const csvContent = '\uFEFF' + [headers.map(csvCell).join(','), ...rows.map(r => r.join(','))].join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `TrackSIM_${hasActiveFilters ? 'Seleccionados' : 'Respaldo'}_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error exportando respaldo completo:', err);
+      alert('No se pudo generar el respaldo completo desde Firestore. Intenta nuevamente cuando haya conexión.');
+    } finally {
+      setIsExportingBackup(false);
+    }
   };
 
   /**
@@ -447,6 +470,43 @@ export const DirectoryTab: React.FC = () => {
       const idCol = col('ID');
       if (idCol < 0) {
         alert('El CSV no tiene la columna "ID". Usa un archivo previamente exportado desde TrackSIM.');
+        return;
+      }
+
+      const backupCol = col('Datos completos (JSON)');
+      if (backupCol >= 0) {
+        const backupEvaluations = rows.slice(1).map((row, index) => {
+          const raw = row[backupCol];
+          if (!raw) throw new Error(`Falta el contenido del respaldo en la fila ${index + 2}.`);
+          let parsed: unknown;
+          try {
+            parsed = parseEvaluationBackup(raw);
+          } catch {
+            throw new Error(`El contenido JSON del respaldo no es válido en la fila ${index + 2}.`);
+          }
+          if (!isEvaluationBackup(parsed)) {
+            throw new Error(`La evaluación de la fila ${index + 2} no tiene un ID o empresa válidos.`);
+          }
+          if (parsed.id !== (row[idCol] || '').trim()) {
+            throw new Error(`El ID del respaldo no coincide en la fila ${index + 2}.`);
+          }
+          return parsed;
+        });
+        const backupIds = new Set(backupEvaluations.map((evaluation) => evaluation.id));
+        if (backupIds.size !== backupEvaluations.length) {
+          alert('El respaldo contiene IDs duplicados; no se realizaron cambios.');
+          return;
+        }
+        if (!window.confirm(
+          `Se restaurarán ${backupEvaluations.length} evaluaciones desde el respaldo. Los registros con el mismo ID serán reemplazados y los que falten se crearán.\n\n¿Deseas continuar?`
+        )) {
+          return;
+        }
+
+        setIsImporting(true);
+        setImportProgress(`Restaurando ${backupEvaluations.length} evaluaciones`);
+        await restoreEvaluationsBackup(backupEvaluations);
+        alert(`Se restauraron correctamente ${backupEvaluations.length} evaluaciones desde el respaldo.`);
         return;
       }
 
@@ -593,7 +653,8 @@ export const DirectoryTab: React.FC = () => {
       alert(`¡${updates.length} evaluaciones actualizadas exitosamente desde el CSV!`);
     } catch (err) {
       console.error('Error al importar CSV:', err);
-      alert('Ocurrió un error al procesar el archivo CSV.');
+      const message = err instanceof Error ? err.message : 'Error desconocido';
+      alert(`No se pudo procesar el archivo CSV:\n\n${message}`);
     } finally {
       setIsImporting(false);
       setImportProgress('');
@@ -631,8 +692,8 @@ export const DirectoryTab: React.FC = () => {
             type="button"
             className="btn btn-secondary"
             onClick={() => fileInputRef.current?.click()}
-            disabled={isImporting}
-            title="Sube un archivo CSV modificado para actualizar masivamente por ID"
+            disabled={isImporting || isExportingBackup}
+            title="Importa un CSV de edición o restaura un respaldo completo"
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.85rem' }}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -647,7 +708,10 @@ export const DirectoryTab: React.FC = () => {
             type="button"
             className="btn btn-secondary"
             onClick={handleExportCSV}
-            title="Descargar evaluaciones con filtros actuales en CSV"
+            disabled={isImporting || isExportingBackup}
+            title={hasActiveFilters
+              ? `Descargar las ${displayList.length} evaluaciones que coinciden con los filtros`
+              : 'Descargar todas las evaluaciones directamente desde Firestore, sin aplicar filtros'}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.85rem' }}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -655,7 +719,9 @@ export const DirectoryTab: React.FC = () => {
               <polyline points="7 10 12 15 17 10"></polyline>
               <line x1="12" y1="15" x2="12" y2="3"></line>
             </svg>
-            Exportar CSV
+            {isExportingBackup
+              ? 'Generando CSV...'
+              : hasActiveFilters ? 'Exportar seleccionados CSV' : 'Exportar respaldo CSV'}
           </button>
 
           <button
@@ -811,6 +877,26 @@ export const DirectoryTab: React.FC = () => {
               <option value="No Aprobado">❌ No Aprobado (&lt; 5.0)</option>
             </select>
           </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => {
+              setSearch('');
+              setSelectedEmpresa('all');
+              setSelectedYear('all');
+              setSelectedSede('all');
+              setSelectedEstado('all');
+              setCurrentPage(1);
+              setSelectedIds(new Set());
+            }}
+            disabled={!hasActiveFilters}
+            title="Quitar todos los filtros y mostrar todas las evaluaciones"
+            style={{ fontSize: '0.75rem', padding: '0.35rem 0.65rem' }}
+          >
+            Limpiar filtros
+          </button>
         </div>
       </div>
 
