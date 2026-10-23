@@ -922,23 +922,41 @@ export async function parsePDFFile(fileOrBuffer, filename = '') {
     throw new Error('Tipo de archivo no soportado para análisis.');
   }
 
-  // Cargar documento en PDF.js
+  // Cargar documento en PDF.js con timeout y limpieza estricta de memoria
   const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
-  const pdfDoc = await loadingTask.promise;
+  let pdfDoc = null;
+  try {
+    pdfDoc = await loadingTask.promise;
 
-  // Extraer texto
-  const pagesText = await extractTextFromPDF(pdfDoc);
+    // Extraer texto
+    const pagesText = await extractTextFromPDF(pdfDoc);
 
-  // Parsear campos
-  const parsedData = parseEvaluationData(
-    pagesText,
-    name,
-    pagesText.page1Items,
-    pagesText.page4Items,
-    pagesText.page5Items,
-    pagesText.allPagesItems,
-    pagesText.page5OpList
-  );
-  return parsedData;
+    // Parsear campos
+    const parsedData = parseEvaluationData(
+      pagesText,
+      name,
+      pagesText.page1Items,
+      pagesText.page4Items,
+      pagesText.page5Items,
+      pagesText.allPagesItems,
+      pagesText.page5OpList
+    );
+    return parsedData;
+  } finally {
+    // Liberar memoria del documento y recursos canvas/workers en el navegador
+    if (pdfDoc) {
+      try {
+        if (typeof pdfDoc.cleanup === 'function') await pdfDoc.cleanup();
+        if (typeof pdfDoc.destroy === 'function') await pdfDoc.destroy();
+      } catch (cleanupErr) {
+        console.warn('Advertencia liberando memoria de PDF:', cleanupErr);
+      }
+    }
+    if (loadingTask && typeof loadingTask.destroy === 'function') {
+      try {
+        await loadingTask.destroy();
+      } catch (_) {}
+    }
+  }
 }
 

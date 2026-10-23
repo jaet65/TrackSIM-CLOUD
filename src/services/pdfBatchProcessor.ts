@@ -15,9 +15,25 @@ export async function parsePDFBatch(
   let completed = 0;
   const results: any[] = [];
 
-  // Límite de concurrencia para evitar saturar memoria en lotes de 50+ archivos
-  const CONCURRENCY_LIMIT = 2;
+  // Límite de concurrencia: 1 a la vez para evitar colapsar la memoria del hilo principal de JS
+  const CONCURRENCY_LIMIT = 1;
   const queue = [...files.entries()];
+
+  // Timeout de seguridad por PDF (15 segundos max por archivo)
+  const parseWithTimeout = async (file: File, filename: string, timeoutMs = 15000): Promise<any> => {
+    let timer: any;
+    const timeoutPromise = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(`Timeout de procesamiento excedido (${timeoutMs / 1000}s) para el archivo ${filename}`));
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([parsePDFFile(file, filename), timeoutPromise]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
 
   const processNext = async (): Promise<void> => {
     while (queue.length > 0) {
@@ -29,9 +45,11 @@ export async function parsePDFBatch(
         onProgress(completed, total, `Procesando (${index + 1}/${total}): ${file.name}`);
       }
 
+      // Pequeña pausa (50ms) para que el navegador libere el Event Loop y refresque la pantalla/animaciones
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
       try {
-        // En navegadores modernos se pasa a través de parsePDFFile
-        const parsed = await parsePDFFile(file, file.name);
+        const parsed = await parseWithTimeout(file, file.name);
         results.push({
           id: `eval_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
           ...parsed,
@@ -39,7 +57,7 @@ export async function parsePDFBatch(
           originalSede: parsed.sede || '',
           fileName: file.name
         });
-      } catch (err) {
+      } catch (err: any) {
         console.error(`Error procesando archivo ${file.name}:`, err);
       } finally {
         completed++;
