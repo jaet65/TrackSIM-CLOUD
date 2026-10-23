@@ -9,7 +9,8 @@ export const EXERCISE_CATALOG = [
   { nombre: 'Enrampe', descripcion: 'Ejercicio de entrega en andenes bajo diferentes condiciones. (Se entrega retroalimentación al operador.)' },
   { nombre: 'Maniobras Críticas', descripcion: 'En un entorno urbano, simulamos la conducción con un énfasis en ser vistos y escuchados durante maniobras repetitivas. (Se entrega retroalimentación al operador.)' },
   { nombre: 'Sierra', descripcion: 'Conducción en Sierra con condiciones adversas, enfocada en técnicas de frenado en condiciones de baja tracción. (Se entrega retroalimentación al operador.)' },
-  { nombre: 'Niebla', descripcion: 'Conducción en pista con baja visibilidad debido a neblina densa. (Se entrega retroalimentación al operador.)' }
+  { nombre: 'Niebla', descripcion: 'Conducción en pista con baja visibilidad debido a neblina densa. (Se entrega retroalimentación al operador.)' },
+  { nombre: 'Reparto', descripcion: 'Reparto Urbano con enfoque de manejo técnico económico y seguridad vial con paradas continuas en diferentes ubicaciones. (Se entrega retroalimentación al operador.)' }
 ];
 
 export function normalizeExerciseName(str) {
