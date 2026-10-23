@@ -59,7 +59,6 @@ export const DirectoryTab: React.FC = () => {
   const { userRole } = useAuth();
   const {
     evaluations,
-    filteredEvaluations,
     companies,
     deleteEvaluation,
     deleteAllEvaluations,
@@ -118,15 +117,15 @@ export const DirectoryTab: React.FC = () => {
   // Sedes disponibles dinámicas
   const sedes = useMemo(() => {
     const set = new Set<string>();
-    filteredEvaluations.forEach((e) => {
-      if (e.sede) set.add(e.sede);
+    evaluations.forEach((e) => {
+      if (e.sede && (selectedEmpresa === 'all' || e.empresa === selectedEmpresa)) set.add(e.sede);
     });
     return Array.from(set).sort();
-  }, [filteredEvaluations]);
+  }, [evaluations, selectedEmpresa]);
 
   // Filtrado multi-criterio y ordenamiento interactivo
   const displayList = useMemo(() => {
-    const filtered = filteredEvaluations.filter((item) => {
+    const filtered = evaluations.filter((item) => {
       if (selectedEmpresa !== 'all' && item.empresa !== selectedEmpresa) return false;
       if (selectedSede !== 'all' && item.sede !== selectedSede) return false;
       if (selectedEstado !== 'all' && item.estado !== selectedEstado) return false;
@@ -180,7 +179,7 @@ export const DirectoryTab: React.FC = () => {
       }
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [filteredEvaluations, selectedEmpresa, selectedSede, selectedEstado, search, sortCol, sortDir]);
+  }, [evaluations, selectedEmpresa, selectedSede, selectedEstado, search, sortCol, sortDir]);
 
   // Resumen métrico (KPIs) en tiempo real según filtros aplicados
   const stats = useMemo(() => {
@@ -236,7 +235,7 @@ export const DirectoryTab: React.FC = () => {
   };
 
   const handleDeleteAllEvaluations = async () => {
-    const total = filteredEvaluations.length;
+    const total = displayList.length;
     if (total === 0) {
       alert('No hay evaluaciones para eliminar.');
       return;
@@ -258,7 +257,7 @@ export const DirectoryTab: React.FC = () => {
 
     try {
       setIsDeletingAll(true);
-      const deletedCount = await deleteAllEvaluations(isFiltered ? filteredEvaluations : undefined);
+      const deletedCount = await deleteAllEvaluations(isFiltered ? displayList : undefined);
       setSelectedIds(new Set());
       alert(`Se eliminaron exitosamente ${deletedCount} evaluaciones en Firestore.`);
     } catch (err: any) {
@@ -631,7 +630,7 @@ export const DirectoryTab: React.FC = () => {
             type="button"
             className="btn btn-danger"
             onClick={handleDeleteAllEvaluations}
-            disabled={isDeletingAll || filteredEvaluations.length === 0}
+            disabled={isDeletingAll || displayList.length === 0}
             title="Eliminar todas las evaluaciones de la base de datos o las filtradas"
             style={{
               display: 'inline-flex',
