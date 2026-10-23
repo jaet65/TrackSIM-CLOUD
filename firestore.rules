@@ -2,11 +2,12 @@ rules_version = '2';
 
 // Modelo de datos asumido:
 //  - evaluaciones/{id}: { empresa: string, updatedAt: string(ISO), ... }
+//  - conductores/{id}: { empresa: string, ... } (acceso a la empresa asignada)
 //  - usuarios/{uid}: { role: 'viewer', empresaPermitida: string ('' | 'all' | nombre),
 //                      empresasPermitidas: string[], email, ... } (asignación de empresa solo por admin)
 //  - dominios_empresas/{dominio}: { empresa: string }  (dominio en minúsculas, ej. "cliente.com")
-//  - configuracion/{doc}: catálogos compartidos (ej. catalogo_ejercicios)
-//  - _eliminaciones/{id}, conductores/{id}
+//  - configuracion/catalogo_ejercicios: catálogo compartido, legible por usuarios autenticados
+//  - _eliminaciones/{id}: { empresa: string, deletedAt: string(ISO), ids?: string[], deleteAll?: boolean }
 service cloud.firestore {
   match /databases/{database}/documents {
     // Administrador verificado (@corporativomaf.com)
@@ -30,7 +31,11 @@ service cloud.firestore {
     }
 
     function emailDomain() {
-      return request.auth.token.email.lower().split('@')[1];
+      return request.auth != null &&
+             request.auth.token.email is string &&
+             request.auth.token.email.matches('^[^@]+@[^@]+$')
+        ? request.auth.token.email.lower().split('@')[1]
+        : '';
     }
 
     function domainPath() {
@@ -39,7 +44,7 @@ service cloud.firestore {
 
     // Empresa asignada por dominio de correo (vacía si no hay mapeo)
     function domainEmpresa() {
-      return (request.auth.token.email != null && exists(domainPath()))
+      return (emailDomain() != '' && exists(domainPath()))
         ? get(domainPath()).data.get('empresa', '')
         : '';
     }
@@ -64,9 +69,9 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Fichas de conductores: lectura autenticada, escritura para admin
+    // Fichas de conductores: lectura limitada a la empresa asignada, escritura para admin
     match /conductores/{conductorId} {
-      allow read: if signedIn();
+      allow read: if canReadEmpresa(resource.data.empresa);
       allow write: if isAdmin();
     }
 
@@ -89,19 +94,20 @@ service cloud.firestore {
 
     // Mapeo de dominios a empresas
     match /dominios_empresas/{domainId} {
-      allow read: if signedIn();
+      allow read: if isAdmin() ||
+                    (signedIn() && emailDomain() != '' && domainId == emailDomain());
       allow write: if isAdmin();
     }
 
-    // Configuración compartida (catálogo de ejercicios, etc.)
+    // Solo el catálogo usado por todos los usuarios es legible fuera del rol admin
     match /configuracion/{docId} {
-      allow read: if signedIn();
+      allow read: if isAdmin() || (signedIn() && docId == 'catalogo_ejercicios');
       allow write: if isAdmin();
     }
 
-    // Tombstones de sincronización incremental
+    // Tombstones de sincronización incremental, limitados a las empresas permitidas
     match /_eliminaciones/{delId} {
-      allow read: if signedIn();
+      allow read: if canReadEmpresa(resource.data.empresa);
       allow write: if isAdmin();
     }
   }

@@ -101,7 +101,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     // Esperar la lectura del caché en IndexedDB y validar que corresponde al alcance actual (uid + empresas)
     await ensureCache();
-    const scopeKey = `${user.uid}|${isUnrestricted ? 'all' : [...allowedCompanies].sort().join(',')}`;
+    const scopeKey = `${user.uid}|${isUnrestricted ? 'all' : [...allowedCompanies].sort().join(',')}|sync-v2`;
     const cache = cacheRef.current;
     const scopeChanged = !cache || cache.scope !== scopeKey;
     const cachedItems = !scopeChanged && cache ? cache.items : [];
@@ -124,9 +124,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (isIncremental) {
         // Consulta incremental: únicamente documentos actualizados o creados después de la última sincronización
         console.log(`[Firestore Cache] Buscando actualizaciones incrementales desde: ${storedLastSync}`);
+        const queryDeletions = async () => {
+          const tombstones = collection(db, '_eliminaciones');
+          if (isUnrestricted) {
+            return getDocs(query(tombstones, where('deletedAt', '>', storedLastSync)));
+          }
+
+          const snapshots = await Promise.all(
+            allowedCompanies.map((empresa) =>
+              getDocs(query(
+                tombstones,
+                where('empresa', '==', empresa),
+                where('deletedAt', '>', storedLastSync)
+              ))
+            )
+          );
+          return { docs: snapshots.flatMap((snapshot) => snapshot.docs) };
+        };
+
         const [snapUpdates, snapDeletions] = await Promise.all([
           queryEvaluations([where('updatedAt', '>', storedLastSync)]),
-          getDocs(query(collection(db, '_eliminaciones'), where('deletedAt', '>', storedLastSync)))
+          queryDeletions()
         ]);
 
         console.log(`[Firestore Sync] ${snapUpdates.docs.length} documentos nuevos/modificados y ${snapDeletions.docs.length} eliminaciones recibidas.`);
@@ -139,10 +157,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Remover de la memoria y caché local cualquier documento registrado como eliminado
         if (snapDeletions.docs.length > 0) {
-          snapDeletions.forEach((d) => {
+          snapDeletions.docs.forEach((d) => {
             const data = d.data();
             if (data.deleteAll) {
-              itemsMap.clear();
+              itemsMap.forEach((item, id) => {
+                if (item.empresa === data.empresa) itemsMap.delete(id);
+              });
             } else if (Array.isArray(data.ids) && data.ids.length > 0) {
               data.ids.forEach((id: string) => itemsMap.delete(id));
             } else {
@@ -278,10 +298,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteEvaluation = async (id: string) => {
     try {
       const nowIso = new Date().toISOString();
+      const evaluation = evaluations.find((item) => item.id === id);
+      if (!evaluation) {
+        throw new Error(`No se encontró la evaluación ${id} para registrar su empresa.`);
+      }
       const batch = writeBatch(db);
       batch.delete(doc(db, 'evaluaciones', id));
       batch.set(doc(db, '_eliminaciones', id), {
         id,
+        empresa: evaluation.empresa,
         deletedAt: nowIso
       });
       await batch.commit();
@@ -302,6 +327,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const isTotalWipe = !targetEvaluations || toDelete.length >= evaluations.length;
     const idsToDelete = toDelete.map((e) => e.id);
+    const companyByEvaluationId = new Map(toDelete.map((evaluation) => [evaluation.id, evaluation.empresa]));
     const BATCH_SIZE = 450; // Firestore admite hasta 500 operaciones por batch
     const successfullyDeletedIds: string[] = [];
     let firestoreError: any = null;
@@ -327,12 +353,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Registrar evento de eliminación para sincronizar con los demás clientes
     if (successfullyDeletedIds.length > 0) {
       try {
-        const tombstoneId = `del_${Date.now()}`;
-        await setDoc(doc(db, '_eliminaciones', tombstoneId), {
-          deletedAt: nowIso,
-          deleteAll: isTotalWipe,
-          ids: isTotalWipe ? [] : successfullyDeletedIds
+        const didDeleteAll = isTotalWipe && successfullyDeletedIds.length >= evaluations.length;
+        const idsByCompany = new Map<string, string[]>();
+        successfullyDeletedIds.forEach((id) => {
+          const empresa = companyByEvaluationId.get(id);
+          if (!empresa) {
+            throw new Error(`No se encontró la empresa de la evaluación eliminada ${id}.`);
+          }
+          const companyIds = idsByCompany.get(empresa) || [];
+          companyIds.push(id);
+          idsByCompany.set(empresa, companyIds);
         });
+
+        const tombstoneWrites: Promise<void>[] = [];
+        let tombstoneIndex = 0;
+        idsByCompany.forEach((ids, empresa) => {
+          const idChunks = didDeleteAll ? [[]] : Array.from(
+            { length: Math.ceil(ids.length / 400) },
+            (_, index) => ids.slice(index * 400, (index + 1) * 400)
+          );
+          idChunks.forEach((idsChunk) => {
+            const tombstoneId = `del_${Date.now()}_${tombstoneIndex++}_${Math.random().toString(36).slice(2, 8)}`;
+            tombstoneWrites.push(setDoc(doc(db, '_eliminaciones', tombstoneId), {
+              empresa,
+              deletedAt: nowIso,
+              deleteAll: didDeleteAll,
+              ids: idsChunk
+            }));
+          });
+        });
+        await Promise.all(tombstoneWrites);
       } catch (tombErr) {
         console.warn('Error registrando evento de eliminación:', tombErr);
       }
