@@ -104,15 +104,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
     return filteredEvaluations.slice(0, 5);
   }, [filteredEvaluations]);
 
-  // Top 5 Empresas con mejor desempeño (si estamos en vista multi-empresa)
+  // Empresas con mejor desempeño (hasta 30, adaptándose al total disponible)
   const topCompanies = useMemo(() => {
     return [...companiesSummaries]
       .filter((c) => !c.esGlobal)
       .sort((a, b) => b.promedioFinal - a.promedioFinal)
-      .slice(0, 5);
+      .slice(0, 30);
   }, [companiesSummaries]);
 
-  // Desempeño Comparativo por Sedes / Ciudades (cuando el usuario solo tiene 1 empresa o se filtra una empresa)
+  // Desempeño Comparativo por Sedes / Ciudades (hasta 30)
   const sedesComparison = useMemo(() => {
     const sedeMap = new Map<string, { totalPuntos: number; count: number }>();
     filteredEvaluations.forEach((e) => {
@@ -131,7 +131,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
         promedio: Number((data.totalPuntos / (data.count || 1)).toFixed(1))
       }))
       .sort((a, b) => b.promedio - a.promedio)
-      .slice(0, 6);
+      .slice(0, 30);
   }, [filteredEvaluations]);
 
   // Resumen ejecutivo de la empresa/flota activa (Años, Operadores, Ejercicios)
@@ -267,6 +267,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
     cutout: '72%'
   };
 
+  const barCount = isCityComparison ? sedesComparison.length : topCompanies.length;
+  // Grosor adaptativo: si son pocas (<= 6) barras gruesas (34px); si son 10 (24px); si son 25-30 barras compactas (14px)
+  const dynamicBarThickness = barCount <= 6 ? 34 : barCount <= 12 ? 24 : barCount <= 20 ? 18 : 14;
+
   // Gráfico de Barras: Comparativa Top Flotas o Desempeño por Ciudades / Sedes
   const barData = isCityComparison
     ? {
@@ -278,8 +282,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
           backgroundColor: sedesComparison.map((s) =>
             s.promedio >= 8.0 ? 'rgba(34, 197, 94, 0.75)' : 'rgba(56, 189, 248, 0.75)'
           ),
-          borderRadius: 6,
-          maxBarThickness: 36
+          borderRadius: 5,
+          maxBarThickness: dynamicBarThickness
         }
       ]
     }
@@ -292,8 +296,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
           backgroundColor: topCompanies.map((c) =>
             c.promedioFinal >= 8.0 ? 'rgba(34, 197, 94, 0.75)' : 'rgba(56, 189, 248, 0.75)'
           ),
-          borderRadius: 6,
-          maxBarThickness: 36
+          borderRadius: 5,
+          maxBarThickness: dynamicBarThickness
         }
       ]
     };
@@ -318,7 +322,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
       },
       x: {
         grid: { display: false },
-        ticks: { color: '#94a3b8', font: { size: 11 } }
+        ticks: {
+          color: '#94a3b8',
+          font: { size: barCount > 15 ? 9 : 11 },
+          maxRotation: barCount > 5 ? 45 : 0,
+          minRotation: barCount > 8 ? 25 : 0,
+          autoSkip: false
+        }
       }
     }
   };
