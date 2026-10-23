@@ -22,11 +22,20 @@ jobs:
       - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
+
+      - name: Configurar Java para Firestore Emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
 
       - name: Instalar dependencias
         run: npm ci
+
+      - name: Ejecutar pruebas
+        run: npm test
 
       - name: Compilar aplicación React + Vite
         run: npm run build
