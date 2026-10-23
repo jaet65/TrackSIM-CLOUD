@@ -47,47 +47,26 @@ export const IngestaTab: React.FC = () => {
     setIsProcessing(true);
     setProgress({ current: 0, total: pdfFiles.length, text: 'Iniciando procesamiento de reportes...' });
 
-    // Dynamic import of pdf-parser from public/js to leverage parsing engine
-    let parsePDFFile: any;
     try {
-      const importDynamic = new Function('modulePath', 'return import(modulePath)');
-      const module = await importDynamic('/js/pdf-parser.js');
-      parsePDFFile = module.parsePDFFile;
-    } catch (e) {
-      console.warn('Fallback cargando parser local:', e);
-    }
-
-    const results: any[] = [];
-    for (let i = 0; i < pdfFiles.length; i++) {
-      const file = pdfFiles[i];
-      setProgress({
-        current: i + 1,
-        total: pdfFiles.length,
-        text: `Extrayendo datos de (${i + 1}/${pdfFiles.length}): ${file.name}`
+      const { parsePDFBatch } = await import('../services/pdfBatchProcessor');
+      const results = await parsePDFBatch(pdfFiles, (current, total, text) => {
+        setProgress({ current, total, text });
       });
 
-      try {
-        if (parsePDFFile) {
-          const parsed = await parsePDFFile(file, file.name);
-          results.push({
-            id: `eval_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-            ...parsed,
-            originalEmpresa: parsed.empresa || '',
-            originalSede: parsed.sede || '',
-            fileName: file.name
-          });
-        }
-      } catch (err: any) {
-        console.error(`Error al procesar ${file.name}:`, err);
-      }
+      setIsProcessing(false);
+      setStagingFiles((prev) => [...prev, ...results]);
+      setFeedback({
+        message: `¡Se procesaron ${results.length} de ${pdfFiles.length} reporte(s) con éxito! Revisa la información antes de guardar en Firestore.`,
+        type: results.length > 0 ? 'success' : 'warning'
+      });
+    } catch (err: any) {
+      console.error('Error procesando lote de PDFs:', err);
+      setIsProcessing(false);
+      setFeedback({
+        message: 'Ocurrió un error al procesar el lote de PDFs. Consulta la consola.',
+        type: 'error'
+      });
     }
-
-    setIsProcessing(false);
-    setStagingFiles((prev) => [...prev, ...results]);
-    setFeedback({
-      message: `¡Se procesaron ${results.length} reporte(s) con éxito! Revisa la información antes de guardar en Firestore.`,
-      type: 'success'
-    });
   };
 
   const handleApplyBatch = () => {

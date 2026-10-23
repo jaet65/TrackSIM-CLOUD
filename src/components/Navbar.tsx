@@ -82,9 +82,9 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
           <div className="brand-icon">
             <img src="/Logo.png" alt="TrackSIM Logo" className="brand-logo-img" />
           </div>
-          <div className="brand-text">
+          <div className="brand-text" style={{ textAlign: 'center' }}>
             <h1>TrackSIM</h1>
-            <span>Analytics CLOUD</span>
+            <span>Cloud Analytics</span>
           </div>
         </div>
 
