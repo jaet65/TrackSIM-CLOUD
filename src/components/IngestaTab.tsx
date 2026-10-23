@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { ExerciseCatalogModal } from './ExerciseCatalogModal';
 import { loadPdfJs } from '../services/pdfJsLoader';
+import { StagedEvaluation } from '../types';
 
 export const IngestaTab: React.FC = () => {
   const { userRole } = useAuth();
@@ -21,7 +22,7 @@ export const IngestaTab: React.FC = () => {
   }
 
   const [isDragging, setIsDragging] = useState(false);
-  const [stagingFiles, setStagingFiles] = useState<any[]>([]);
+  const [stagingFiles, setStagingFiles] = useState<StagedEvaluation[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);

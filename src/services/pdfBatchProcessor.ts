@@ -1,4 +1,5 @@
 import { parsePDFFile } from './pdfParserWorkerBridge';
+import { ParsedPdfEvaluation, StagedEvaluation } from '../types';
 
 export interface ParseProgressCallback {
   (current: number, total: number, message: string): void;
@@ -10,19 +11,19 @@ export interface ParseProgressCallback {
 export async function parsePDFBatch(
   files: File[],
   onProgress?: ParseProgressCallback
-): Promise<any[]> {
+): Promise<StagedEvaluation[]> {
   const total = files.length;
   let completed = 0;
-  const results: any[] = [];
+  const results: StagedEvaluation[] = [];
 
   // Límite de concurrencia: 1 a la vez para evitar colapsar la memoria del hilo principal de JS
   const CONCURRENCY_LIMIT = 1;
   const queue = [...files.entries()];
 
   // Timeout de seguridad por PDF (15 segundos max por archivo)
-  const parseWithTimeout = async (file: File, filename: string, timeoutMs = 15000): Promise<any> => {
-    let timer: any;
-    const timeoutPromise = new Promise((_, reject) => {
+  const parseWithTimeout = async (file: File, filename: string, timeoutMs = 15000): Promise<ParsedPdfEvaluation> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
         reject(new Error(`Timeout de procesamiento excedido (${timeoutMs / 1000}s) para el archivo ${filename}`));
       }, timeoutMs);
@@ -38,7 +39,7 @@ export async function parsePDFBatch(
   const processNext = async (): Promise<void> => {
     while (queue.length > 0) {
       const item = queue.shift();
-      if (!item) break;
+      if (!item) continue;
       const [index, file] = item;
 
       if (onProgress) {
@@ -51,13 +52,13 @@ export async function parsePDFBatch(
       try {
         const parsed = await parseWithTimeout(file, file.name);
         results.push({
-          id: `eval_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
           ...parsed,
+          id: parsed.id || `eval_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
           originalEmpresa: parsed.empresa || '',
           originalSede: parsed.sede || '',
           fileName: file.name
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error(`Error procesando archivo ${file.name}:`, err);
       } finally {
         completed++;

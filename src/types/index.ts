@@ -68,6 +68,27 @@ export interface Evaluation {
   origen?: string;
 }
 
+export interface ParsedPdfEvaluation extends Omit<Evaluation, 'id'> {
+  id?: string;
+  filename?: string;
+  empresaCompleta?: string;
+  cursoCodigo?: string;
+  cursoNombre?: string;
+  folioGrupo?: string;
+  habilidadesManejoMax?: number;
+  practicaSimuladorMax?: number;
+  evaluacionFinalMax?: number;
+  evaluacionFinalPct?: number;
+  badgeColor?: string;
+}
+
+export interface StagedEvaluation extends Omit<ParsedPdfEvaluation, 'id'> {
+  id: string;
+  originalEmpresa: string;
+  originalSede: string;
+  fileName: string;
+}
+
 export interface DriverConductor {
   nombre: string;
   empresa: string;

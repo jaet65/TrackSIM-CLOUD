@@ -40,6 +40,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
         totalColisiones: 0,
         totalFatalidades: 0,
         totalFueraVia: 0,
+        totalIncidentes: 0,
         passingRate: 0,
         sobresalientes: 0,
         aprobados: 0,
