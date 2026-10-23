@@ -36,6 +36,35 @@ const TabLoadingFallback: React.FC = () => (
   </div>
 );
 
+const InitialLoadingScreen: React.FC<{ message: string }> = ({ message }) => (
+  <div
+    role="status"
+    aria-live="polite"
+    style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100vh',
+      background: '#080c14',
+      color: '#38bdf8',
+      fontFamily: 'Plus Jakarta Sans, sans-serif'
+    }}
+  >
+    <div style={{
+      width: '40px',
+      height: '40px',
+      border: '3px solid rgba(56, 189, 248, 0.2)',
+      borderTopColor: '#38bdf8',
+      borderRadius: '50%',
+      animation: 'spin 0.8s linear infinite',
+      marginBottom: '1rem'
+    }} />
+    <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>{message}</p>
+    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+  </div>
+);
+
 const MainLayout: React.FC = () => {
   const { userRole, allowedCompanies, profile } = useAuth();
   const { roleAllowedEvaluations, companies, initialLoaded } = useData();
@@ -67,30 +96,7 @@ const MainLayout: React.FC = () => {
     }
 
     if (!initialLoaded) {
-      return (
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '100vh',
-          background: '#080c14',
-          color: '#38bdf8',
-          fontFamily: 'Plus Jakarta Sans, sans-serif'
-        }}>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            border: '3px solid rgba(56, 189, 248, 0.2)',
-            borderTopColor: '#38bdf8',
-            borderRadius: '50%',
-            animation: 'spin 0.8s linear infinite',
-            marginBottom: '1rem'
-          }} />
-          <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Verificando estado de la empresa...</p>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        </div>
-      );
+      return <InitialLoadingScreen message="Verificando estado de la empresa..." />;
     }
 
     const companyExistsInCatalog = companies.includes(rawCompany);
@@ -101,6 +107,10 @@ const MainLayout: React.FC = () => {
     if (companyExistsInCatalog && !companyHasEvaluations) {
       return <LobbyScreen reason="no_data" assignedCompany={rawCompany} />;
     }
+  }
+
+  if (!initialLoaded) {
+    return <InitialLoadingScreen message="Cargando registros..." />;
   }
 
   return (

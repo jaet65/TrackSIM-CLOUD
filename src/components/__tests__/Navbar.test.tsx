@@ -32,6 +32,7 @@ describe('Navbar component', () => {
       roleAllowedEvaluations: [],
       initialLoaded: true,
       deleteEvaluation: vi.fn(),
+      updateEvaluationsBatch: vi.fn(),
       deleteAllEvaluations: vi.fn(),
       getEvaluationsBackup: vi.fn(),
       restoreEvaluationsBackup: vi.fn(),

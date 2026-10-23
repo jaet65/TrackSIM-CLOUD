@@ -62,6 +62,14 @@ function getEvaluationYear(evaluation: Evaluation): string | null {
   return String(date).match(/\b\d{4}\b/)?.[0] || null;
 }
 
+type DirectoryActionStatus = {
+  operation: string;
+  message: string;
+  state: 'running' | 'success' | 'error' | 'warning';
+  completed: number;
+  total: number | null;
+};
+
 export const DirectoryTab: React.FC = () => {
   const { user, userRole, reauthenticateForMassDelete } = useAuth();
   const {
@@ -70,6 +78,7 @@ export const DirectoryTab: React.FC = () => {
     deleteEvaluation,
     deleteAllEvaluations,
     updateEvaluation,
+    updateEvaluationsBatch,
     getEvaluationsBackup,
     restoreEvaluationsBackup,
     reloadEvaluations,
@@ -81,6 +90,7 @@ export const DirectoryTab: React.FC = () => {
   const [isExportingBackup, setIsExportingBackup] = useState(false);
   const [importProgress, setImportProgress] = useState<string>('');
   const [isDeletingAll, setIsDeletingAll] = useState(false);
+  const [actionStatus, setActionStatus] = useState<DirectoryActionStatus | null>(null);
 
   if (userRole !== 'admin') {
     return (
@@ -263,15 +273,60 @@ export const DirectoryTab: React.FC = () => {
   };
 
   const completeDeleteAll = async (target: Evaluation[], isFiltered: boolean) => {
+    let completedDeletions = 0;
     setIsDeletingAll(true);
+    setActionStatus({
+      operation: 'Eliminación masiva',
+      message: 'Verificando autorización...',
+      state: 'running',
+      completed: 0,
+      total: null
+    });
     try {
       await reauthenticateForMassDelete();
-      const deletedCount = await deleteAllEvaluations(isFiltered ? target : undefined);
+      setActionStatus({
+        operation: 'Eliminación masiva',
+        message: 'Eliminando evaluaciones...',
+        state: 'running',
+        completed: 0,
+        total: target.length
+      });
+      const deletedCount = await deleteAllEvaluations(
+        isFiltered ? target : undefined,
+        (completed, total) => {
+          completedDeletions = completed;
+          setActionStatus({
+            operation: 'Eliminación masiva',
+            message: completed === total
+              ? `Eliminadas ${completed} de ${total}; sincronizando cambios...`
+              : `Eliminando evaluaciones (${completed} de ${total})...`,
+            state: 'running',
+            completed,
+            total
+          });
+        }
+      );
       setSelectedIds(new Set());
+      setActionStatus({
+        operation: 'Eliminación masiva',
+        message: `Eliminación completada: ${deletedCount} evaluaciones.`,
+        state: 'success',
+        completed: deletedCount,
+        total: deletedCount
+      });
       alert(`Se eliminaron exitosamente ${deletedCount} evaluaciones en Firestore.`);
     } catch (err: unknown) {
       console.error('Error confirmando o eliminando evaluaciones:', err);
       const message = err instanceof Error ? err.message : 'Error desconocido';
+      setActionStatus({
+        operation: 'Eliminación masiva',
+        message: completedDeletions > 0
+          ? `Eliminación detenida tras borrar ${completedDeletions} de ${target.length}: ${message}`
+          : `No se completó la eliminación: ${message}`,
+        state: 'error',
+        completed: completedDeletions,
+        total: target.length
+      });
       alert(`No se completó la eliminación:\n\n${message}`);
     } finally {
       setIsDeletingAll(false);
@@ -375,9 +430,23 @@ export const DirectoryTab: React.FC = () => {
    */
   const handleExportCSV = async () => {
     setIsExportingBackup(true);
+    setActionStatus({
+      operation: 'Exportación CSV',
+      message: 'Consultando registros y generando el archivo CSV...',
+      state: 'running',
+      completed: 0,
+      total: null
+    });
     try {
       const backupEvaluations = hasActiveFilters ? [...displayList] : await getEvaluationsBackup();
       if (backupEvaluations.length === 0) {
+        setActionStatus({
+          operation: 'Exportación CSV',
+          message: 'No hay evaluaciones para exportar con los filtros seleccionados.',
+          state: 'warning',
+          completed: 0,
+          total: 0
+        });
         alert(hasActiveFilters
           ? 'No hay evaluaciones que coincidan con los filtros seleccionados.'
           : 'No hay evaluaciones en la base de datos para respaldar.');
@@ -445,8 +514,22 @@ export const DirectoryTab: React.FC = () => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      setActionStatus({
+        operation: 'Exportación CSV',
+        message: `CSV descargado correctamente (${backupEvaluations.length} evaluaciones).`,
+        state: 'success',
+        completed: backupEvaluations.length,
+        total: backupEvaluations.length
+      });
     } catch (err) {
       console.error('Error exportando respaldo completo:', err);
+      setActionStatus({
+        operation: 'Exportación CSV',
+        message: 'No se pudo generar el respaldo CSV.',
+        state: 'error',
+        completed: 0,
+        total: null
+      });
       alert('No se pudo generar el respaldo completo desde Firestore. Intenta nuevamente cuando haya conexión.');
     } finally {
       setIsExportingBackup(false);
@@ -457,10 +540,28 @@ export const DirectoryTab: React.FC = () => {
    * Importar evaluaciones modificadas desde archivo CSV
    */
   const handleImportCSV = async (file: File) => {
+    let completedImportItems = 0;
+    let totalImportItems: number | null = null;
+    setIsImporting(true);
+    setImportProgress('Leyendo archivo CSV');
+    setActionStatus({
+      operation: 'Importación CSV',
+      message: 'Leyendo y validando el archivo CSV...',
+      state: 'running',
+      completed: 0,
+      total: null
+    });
     try {
       const text = await file.text();
       const rows = parseCSV(text);
       if (rows.length < 2) {
+        setActionStatus({
+          operation: 'Importación CSV',
+          message: 'El archivo CSV está vacío.',
+          state: 'warning',
+          completed: 0,
+          total: 0
+        });
         alert('El archivo CSV está vacío.');
         return;
       }
@@ -469,6 +570,13 @@ export const DirectoryTab: React.FC = () => {
       const col = (name: string) => headers.indexOf(name);
       const idCol = col('ID');
       if (idCol < 0) {
+        setActionStatus({
+          operation: 'Importación CSV',
+          message: 'El CSV no contiene la columna ID requerida.',
+          state: 'error',
+          completed: 0,
+          total: null
+        });
         alert('El CSV no tiene la columna "ID". Usa un archivo previamente exportado desde TrackSIM.');
         return;
       }
@@ -494,18 +602,56 @@ export const DirectoryTab: React.FC = () => {
         });
         const backupIds = new Set(backupEvaluations.map((evaluation) => evaluation.id));
         if (backupIds.size !== backupEvaluations.length) {
+          setActionStatus({
+            operation: 'Importación CSV',
+            message: 'El respaldo contiene IDs duplicados; no se realizaron cambios.',
+            state: 'error',
+            completed: 0,
+            total: backupEvaluations.length
+          });
           alert('El respaldo contiene IDs duplicados; no se realizaron cambios.');
           return;
         }
         if (!window.confirm(
           `Se restaurarán ${backupEvaluations.length} evaluaciones desde el respaldo. Los registros con el mismo ID serán reemplazados y los que falten se crearán.\n\n¿Deseas continuar?`
         )) {
+          setActionStatus({
+            operation: 'Importación CSV',
+            message: 'Restauración cancelada.',
+            state: 'warning',
+            completed: 0,
+            total: backupEvaluations.length
+          });
           return;
         }
 
-        setIsImporting(true);
+        totalImportItems = backupEvaluations.length;
         setImportProgress(`Restaurando ${backupEvaluations.length} evaluaciones`);
-        await restoreEvaluationsBackup(backupEvaluations);
+        setActionStatus({
+          operation: 'Importación CSV',
+          message: `Restaurando evaluaciones (0 de ${backupEvaluations.length})...`,
+          state: 'running',
+          completed: 0,
+          total: backupEvaluations.length
+        });
+        await restoreEvaluationsBackup(backupEvaluations, (completed, total) => {
+          completedImportItems = completed;
+          setImportProgress(`Restaurando ${completed} de ${total}`);
+          setActionStatus({
+            operation: 'Importación CSV',
+            message: `Restaurando evaluaciones (${completed} de ${total})...`,
+            state: 'running',
+            completed,
+            total
+          });
+        });
+        setActionStatus({
+          operation: 'Importación CSV',
+          message: `Restauración completada: ${backupEvaluations.length} evaluaciones.`,
+          state: 'success',
+          completed: backupEvaluations.length,
+          total: backupEvaluations.length
+        });
         alert(`Se restauraron correctamente ${backupEvaluations.length} evaluaciones desde el respaldo.`);
         return;
       }
@@ -631,29 +777,71 @@ export const DirectoryTab: React.FC = () => {
       });
 
       if (updates.length === 0) {
+        setActionStatus({
+          operation: 'Importación CSV',
+          message: 'Ninguna fila coincide con evaluaciones existentes.',
+          state: 'warning',
+          completed: 0,
+          total: 0
+        });
         alert('Ninguna fila del CSV coincide con evaluaciones existentes (revisa la columna ID).');
         return;
       }
 
       if (!window.confirm(`Se actualizarán ${updates.length} evaluaciones en Firestore${skipped ? ` (${skipped} filas ignoradas por ID desconocido)` : ''}.\n\n¿Deseas continuar?`)) {
+        setActionStatus({
+          operation: 'Importación CSV',
+          message: 'Importación cancelada.',
+          state: 'warning',
+          completed: 0,
+          total: updates.length
+        });
         return;
       }
 
-      setIsImporting(true);
-      let done = 0;
+      totalImportItems = updates.length;
       setImportProgress(`0 / ${updates.length}`);
-
-      for (const u of updates) {
-        await updateEvaluation(u.id, u.fields);
-        done++;
-        setImportProgress(`${done} / ${updates.length}`);
-      }
+      setActionStatus({
+        operation: 'Importación CSV',
+        message: `Guardando evaluaciones por lotes de hasta 50 (${updates.length} en total)...`,
+        state: 'running',
+        completed: 0,
+        total: updates.length
+      });
+      await updateEvaluationsBatch(updates, (completed, total) => {
+        completedImportItems = completed;
+        setImportProgress(`${completed} / ${total}`);
+        setActionStatus({
+          operation: 'Importación CSV',
+          message: `Guardando evaluaciones (${completed} de ${total})...`,
+          state: 'running',
+          completed,
+          total
+        });
+      });
 
       await reloadEvaluations(false);
+      setActionStatus({
+        operation: 'Importación CSV',
+        message: `Importación completada: ${updates.length} evaluaciones actualizadas.`,
+        state: 'success',
+        completed: updates.length,
+        total: updates.length
+      });
       alert(`¡${updates.length} evaluaciones actualizadas exitosamente desde el CSV!`);
     } catch (err) {
       console.error('Error al importar CSV:', err);
       const message = err instanceof Error ? err.message : 'Error desconocido';
+      const progressMessage = completedImportItems > 0
+        ? `Importación detenida después de guardar ${completedImportItems} de ${totalImportItems} evaluaciones: ${message}`
+        : `No se pudo procesar el archivo CSV: ${message}`;
+      setActionStatus({
+        operation: 'Importación CSV',
+        message: progressMessage,
+        state: 'error',
+        completed: completedImportItems,
+        total: totalImportItems
+      });
       alert(`No se pudo procesar el archivo CSV:\n\n${message}`);
     } finally {
       setIsImporting(false);
@@ -692,7 +880,7 @@ export const DirectoryTab: React.FC = () => {
             type="button"
             className="btn btn-secondary"
             onClick={() => fileInputRef.current?.click()}
-            disabled={isImporting || isExportingBackup}
+            disabled={isImporting || isExportingBackup || isDeletingAll}
             title="Importa un CSV de edición o restaura un respaldo completo"
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.85rem' }}
           >
@@ -708,7 +896,7 @@ export const DirectoryTab: React.FC = () => {
             type="button"
             className="btn btn-secondary"
             onClick={handleExportCSV}
-            disabled={isImporting || isExportingBackup}
+            disabled={isImporting || isExportingBackup || isDeletingAll}
             title={hasActiveFilters
               ? `Descargar las ${displayList.length} evaluaciones que coinciden con los filtros`
               : 'Descargar todas las evaluaciones directamente desde Firestore, sin aplicar filtros'}
@@ -728,7 +916,7 @@ export const DirectoryTab: React.FC = () => {
             type="button"
             className="btn btn-danger"
             onClick={handleDeleteAllEvaluations}
-            disabled={isDeletingAll || displayList.length === 0 || getMassDeleteReauthMethod(
+            disabled={isDeletingAll || isImporting || isExportingBackup || displayList.length === 0 || getMassDeleteReauthMethod(
               user?.email || null,
               user?.providerData.map((provider) => provider.providerId) || []
             ) !== 'google'}
@@ -754,6 +942,79 @@ export const DirectoryTab: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {actionStatus && (() => {
+        const colors = {
+          running: { text: '#38bdf8', border: 'rgba(56, 189, 248, 0.35)' },
+          success: { text: '#4ade80', border: 'rgba(74, 222, 128, 0.35)' },
+          warning: { text: '#fbbf24', border: 'rgba(251, 191, 36, 0.35)' },
+          error: { text: '#f87171', border: 'rgba(248, 113, 113, 0.35)' }
+        }[actionStatus.state];
+        const percentage = actionStatus.total !== null && actionStatus.total > 0
+          ? Math.min(100, Math.round((actionStatus.completed / actionStatus.total) * 100))
+          : null;
+
+        return (
+          <>
+            {actionStatus.state === 'running' && (
+              <style>{'@keyframes directory-status-indeterminate { from { transform: translateX(-110%); } to { transform: translateX(280%); } }'}</style>
+            )}
+            <div
+              role="status"
+              aria-live="polite"
+              style={{
+                padding: '0.8rem 1rem',
+                marginBottom: '1.25rem',
+                borderRadius: '10px',
+                border: `1px solid ${colors.border}`,
+                background: 'rgba(15, 23, 42, 0.55)'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '0.55rem' }}>
+                <div style={{ minWidth: 0 }}>
+                  <strong style={{ color: colors.text, fontSize: '0.82rem' }}>{actionStatus.operation}</strong>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: '0.15rem' }}>
+                    {actionStatus.message}
+                  </div>
+                </div>
+                <span style={{ color: colors.text, fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  {percentage === null ? actionStatus.state === 'running' ? 'En proceso' : '' : `${percentage}%`}
+                </span>
+              </div>
+              <div
+                role="progressbar"
+                aria-label={`Progreso de ${actionStatus.operation}`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                {...(percentage === null ? { 'aria-valuetext': actionStatus.state === 'running' ? 'En proceso' : actionStatus.message } : { 'aria-valuenow': percentage })}
+                style={{ position: 'relative', width: '100%', height: '6px', overflow: 'hidden', borderRadius: '999px', background: 'rgba(255,255,255,0.1)' }}
+              >
+                <div
+                  style={{
+                    width: `${percentage ?? 0}%`,
+                    height: '100%',
+                    borderRadius: 'inherit',
+                    background: colors.text,
+                    transition: 'width 0.25s ease'
+                  }}
+                />
+                {actionStatus.state === 'running' && (
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute',
+                      inset: '0 auto 0 0',
+                      width: percentage === null ? '38%' : '28%',
+                      background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.42), transparent)',
+                      animation: 'directory-status-indeterminate 1.3s ease-in-out infinite alternate'
+                    }}
+                  />
+                )}
+              </div>
+            </div>
+          </>
+        );
+      })()}
 
       {/* KPI Cards de Resumen en Tiempo Real */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>

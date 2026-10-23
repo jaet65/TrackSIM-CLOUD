@@ -34,9 +34,13 @@ interface DataContextType {
   searchFilter: string;
   setSearchFilter: (s: string) => void;
   deleteEvaluation: (id: string) => Promise<void>;
-  deleteAllEvaluations: (targetEvaluations?: Evaluation[]) => Promise<number>;
+  updateEvaluationsBatch: (
+    updates: { id: string; fields: Partial<Evaluation> }[],
+    onProgress?: (completed: number, total: number) => void
+  ) => Promise<void>;
+  deleteAllEvaluations: (targetEvaluations?: Evaluation[], onProgress?: (completed: number, total: number) => void) => Promise<number>;
   getEvaluationsBackup: () => Promise<Evaluation[]>;
-  restoreEvaluationsBackup: (backupEvaluations: Evaluation[]) => Promise<void>;
+  restoreEvaluationsBackup: (backupEvaluations: Evaluation[], onProgress?: (completed: number, total: number) => void) => Promise<void>;
   updateEvaluation: (id: string, data: Partial<Evaluation>) => Promise<void>;
   resetCacheAndReload: () => Promise<void>;
 }
@@ -321,7 +325,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  const deleteAllEvaluations = async (targetEvaluations?: Evaluation[]): Promise<number> => {
+  const deleteAllEvaluations = async (
+    targetEvaluations?: Evaluation[],
+    onProgress?: (completed: number, total: number) => void
+  ): Promise<number> => {
     // Si se especifica una lista (por ejemplo las del rol o filtradas), se eliminan esas; de lo contrario todas las permitidas
     const toDelete = targetEvaluations || roleAllowedEvaluations;
     if (toDelete.length === 0) return 0;
@@ -329,7 +336,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const isTotalWipe = !targetEvaluations || toDelete.length >= evaluations.length;
     const idsToDelete = toDelete.map((e) => e.id);
     const companyByEvaluationId = new Map(toDelete.map((evaluation) => [evaluation.id, evaluation.empresa]));
-    const BATCH_SIZE = 450; // Firestore admite hasta 500 operaciones por batch
+    const BATCH_SIZE = 50;
     const successfullyDeletedIds: string[] = [];
     let firestoreError: any = null;
     const nowIso = new Date().toISOString();
@@ -344,6 +351,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         await batch.commit();
         successfullyDeletedIds.push(...chunk);
+        onProgress?.(successfullyDeletedIds.length, idsToDelete.length);
       } catch (e: any) {
         console.error('Error al cometer batch de eliminación en Firestore:', e);
         firestoreError = e;
@@ -446,6 +454,35 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
+  const updateEvaluationsBatch = async (
+    updates: { id: string; fields: Partial<Evaluation> }[],
+    onProgress?: (completed: number, total: number) => void
+  ): Promise<void> => {
+    const BATCH_SIZE = 50;
+    const updatedAt = new Date().toISOString();
+
+    for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+      const chunk = updates.slice(i, i + BATCH_SIZE);
+      const batch = writeBatch(db);
+      const batchUpdates = chunk.map(({ id, fields }) => {
+        const data = sanitizeForFirestore({ ...fields, updatedAt }) as Record<string, unknown>;
+        batch.set(doc(db, 'evaluaciones', id), data, { merge: true });
+        return { id, data };
+      });
+      await batch.commit();
+      setEvaluations((current) => {
+        const updatesById = new Map(batchUpdates.map(({ id, data }) => [id, data]));
+        const next = current.map((evaluation) => {
+          const data = updatesById.get(evaluation.id);
+          return data ? { ...evaluation, ...data } as Evaluation : evaluation;
+        });
+        persistItems(next);
+        return next;
+      });
+      onProgress?.(Math.min(i + chunk.length, updates.length), updates.length);
+    }
+  };
+
   const getEvaluationsBackup = async (): Promise<Evaluation[]> => {
     if (userRole !== 'admin') {
       throw new Error('Solo el personal administrativo puede exportar un respaldo completo.');
@@ -458,12 +495,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } as Evaluation));
   };
 
-  const restoreEvaluationsBackup = async (backupEvaluations: Evaluation[]): Promise<void> => {
+  const restoreEvaluationsBackup = async (
+    backupEvaluations: Evaluation[],
+    onProgress?: (completed: number, total: number) => void
+  ): Promise<void> => {
     if (userRole !== 'admin') {
       throw new Error('Solo el personal administrativo puede restaurar un respaldo completo.');
     }
 
-    const BATCH_SIZE = 450;
+    const BATCH_SIZE = 50;
     const restoredAt = new Date().toISOString();
     for (let i = 0; i < backupEvaluations.length; i += BATCH_SIZE) {
       const batch = writeBatch(db);
@@ -475,6 +515,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
       });
       await batch.commit();
+      onProgress?.(Math.min(i + BATCH_SIZE, backupEvaluations.length), backupEvaluations.length);
     }
 
     setEvaluations((current) => {
@@ -519,6 +560,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         searchFilter,
         setSearchFilter,
         deleteEvaluation,
+        updateEvaluationsBatch,
         deleteAllEvaluations,
         getEvaluationsBackup,
         restoreEvaluationsBackup,
