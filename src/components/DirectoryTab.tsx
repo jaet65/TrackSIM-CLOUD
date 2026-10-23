@@ -4,6 +4,7 @@ import { useData } from '../context/DataContext';
 import { Evaluation, ExerciseItem } from '../types';
 import { findCatalogExercise } from '../services/exerciseCatalog';
 import { ReportDetailModal } from './ReportDetailModal';
+import { getMassDeleteReauthMethod } from '../services/authorization';
 
 /** Escapa un valor para CSV (comillas dobles, comas y saltos de línea) */
 function csvCell(v: any): string {
@@ -61,7 +62,7 @@ function getEvaluationYear(evaluation: Evaluation): string | null {
 }
 
 export const DirectoryTab: React.FC = () => {
-  const { userRole } = useAuth();
+  const { user, userRole, reauthenticateForMassDelete } = useAuth();
   const {
     evaluations,
     companies,
@@ -250,6 +251,22 @@ export const DirectoryTab: React.FC = () => {
     setSelectedIds(new Set());
   };
 
+  const completeDeleteAll = async (target: Evaluation[], isFiltered: boolean) => {
+    setIsDeletingAll(true);
+    try {
+      await reauthenticateForMassDelete();
+      const deletedCount = await deleteAllEvaluations(isFiltered ? target : undefined);
+      setSelectedIds(new Set());
+      alert(`Se eliminaron exitosamente ${deletedCount} evaluaciones en Firestore.`);
+    } catch (err: unknown) {
+      console.error('Error confirmando o eliminando evaluaciones:', err);
+      const message = err instanceof Error ? err.message : 'Error desconocido';
+      alert(`No se completó la eliminación:\n\n${message}`);
+    } finally {
+      setIsDeletingAll(false);
+    }
+  };
+
   const handleDeleteAllEvaluations = async () => {
     const total = displayList.length;
     if (total === 0) {
@@ -271,17 +288,16 @@ export const DirectoryTab: React.FC = () => {
       return;
     }
 
-    try {
-      setIsDeletingAll(true);
-      const deletedCount = await deleteAllEvaluations(isFiltered ? displayList : undefined);
-      setSelectedIds(new Set());
-      alert(`Se eliminaron exitosamente ${deletedCount} evaluaciones en Firestore.`);
-    } catch (err: any) {
-      console.error('Error eliminando todas las evaluaciones:', err);
-      const msg = err?.message || 'Error desconocido';
-      alert(`⚠️ No se completó la eliminación:\n\n${msg}\n\nSi la cuota de Firebase está agotada, las operaciones se reanudarán al reiniciarse la cuota diaria.`);
-    } finally {
-      setIsDeletingAll(false);
+    const target = isFiltered ? [...displayList] : [...evaluations];
+    const method = getMassDeleteReauthMethod(
+      user?.email || null,
+      user?.providerData.map((provider) => provider.providerId) || []
+    );
+
+    if (method === 'google') {
+      await completeDeleteAll(target, isFiltered);
+    } else {
+      alert('Solo magraz@corporativomaf.com puede confirmar el borrado masivo mediante Google.');
     }
   };
 
@@ -646,8 +662,11 @@ export const DirectoryTab: React.FC = () => {
             type="button"
             className="btn btn-danger"
             onClick={handleDeleteAllEvaluations}
-            disabled={isDeletingAll || displayList.length === 0}
-            title="Eliminar todas las evaluaciones de la base de datos o las filtradas"
+            disabled={isDeletingAll || displayList.length === 0 || getMassDeleteReauthMethod(
+              user?.email || null,
+              user?.providerData.map((provider) => provider.providerId) || []
+            ) !== 'google'}
+            title="Solo magraz@corporativomaf.com puede confirmar esta acción mediante Google"
             style={{
               display: 'inline-flex',
               alignItems: 'center',

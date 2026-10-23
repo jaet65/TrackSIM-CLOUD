@@ -7,7 +7,8 @@ import {
   signOut,
   googleProvider,
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword
+  createUserWithEmailAndPassword,
+  reauthenticateForMassDelete
 } from '../services/firebaseAuth';
 import { UserProfile } from '../types';
 import { isVerifiedCorporateAdmin } from '../services/authorization';
@@ -21,6 +22,7 @@ interface AuthContextType {
   loginWithGoogle: () => Promise<void>;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
   registerWithEmail: (email: string, pass: string) => Promise<void>;
+  reauthenticateForMassDelete: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -175,6 +177,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginWithGoogle,
         loginWithEmail,
         registerWithEmail,
+        reauthenticateForMassDelete,
         logout
       }}
     >
