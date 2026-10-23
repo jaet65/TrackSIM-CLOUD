@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
+import { ExerciseCatalogModal } from './ExerciseCatalogModal';
 
 // Declare global PDF.js lib
 declare global {
@@ -29,6 +30,7 @@ export const IngestaTab: React.FC = () => {
   const [stagingFiles, setStagingFiles] = useState<any[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
   const [batchEmpresa, setBatchEmpresa] = useState('');
   const [batchSede, setBatchSede] = useState('');
   const [progress, setProgress] = useState({ current: 0, total: 0, text: '' });
@@ -136,11 +138,33 @@ export const IngestaTab: React.FC = () => {
 
   return (
     <div className="view-section active">
-      <div className="section-header" style={{ marginBottom: '1.5rem' }}>
-        <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800 }}>📥 Ingesta y Procesamiento de Reportes PDF</h2>
-        <p style={{ margin: '0.25rem 0 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-          Extracción client-side ultra rápida de reportes de simulación TrackSIM
-        </p>
+      <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800 }}>📥 Ingesta y Procesamiento de Reportes PDF</h2>
+          <p style={{ margin: '0.25rem 0 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+            Extracción client-side ultra rápida de reportes de simulación TrackSIM
+          </p>
+        </div>
+
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => setIsCatalogModalOpen(true)}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.55rem 1rem',
+            background: 'rgba(56, 189, 248, 0.1)',
+            borderColor: 'rgba(56, 189, 248, 0.35)',
+            color: '#38bdf8',
+            fontSize: '0.88rem',
+            fontWeight: 600
+          }}
+          title="Administrar los ejercicios reconocidos por el sistema y sus descripciones oficiales"
+        >
+          <span>📚</span> Catálogo de Ejercicios
+        </button>
       </div>
 
       {feedback && (
@@ -368,6 +392,12 @@ export const IngestaTab: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modal de Gestión de Catálogo de Ejercicios */}
+      <ExerciseCatalogModal
+        isOpen={isCatalogModalOpen}
+        onClose={() => setIsCatalogModalOpen(false)}
+      />
     </div>
   );
 };

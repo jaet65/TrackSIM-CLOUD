@@ -3,6 +3,7 @@ import { collection, getDocs, doc, setDoc, query, where, writeBatch } from '../s
 import { db } from '../services/firebase';
 import { Evaluation, CompanySummary, DriverSummary } from '../types';
 import { processCompanySummaries, processDriverSummaries, createCompanySummaryFromEvaluations } from '../services/analytics';
+import { initializeActiveCatalog } from '../services/exerciseCatalog';
 import { useAuth } from './AuthContext';
 
 const LOCAL_STORAGE_KEY = 'tracksim_cloud_evaluaciones';
@@ -154,6 +155,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (user) {
+      // Inicializar catálogo de ejercicios
+      initializeActiveCatalog();
       // Si ya hay datos en caché se muestran instantáneamente en pantalla,
       // y se lanza una sincronización incremental en segundo plano para traer cambios/eliminaciones.
       fetchEvaluations(false);
