@@ -11,7 +11,7 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
-  const { user, userRole, allowedCompanies, profile, logout } = useAuth();
+  const { user, userRole, allowedCompanies, profile, logout, isDemo } = useAuth();
   const { selectedCompany } = useData();
 
   // Calcular el texto y estilo del badge de empresa/rol
@@ -110,7 +110,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
             >
               <span>📐</span> Métricas
             </li>
-            {userRole === 'admin' && (
+            {userRole === 'admin' && !isDemo && (
               <>
                 <li
                   className={`nav-item ${currentTab === 'directorio' ? 'active' : ''}`}
@@ -138,21 +138,21 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
 
       <div className="nav-right">
         {/* Badge contextual de Empresa o Administrador */}
-        {renderStatusBadge()}
+        {!isDemo && renderStatusBadge()}
 
         <ThemeToggleButton />
 
         <div className="user-profile">
           <div className="user-info">
-            <div className="user-name">{user?.displayName || user?.email?.split('@')[0]}</div>
+            <div className="user-name">{isDemo ? 'Sesión de demostración' : user?.displayName || user?.email?.split('@')[0]}</div>
             <div className="user-role" style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-              {user?.email}
+              {isDemo ? 'Datos simulados' : user?.email}
             </div>
           </div>
         </div>
 
         <button className="auth-btn" onClick={() => logout()} title="Cerrar sesión">
-          <span>🚪</span> Salir
+          <span>🚪</span> {isDemo ? 'Salir de demo' : 'Salir'}
         </button>
       </div>
     </header>

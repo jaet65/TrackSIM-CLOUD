@@ -18,6 +18,7 @@ interface AuthContextType {
   profile: UserProfile | null;
   userRole: 'admin' | 'viewer' | null;
   allowedCompanies: string[];
+  isDemo: boolean;
   loading: boolean;
   loginWithGoogle: () => Promise<void>;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
@@ -29,6 +30,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const isDemo = new URLSearchParams(window.location.search).get('demo') === '1';
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [userRole, setUserRole] = useState<'admin' | 'viewer' | null>(null);
@@ -36,6 +38,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (isDemo) {
+      setProfile({
+        uid: 'tracksim-demo',
+        email: 'demo@tracksim.local',
+        displayName: 'Equipo TrackSIM',
+        role: 'admin',
+        empresaPermitida: 'all',
+        empresasPermitidas: ['all']
+      });
+      setUserRole('admin');
+      setAllowedCompanies(['all']);
+      setLoading(false);
+      return;
+    }
+
     let unsubProfile: (() => void) | null = null;
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       // Cancelar el listener del perfil anterior (evita permission-denied tras cerrar sesión)
@@ -148,7 +165,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (unsubProfile) unsubProfile();
       unsubscribe();
     };
-  }, []);
+  }, [isDemo]);
 
   const loginWithGoogle = async () => {
     await signInWithPopup(auth, googleProvider);
@@ -163,6 +180,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    if (isDemo) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('demo');
+      window.location.assign(`${url.pathname}${url.search}${url.hash}`);
+      return;
+    }
     await signOut(auth);
   };
 
@@ -173,6 +196,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         profile,
         userRole,
         allowedCompanies,
+        isDemo,
         loading,
         loginWithGoogle,
         loginWithEmail,

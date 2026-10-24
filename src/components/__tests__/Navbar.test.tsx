@@ -55,6 +55,7 @@ describe('Navbar component', () => {
       user: { displayName: 'Operador Test', email: 'op@demo.com' } as any,
       userRole: 'viewer',
       allowedCompanies: ['Transportes Demo'],
+      isDemo: false,
       profile: null,
       loading: false,
       loginWithGoogle: vi.fn(),
@@ -82,6 +83,7 @@ describe('Navbar component', () => {
       user: { displayName: 'Admin Master', email: 'admin@tracksim.com' } as any,
       userRole: 'admin',
       allowedCompanies: ['all'],
+      isDemo: false,
       profile: null,
       loading: false,
       loginWithGoogle: vi.fn(),
@@ -104,6 +106,7 @@ describe('Navbar component', () => {
       user: { displayName: 'Admin Master', email: 'admin@tracksim.com' } as any,
       userRole: 'admin',
       allowedCompanies: ['all'],
+      isDemo: false,
       profile: null,
       loading: false,
       loginWithGoogle: vi.fn(),
@@ -126,6 +129,7 @@ describe('Navbar component', () => {
       user: { displayName: 'Admin Master', email: 'admin@tracksim.com' } as any,
       userRole: 'admin',
       allowedCompanies: ['all'],
+      isDemo: false,
       profile: null,
       loading: false,
       loginWithGoogle: vi.fn(),
@@ -143,5 +147,30 @@ describe('Navbar component', () => {
     expect(window.localStorage.getItem('tracksim-theme')).toBe('light');
     expect(screen.getByAltText('TrackSIM Logo')).toHaveAttribute('src', '/Logo%20NN.png');
     expect(screen.getByRole('button', { name: 'Cambiar a tema oscuro' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('debe mostrar el modo demo sin exponer pestañas administrativas', () => {
+    vi.spyOn(AuthContext, 'useAuth').mockReturnValue({
+      user: null,
+      userRole: 'admin',
+      allowedCompanies: ['all'],
+      isDemo: true,
+      profile: null,
+      loading: false,
+      loginWithGoogle: vi.fn(),
+      loginWithEmail: vi.fn(),
+      registerWithEmail: vi.fn(),
+      reauthenticateForMassDelete: vi.fn(),
+      logout: vi.fn()
+    });
+
+    renderNavbar('dashboard');
+
+    expect(screen.getByText('Sesión de demostración')).toBeInTheDocument();
+    expect(screen.getByText('Datos simulados')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Salir de demo/ })).toBeInTheDocument();
+    expect(screen.queryByText('Ingesta PDF')).toBeNull();
+    expect(screen.queryByText('Usuarios')).toBeNull();
+    expect(screen.queryByText('Directorio')).toBeNull();
   });
 });

@@ -66,12 +66,12 @@ const InitialLoadingScreen: React.FC<{ message: string }> = ({ message }) => (
 );
 
 const MainLayout: React.FC = () => {
-  const { userRole, allowedCompanies, profile } = useAuth();
+  const { userRole, allowedCompanies, profile, isDemo } = useAuth();
   const { roleAllowedEvaluations, companies, initialLoaded } = useData();
   const [currentTab, setCurrentTab] = useState<TabType>('dashboard');
 
   const handleTabChange = (tab: TabType) => {
-    if (userRole !== 'admin' && (tab === 'directorio' || tab === 'ingesta' || tab === 'usuarios')) {
+    if ((isDemo || userRole !== 'admin') && (tab === 'directorio' || tab === 'ingesta' || tab === 'usuarios')) {
       setCurrentTab('dashboard');
       window.scrollTo(0, 0);
       return;
@@ -84,7 +84,7 @@ const MainLayout: React.FC = () => {
     if (main) main.scrollTop = 0;
   };
 
-  if (userRole !== 'admin') {
+  if (!isDemo && userRole !== 'admin') {
     const rawCompany =
       (allowedCompanies.length > 0 && !allowedCompanies.includes('all') ? allowedCompanies[0] : null) ||
       (profile?.empresaPermitida && profile.empresaPermitida !== 'all' ? profile.empresaPermitida : null) ||
@@ -124,9 +124,9 @@ const MainLayout: React.FC = () => {
           {currentTab === 'dashboard' && <DashboardTab onNavigate={handleTabChange} />}
           {currentTab === 'evolucion' && <EvolutionTab />}
           {currentTab === 'empresas' && <CompanyTab onNavigate={handleTabChange} />}
-          {currentTab === 'directorio' && (userRole === 'admin' ? <DirectoryTab /> : <DashboardTab onNavigate={handleTabChange} />)}
-          {currentTab === 'ingesta' && (userRole === 'admin' ? <IngestaTab /> : <DashboardTab onNavigate={handleTabChange} />)}
-          {currentTab === 'usuarios' && (userRole === 'admin' ? <UserManagementTab /> : <DashboardTab onNavigate={handleTabChange} />)}
+          {currentTab === 'directorio' && (userRole === 'admin' && !isDemo ? <DirectoryTab /> : <DashboardTab onNavigate={handleTabChange} />)}
+          {currentTab === 'ingesta' && (userRole === 'admin' && !isDemo ? <IngestaTab /> : <DashboardTab onNavigate={handleTabChange} />)}
+          {currentTab === 'usuarios' && (userRole === 'admin' && !isDemo ? <UserManagementTab /> : <DashboardTab onNavigate={handleTabChange} />)}
         </Suspense>
       </main>
     </div>

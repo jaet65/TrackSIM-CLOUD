@@ -3,6 +3,7 @@ import { collection, getDocs, doc, setDoc, query, where, writeBatch, db } from '
 import { Evaluation, CompanySummary, DriverSummary } from '../types';
 import { processCompanySummaries, processDriverSummaries, createCompanySummaryFromEvaluations } from '../services/analytics';
 import { initializeActiveCatalog } from '../services/exerciseCatalog';
+import { DEMO_EVALUATIONS } from '../data/demoEvaluations';
 import { useAuth } from './AuthContext';
 
 import { loadEvalCache, saveEvalCache, clearEvalCache, EvalCacheRecord } from '../services/evalCache';
@@ -48,7 +49,7 @@ interface DataContextType {
 const DataContext = createContext<DataContextType>({} as DataContextType);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, profile, userRole, allowedCompanies } = useAuth();
+  const { user, profile, userRole, allowedCompanies, isDemo } = useAuth();
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   // Caché en IndexedDB: se carga una vez; fetchEvaluations espera a cacheReadyRef antes de sincronizar
   const cacheRef = useRef<EvalCacheRecord | null>(null);
@@ -97,6 +98,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Sincronización inteligente (Incremental o Completa)
   const fetchEvaluations = async (forceFull = false) => {
+    if (isDemo) return;
     if (!user) return;
     if (!isUnrestricted && allowedCompanies.length === 0) {
       // Aún sin empresa asignada/cargada: no consultar (las reglas lo denegarían)
@@ -211,6 +213,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
+    if (isDemo) {
+      setEvaluations(DEMO_EVALUATIONS);
+      setLoading(false);
+      setIsSyncing(false);
+      setLastSyncTime(null);
+      setInitialLoaded(true);
+      return;
+    }
+
     if (user) {
       // Inicializar catálogo de ejercicios
       initializeActiveCatalog();
@@ -220,7 +231,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } else {
       setEvaluations([]);
     }
-  }, [user, userRole, allowedCompanies.join('|')]);
+  }, [user, userRole, allowedCompanies.join('|'), isDemo]);
 
   // Evaluaciones permitidas según rol de usuario
   const roleAllowedEvaluations = useMemo(() => {
@@ -301,6 +312,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [roleAllowedEvaluations, selectedCompany, searchFilter]);
 
   const deleteEvaluation = async (id: string) => {
+    if (isDemo) throw new Error('No se pueden modificar evaluaciones en modo demostración.');
     try {
       const nowIso = new Date().toISOString();
       const evaluation = evaluations.find((item) => item.id === id);
@@ -329,6 +341,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     targetEvaluations?: Evaluation[],
     onProgress?: (completed: number, total: number) => void
   ): Promise<number> => {
+    if (isDemo) throw new Error('No se pueden modificar evaluaciones en modo demostración.');
     // Si se especifica una lista (por ejemplo las del rol o filtradas), se eliminan esas; de lo contrario todas las permitidas
     const toDelete = targetEvaluations || roleAllowedEvaluations;
     if (toDelete.length === 0) return 0;
@@ -440,6 +453,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateEvaluation = async (id: string, updatedData: Partial<Evaluation>) => {
+    if (isDemo) throw new Error('No se pueden modificar evaluaciones en modo demostración.');
     const rawUpdates = { ...updatedData, updatedAt: new Date().toISOString() };
     const cleanUpdates = sanitizeForFirestore(rawUpdates);
     try {
@@ -458,6 +472,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     updates: { id: string; fields: Partial<Evaluation> }[],
     onProgress?: (completed: number, total: number) => void
   ): Promise<void> => {
+    if (isDemo) throw new Error('No se pueden modificar evaluaciones en modo demostración.');
     const BATCH_SIZE = 50;
     const updatedAt = new Date().toISOString();
 
@@ -484,6 +499,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const getEvaluationsBackup = async (): Promise<Evaluation[]> => {
+    if (isDemo) throw new Error('No se pueden exportar respaldos en modo demostración.');
     if (userRole !== 'admin') {
       throw new Error('Solo el personal administrativo puede exportar un respaldo completo.');
     }
@@ -499,6 +515,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     backupEvaluations: Evaluation[],
     onProgress?: (completed: number, total: number) => void
   ): Promise<void> => {
+    if (isDemo) throw new Error('No se pueden restaurar respaldos en modo demostración.');
     if (userRole !== 'admin') {
       throw new Error('Solo el personal administrativo puede restaurar un respaldo completo.');
     }
@@ -531,6 +548,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const resetCacheAndReload = async () => {
+    if (isDemo) return;
     await ensureCache();
     cacheRef.current = null;
     await clearEvalCache();

@@ -32,13 +32,13 @@ const AppLoadingFallback: React.FC = () => (
 );
 
 export const App: React.FC = () => {
-  const { user, loading } = useAuth();
+  const { user, isDemo, loading } = useAuth();
 
   if (loading) {
     return <AppLoadingFallback />;
   }
 
-  if (!user) {
+  if (!user && !isDemo) {
     return <LoginScreen />;
   }
 
