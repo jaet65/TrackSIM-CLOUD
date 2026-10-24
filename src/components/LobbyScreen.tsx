@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
+import { BrandLogo } from './BrandLogo';
 
 interface LobbyScreenProps {
   reason: 'no_company' | 'no_data' | 'company_not_found';
@@ -29,7 +30,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ reason, assignedCompan
       >
         <div className="login-header" style={{ marginBottom: '1.5rem' }}>
           <div className="login-logo" style={{ width: '64px', height: '64px', margin: '0 auto 1rem' }}>
-            <img src="/Logo.png" alt="TrackSIM Logo" className="brand-logo-img" />
+            <BrandLogo />
           </div>
           <h2 style={{ fontSize: '1.6rem', marginBottom: '0.35rem' }}>Sala de Espera</h2>
           <p style={{ color: 'var(--text-secondary, #94a3b8)', fontSize: '0.88rem' }}>

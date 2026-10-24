@@ -14,21 +14,21 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
 }) => {
   return (
     <div
-      className="glass-card"
+      className="glass-card company-executive-card"
       style={{
         padding: '1.5rem 2rem',
         marginBottom: '1.75rem',
-        background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.75) 100%)',
-        border: '1px solid rgba(56, 189, 248, 0.3)',
+        background: 'var(--bg-evolution-executive)',
+        border: '1px solid var(--border-glow)',
         borderRadius: '16px',
-        boxShadow: '0 12px 36px rgba(0, 0, 0, 0.35)',
+        boxShadow: 'var(--shadow-card)',
         display: 'flex',
         flexDirection: 'column',
         gap: '1.25rem'
       }}
     >
       {/* Nivel 1: Empresa & Nivel 2: Sedes */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '1.25rem' }}>
+      <div className="company-executive-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '1.25rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.15rem' }}>
           <div
             style={{
@@ -37,7 +37,7 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
               borderRadius: '16px',
               background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(14, 165, 233, 0.1))',
               border: '1px solid rgba(56, 189, 248, 0.4)',
-              color: '#38bdf8',
+              color: 'var(--primary)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -51,11 +51,11 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
           <div>
             {/* Primer Nivel: Empresa */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <h2 style={{ margin: 0, fontSize: '1.65rem', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.02em' }}>
+              <h2 style={{ margin: 0, fontSize: '1.65rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
                 {comp.nombre}
               </h2>
               {comp.esGlobal && (
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '0.2rem 0.6rem', borderRadius: '6px' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, background: 'var(--primary-glow)', color: 'var(--primary)', border: '1px solid var(--border-glow)', padding: '0.2rem 0.6rem', borderRadius: '6px' }}>
                   Consolidado Global
                 </span>
               )}
@@ -67,7 +67,7 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
                 style={{
                   background: 'rgba(56, 189, 248, 0.12)',
                   border: '1px solid rgba(56, 189, 248, 0.3)',
-                  color: '#38bdf8',
+                  color: 'var(--primary)',
                   padding: '0.2rem 0.65rem',
                   borderRadius: '6px',
                   fontSize: '0.85rem',
@@ -97,7 +97,7 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
         <div className="no-print" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <button
             type="button"
-            className="btn btn-secondary btn-sm"
+            className="btn btn-secondary btn-sm company-export-btn"
             onClick={() => window.print()}
             style={{
               display: 'inline-flex',
@@ -107,12 +107,11 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
               borderRadius: '8px',
               fontSize: '0.82rem',
               fontWeight: 600,
-              background: 'rgba(15, 23, 42, 0.75)',
-              border: '1px solid rgba(56, 189, 248, 0.35)',
-              color: '#38bdf8',
+              border: '1px solid var(--border-glow)',
+              color: 'var(--primary)',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)'
+              boxShadow: 'var(--shadow-card)'
             }}
             title="Imprimir o guardar como PDF la ficha ejecutiva de la flota"
           >
@@ -131,7 +130,7 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
               width: '44px',
               height: '44px',
               borderRadius: '10px',
-              color: '#38bdf8',
+              color: 'var(--primary)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -145,7 +144,7 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
             <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: 600, display: 'block' }}>
               Número de Operadores
             </span>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#38bdf8', marginTop: '0.1rem' }}>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--primary)', marginTop: '0.1rem' }}>
               {comp.totalConductores} <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 500 }}>({comp.totalEvaluaciones} reportes)</span>
             </div>
           </div>
@@ -158,7 +157,7 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
               width: '44px',
               height: '44px',
               borderRadius: '10px',
-              color: '#a855f7',
+              color: 'var(--accent-purple)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -172,7 +171,7 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
             <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: 600, display: 'block' }}>
               Participación &gt; 1 Vez
             </span>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#c084fc', marginTop: '0.1rem' }}>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--accent-purple)', marginTop: '0.1rem' }}>
               {conductoresRecurrentes} <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 500 }}>({pctRecurrentes}% de flota)</span>
             </div>
           </div>
@@ -185,7 +184,7 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
               width: '44px',
               height: '44px',
               borderRadius: '10px',
-              color: comp.promedioFinal >= 8.0 ? '#22c55e' : comp.promedioFinal >= 6.0 ? '#38bdf8' : '#ef4444',
+              color: comp.promedioFinal >= 8.0 ? 'var(--success)' : comp.promedioFinal >= 6.0 ? 'var(--primary)' : 'var(--danger)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -199,7 +198,7 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
             <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: 600, display: 'block' }}>
               Promedio de Flota
             </span>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: comp.promedioFinal >= 8.0 ? '#22c55e' : comp.promedioFinal >= 6.0 ? '#38bdf8' : '#ef4444', marginTop: '0.1rem' }}>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: comp.promedioFinal >= 8.0 ? 'var(--success)' : comp.promedioFinal >= 6.0 ? 'var(--primary)' : 'var(--danger)', marginTop: '0.1rem' }}>
               {comp.promedioFinal.toFixed(2)} <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 500 }}>/ 10 pts</span>
             </div>
           </div>
@@ -212,7 +211,7 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
               width: '44px',
               height: '44px',
               borderRadius: '10px',
-              color: comp.tasaAprobacion >= 80 ? '#22c55e' : comp.tasaAprobacion >= 60 ? '#fbbf24' : '#ef4444',
+              color: comp.tasaAprobacion >= 80 ? 'var(--success)' : comp.tasaAprobacion >= 60 ? 'var(--warning)' : 'var(--danger)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -226,7 +225,7 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
             <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: 600, display: 'block' }}>
               Tasa de Aprobación
             </span>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: comp.tasaAprobacion >= 80 ? '#22c55e' : comp.tasaAprobacion >= 60 ? '#fbbf24' : '#ef4444', marginTop: '0.1rem' }}>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: comp.tasaAprobacion >= 80 ? 'var(--success)' : comp.tasaAprobacion >= 60 ? 'var(--warning)' : 'var(--danger)', marginTop: '0.1rem' }}>
               {comp.tasaAprobacion.toFixed(1)}% <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 500 }}>(calif. ≥ 6.0)</span>
             </div>
           </div>

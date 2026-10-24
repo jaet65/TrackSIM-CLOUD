@@ -12,6 +12,7 @@ import {
 import { Evaluation } from '../types';
 import { calculateSingleSessionRadar } from '../services/sessionRadar';
 import { MISTAKE_DIMENSIONS } from '../services/mistakeCatalog';
+import { useTheme } from '../context/ThemeContext';
 
 ChartJS.register(
   RadialLinearScale,
@@ -27,6 +28,7 @@ interface SessionRadarProps {
 }
 
 export const SessionRadarWidget: React.FC<SessionRadarProps> = ({ evaluation }) => {
+  const { theme } = useTheme();
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedAxisId, setSelectedAxisId] = useState<number | 'all'>('all');
 
@@ -50,15 +52,15 @@ export const SessionRadarWidget: React.FC<SessionRadarProps> = ({ evaluation }) 
           backgroundColor: 'rgba(56, 189, 248, 0.22)',
           borderWidth: 2,
           pointBackgroundColor: '#38bdf8',
-          pointBorderColor: '#fff',
-          pointHoverBackgroundColor: '#fff',
+          pointBorderColor: theme === 'light' ? '#ffffff' : '#fff',
+          pointHoverBackgroundColor: theme === 'light' ? '#ffffff' : '#fff',
           pointHoverBorderColor: '#38bdf8',
           pointRadius: 3.5,
           pointHoverRadius: 5
         }
       ]
     };
-  }, [evaluation, radarStats]);
+  }, [evaluation, radarStats, theme]);
 
   const radarOptions = useMemo(() => {
     return {
@@ -69,10 +71,10 @@ export const SessionRadarWidget: React.FC<SessionRadarProps> = ({ evaluation }) 
           display: false
         },
         tooltip: {
-          backgroundColor: 'rgba(15, 23, 42, 0.95)',
-          titleColor: '#f8fafc',
-          bodyColor: '#cbd5e1',
-          borderColor: 'rgba(255, 255, 255, 0.1)',
+          backgroundColor: theme === 'light' ? '#ffffff' : 'rgba(15, 23, 42, 0.95)',
+          titleColor: theme === 'light' ? '#172033' : '#f8fafc',
+          bodyColor: theme === 'light' ? '#526179' : '#cbd5e1',
+          borderColor: theme === 'light' ? 'rgba(15, 23, 42, 0.14)' : 'rgba(255, 255, 255, 0.1)',
           borderWidth: 1,
           padding: 8,
           callbacks: {
@@ -94,23 +96,23 @@ export const SessionRadarWidget: React.FC<SessionRadarProps> = ({ evaluation }) 
         r: {
           min: 0,
           max: 10,
-          angleLines: { color: 'rgba(255, 255, 255, 0.08)' },
-          grid: { color: 'rgba(255, 255, 255, 0.08)' },
+          angleLines: { color: theme === 'light' ? 'rgba(15, 23, 42, 0.1)' : 'rgba(255, 255, 255, 0.08)' },
+          grid: { color: theme === 'light' ? 'rgba(15, 23, 42, 0.1)' : 'rgba(255, 255, 255, 0.08)' },
           pointLabels: {
-            color: '#cbd5e1',
+            color: theme === 'light' ? '#172033' : '#cbd5e1',
             font: { size: 10, weight: 'bold' as const }
           },
-          ticks: { backdropColor: 'transparent', color: '#64748b', stepSize: 2 }
+          ticks: { backdropColor: 'transparent', color: theme === 'light' ? '#526179' : '#64748b', stepSize: 2 }
         }
       }
     };
-  }, [radarStats]);
+  }, [radarStats, theme]);
 
   return (
     <div
       style={{
-        background: 'rgba(15, 23, 42, 0.55)',
-        border: '1px solid rgba(56, 189, 248, 0.25)',
+        background: 'var(--bg-card-hover)',
+        border: '1px solid var(--border-subtle)',
         borderRadius: '12px',
         padding: '1rem',
         marginBottom: '1.25rem',

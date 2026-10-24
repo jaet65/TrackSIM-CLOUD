@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { BrandLogo } from './BrandLogo';
+import { ThemeToggleButton } from './ThemeToggleButton';
 
 export const LoginScreen: React.FC = () => {
   const { loginWithGoogle, loginWithEmail, registerWithEmail } = useAuth();
@@ -51,10 +53,11 @@ export const LoginScreen: React.FC = () => {
 
   return (
     <div className="login-screen-wrapper">
+      <ThemeToggleButton className="login-theme-toggle" />
       <div className="login-card">
         <div className="login-header">
           <div className="login-logo">
-            <img src="/Logo.png" alt="TrackSIM Logo" className="brand-logo-img" />
+            <BrandLogo />
           </div>
           <h2>TrackSIM CLOUD</h2>
           <p>Trazabilidad y Evaluación de Operadores</p>

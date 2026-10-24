@@ -13,8 +13,8 @@ const AppLoadingFallback: React.FC = () => (
     alignItems: 'center',
     justifyContent: 'center',
     height: '100vh',
-    background: '#080c14',
-    color: '#38bdf8',
+    background: 'var(--bg-app)',
+    color: 'var(--primary)',
     fontFamily: 'Plus Jakarta Sans, sans-serif'
   }}>
     <div style={{
@@ -26,7 +26,7 @@ const AppLoadingFallback: React.FC = () => (
       animation: 'spin 0.8s linear infinite',
       marginBottom: '1rem'
     }} />
-    <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Conectando con TrackSIM CLOUD...</p>
+    <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Conectando con TrackSIM CLOUD...</p>
     <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
   </div>
 );

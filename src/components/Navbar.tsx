@@ -1,6 +1,8 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
+import { BrandLogo } from './BrandLogo';
+import { ThemeToggleButton } from './ThemeToggleButton';
 import { TabType } from '../types';
 
 interface NavbarProps {
@@ -80,7 +82,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
       <div className="nav-left">
         <div className="brand-badge">
           <div className="brand-icon">
-            <img src="/Logo.png" alt="TrackSIM Logo" className="brand-logo-img" />
+            <BrandLogo />
           </div>
           <div className="brand-text" style={{ textAlign: 'center' }}>
             <h1>TrackSIM</h1>
@@ -137,6 +139,8 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
       <div className="nav-right">
         {/* Badge contextual de Empresa o Administrador */}
         {renderStatusBadge()}
+
+        <ThemeToggleButton />
 
         <div className="user-profile">
           <div className="user-info">

@@ -26,7 +26,7 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0, 0, 0, 0.8)',
+        background: 'var(--modal-backdrop)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         display: 'flex',
@@ -44,11 +44,11 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
           width: '94%',
           maxHeight: '90vh',
           overflowY: 'auto',
-          background: '#0d1322',
-          border: '1px solid rgba(56, 189, 248, 0.35)',
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-glow)',
           borderRadius: '16px',
           padding: '1.75rem',
-          boxShadow: '0 25px 60px rgba(0, 0, 0, 0.75)'
+          boxShadow: 'var(--shadow-card)'
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -59,21 +59,21 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
             justifyContent: 'space-between',
             alignItems: 'flex-start',
             marginBottom: '1.25rem',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+            borderBottom: '1px solid var(--border-subtle)',
             paddingBottom: '1rem',
             gap: '1rem'
           }}
         >
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#38bdf8', fontWeight: 700, letterSpacing: '0.06em' }}>
+              <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--primary)', fontWeight: 700, letterSpacing: '0.06em' }}>
                 📄 Reporte Oficial de Conducción
               </span>
               <span className={`badge badge-${estado === 'Sobresaliente' ? 'success' : isApproved ? 'info' : 'warning'}`} style={{ fontSize: '0.7rem', padding: '0.15rem 0.55rem' }}>
                 {estado}
               </span>
             </div>
-            <h2 style={{ margin: '0.25rem 0 0', fontSize: '1.45rem', fontWeight: 800, color: '#fff' }}>
+            <h2 style={{ margin: '0.25rem 0 0', fontSize: '1.45rem', fontWeight: 800, color: 'var(--text-main)' }}>
               {evaluation.conductor || evaluation.operador || 'Sin Asignar'}
             </h2>
             <p style={{ margin: '0.2rem 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
@@ -85,9 +85,9 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
             type="button"
             onClick={onClose}
             style={{
-              background: 'rgba(255, 255, 255, 0.06)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              color: '#94a3b8',
+              background: 'var(--bg-card-hover)',
+              border: '1px solid var(--border-subtle)',
+              color: 'var(--text-secondary)',
               fontSize: '1.2rem',
               width: '36px',
               height: '36px',
@@ -107,15 +107,15 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
 
         {/* Metadatos Generales */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
-          <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.7rem 0.85rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div style={{ background: 'var(--bg-card-hover)', padding: '0.7rem 0.85rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Fecha Capacitación</div>
-            <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#fff', marginTop: '0.2rem' }}>
+            <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '0.2rem' }}>
               {evaluation.fechaCapacitacionFormato || evaluation.fechaCapacitacion || evaluation.fechaReporte || evaluation.fecha || 'N/A'}
             </div>
           </div>
-          <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.7rem 0.85rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div style={{ background: 'var(--bg-card-hover)', padding: '0.7rem 0.85rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Instructor & Folio</div>
-            <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#fff', marginTop: '0.2rem' }}>
+            <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '0.2rem' }}>
               {evaluation.instructor || 'Oficial'} {evaluation.folio ? `• Grupo: ${evaluation.folio}` : ''}
             </div>
           </div>
@@ -152,19 +152,19 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
             </span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', textAlign: 'center' }}>
-            <div style={{ background: 'rgba(0, 0, 0, 0.25)', padding: '0.55rem', borderRadius: '8px' }}>
+            <div style={{ background: 'var(--bg-card-hover)', padding: '0.55rem', borderRadius: '8px' }}>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>💥 Colisiones</div>
               <div style={{ fontSize: '1.1rem', fontWeight: 800, color: colisiones > 0 ? '#ef4444' : '#22c55e', marginTop: '0.15rem' }}>
                 {colisiones}
               </div>
             </div>
-            <div style={{ background: 'rgba(0, 0, 0, 0.25)', padding: '0.55rem', borderRadius: '8px' }}>
+            <div style={{ background: 'var(--bg-card-hover)', padding: '0.55rem', borderRadius: '8px' }}>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>💀 Fatalidades</div>
               <div style={{ fontSize: '1.1rem', fontWeight: 800, color: fatalidades > 0 ? '#ef4444' : '#22c55e', marginTop: '0.15rem' }}>
                 {fatalidades}
               </div>
             </div>
-            <div style={{ background: 'rgba(0, 0, 0, 0.25)', padding: '0.55rem', borderRadius: '8px' }}>
+            <div style={{ background: 'var(--bg-card-hover)', padding: '0.55rem', borderRadius: '8px' }}>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>🛑 Fuera de Vía</div>
               <div style={{ fontSize: '1.1rem', fontWeight: 800, color: fueraVia > 0 ? '#ef4444' : '#22c55e', marginTop: '0.15rem' }}>
                 {fueraVia}
@@ -193,22 +193,22 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
                     key={exIdx}
                     style={{
                       padding: '0.65rem 0.9rem',
-                      background: 'rgba(255, 255, 255, 0.03)',
-                      border: '1px solid rgba(255, 255, 255, 0.06)',
+                      background: 'var(--bg-card-hover)',
+                      border: '1px solid var(--border-subtle)',
                       borderRadius: '8px',
                       fontSize: '0.84rem'
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: '#fff', fontWeight: 600 }}>
+                      <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>
                         {ex.numero ? `#${ex.numero} • ` : ''}{exName}
                       </span>
                       <span
                         style={{
                           fontWeight: 700,
                           color: (ex.noRealizado || ex.estado?.toLowerCase() === 'no realizado')
-                            ? '#94a3b8'
-                            : '#38bdf8',
+                            ? 'var(--text-secondary)'
+                            : 'var(--primary)',
                           background: (ex.noRealizado || ex.estado?.toLowerCase() === 'no realizado')
                             ? 'rgba(148, 163, 184, 0.12)'
                             : 'transparent',
@@ -234,13 +234,13 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
                       <div
                         style={{
                           fontSize: '0.74rem',
-                          color: '#94a3b8',
+                          color: 'var(--text-secondary)',
                           marginTop: '0.35rem',
                           lineHeight: 1.45,
-                          background: 'rgba(15, 23, 42, 0.4)',
+                          background: 'var(--bg-card-hover)',
                           padding: '0.35rem 0.6rem',
                           borderRadius: '6px',
-                          borderLeft: '2px solid rgba(56, 189, 248, 0.5)'
+                          borderLeft: '2px solid var(--border-glow)'
                         }}
                       >
                         {desc}
@@ -254,10 +254,10 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
         )}
 
         {/* Footer del Modal con Instructor y Cierre */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', paddingTop: '1rem', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', paddingTop: '1rem', borderTop: '1px solid var(--border-subtle)' }}>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
             <span>Instructor a cargo: </span>
-            <strong style={{ color: '#fff' }}>{evaluation.instructor || 'Instructor Oficial TrackSIM'}</strong>
+            <strong style={{ color: 'var(--text-main)' }}>{evaluation.instructor || 'Instructor Oficial TrackSIM'}</strong>
           </div>
           <button
             type="button"

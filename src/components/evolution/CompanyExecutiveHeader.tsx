@@ -14,21 +14,21 @@ export const CompanyExecutiveHeader: React.FC<CompanyExecutiveHeaderProps> = ({
 
   return (
     <div
-      className="glass-card"
+      className="glass-card evolution-executive-card"
       style={{
         padding: '1.5rem 2rem',
         marginBottom: '1.75rem',
-        background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.75) 100%)',
-        border: '1px solid rgba(56, 189, 248, 0.3)',
+        background: 'var(--bg-evolution-executive)',
+        border: '1px solid var(--border-glow)',
         borderRadius: '16px',
-        boxShadow: '0 12px 36px rgba(0, 0, 0, 0.35)',
+        boxShadow: 'var(--shadow-card)',
         display: 'flex',
         flexDirection: 'column',
         gap: '1.25rem'
       }}
     >
       {/* Nivel 1: Empresa & Nivel 2: Sedes */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.15rem' }}>
           <div
             style={{
@@ -51,7 +51,7 @@ export const CompanyExecutiveHeader: React.FC<CompanyExecutiveHeaderProps> = ({
           <div>
             {/* Prioridad 1: Nombre de la Empresa */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <h2 style={{ margin: 0, fontSize: '1.65rem', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.02em' }}>
+              <h2 style={{ margin: 0, fontSize: '1.65rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
                 {currentCompany.nombre}
               </h2>
             </div>
@@ -111,7 +111,7 @@ export const CompanyExecutiveHeader: React.FC<CompanyExecutiveHeaderProps> = ({
             <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: 600, display: 'block' }}>
               Años Evaluados
             </span>
-            <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#c084fc', marginTop: '0.1rem' }}>
+            <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--accent-purple)', marginTop: '0.1rem' }}>
               {companyYearsStats}
             </div>
           </div>
@@ -139,7 +139,7 @@ export const CompanyExecutiveHeader: React.FC<CompanyExecutiveHeaderProps> = ({
             <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: 600, display: 'block' }}>
               Operadores Evaluados
             </span>
-            <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#38bdf8', marginTop: '0.1rem' }}>
+            <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary)', marginTop: '0.1rem' }}>
               {currentCompany.totalConductores} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>conductores</span>
             </div>
           </div>
@@ -167,7 +167,7 @@ export const CompanyExecutiveHeader: React.FC<CompanyExecutiveHeaderProps> = ({
             <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: 600, display: 'block' }}>
               Promedio Histórico
             </span>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: currentCompany.promedioFinal >= 6.0 ? '#22c55e' : '#ef4444', marginTop: '0.1rem' }}>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: currentCompany.promedioFinal >= 6.0 ? 'var(--success)' : 'var(--danger)', marginTop: '0.1rem' }}>
               {currentCompany.promedioFinal.toFixed(2)} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>/ 10</span>
             </div>
           </div>
@@ -195,7 +195,7 @@ export const CompanyExecutiveHeader: React.FC<CompanyExecutiveHeaderProps> = ({
             <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: 600, display: 'block' }}>
               Tasa de Aprobación
             </span>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: currentCompany.tasaAprobacion >= 70 ? '#22c55e' : '#fbbf24', marginTop: '0.1rem' }}>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: currentCompany.tasaAprobacion >= 70 ? 'var(--success)' : 'var(--warning)', marginTop: '0.1rem' }}>
               {currentCompany.tasaAprobacion.toFixed(1)}%
             </div>
           </div>

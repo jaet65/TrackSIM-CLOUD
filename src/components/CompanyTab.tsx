@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { ReportDetailModal } from './ReportDetailModal';
 import { CompanyOverviewCard } from './company/CompanyOverviewCard';
 import { CompanyRankingChartCard } from './company/CompanyRankingChartCard';
@@ -32,6 +33,7 @@ interface CompanyTabProps {
 
 export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
   const { userRole } = useAuth();
+  const { theme } = useTheme();
   const {
     companies,
     selectedCompany,
@@ -297,7 +299,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
           ctx.textAlign = 'center';
           ctx.textBaseline = 'bottom';
           ctx.font = 'bold 12px sans-serif';
-          ctx.fillStyle = '#ffffff';
+          ctx.fillStyle = theme === 'light' ? '#172033' : '#ffffff';
           ctx.fillText(`${Number(val).toFixed(2)}`, x, y - 6);
 
           // 2. Dibujar el nombre del ejercicio verticalmente a lo largo de la columna
@@ -310,11 +312,9 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
             ctx.textBaseline = 'middle';
             ctx.font = 'bold 11px sans-serif';
 
-            // Si la barra es suficientemente alta, usar texto blanco con sombra sutil
-            // Si la barra es pequeña, usar color cyan legible
             if (barHeight > 55) {
-              ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-              ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+              ctx.fillStyle = theme === 'light' ? '#172033' : 'rgba(255, 255, 255, 0.95)';
+              ctx.shadowColor = theme === 'light' ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.8)';
               ctx.shadowBlur = 4;
             } else {
               ctx.fillStyle = '#38bdf8';
@@ -337,7 +337,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         ctx.restore();
       }
     };
-  }, []);
+  }, [theme]);
 
   const exerciseChartOptions = {
     responsive: true,
@@ -350,8 +350,8 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: 'rgba(15, 23, 42, 0.92)',
-        titleColor: '#f8fafc',
+        backgroundColor: theme === 'light' ? '#ffffff' : 'rgba(15, 23, 42, 0.92)',
+        titleColor: theme === 'light' ? '#172033' : '#f8fafc',
         bodyColor: '#38bdf8',
         borderColor: 'rgba(56, 189, 248, 0.3)',
         borderWidth: 1,
@@ -376,8 +376,8 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
       y: {
         min: 0,
         max: 10,
-        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-        ticks: { color: 'rgba(255, 255, 255, 0.6)', font: { size: 11 } }
+        grid: { color: theme === 'light' ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.05)' },
+        ticks: { color: theme === 'light' ? '#526179' : 'rgba(255, 255, 255, 0.6)', font: { size: 11 } }
       },
       x: {
         grid: { display: false },
@@ -473,8 +473,8 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: 'rgba(15, 23, 42, 0.92)',
-        titleColor: '#f8fafc',
+        backgroundColor: theme === 'light' ? '#ffffff' : 'rgba(15, 23, 42, 0.92)',
+        titleColor: theme === 'light' ? '#172033' : '#f8fafc',
         bodyColor: '#38bdf8',
         borderColor: 'rgba(56, 189, 248, 0.3)',
         borderWidth: 1,
@@ -495,12 +495,12 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
       x: {
         min: 0,
         max: 10,
-        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-        ticks: { color: 'rgba(255, 255, 255, 0.6)', font: { size: 11 } }
+        grid: { color: theme === 'light' ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.05)' },
+        ticks: { color: theme === 'light' ? '#526179' : 'rgba(255, 255, 255, 0.6)', font: { size: 11 } }
       },
       y: {
         grid: { display: false },
-        ticks: { color: '#f8fafc', font: { size: 12, weight: 'bold' as const } }
+        ticks: { color: theme === 'light' ? '#172033' : '#f8fafc', font: { size: 12, weight: 'bold' as const } }
       }
     }
   };
@@ -582,13 +582,13 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         legend: {
           display: true,
           labels: {
-            color: '#f8fafc',
+            color: theme === 'light' ? '#172033' : '#f8fafc',
             font: { size: 12, weight: 'bold' as const }
           }
         },
         tooltip: {
-          backgroundColor: 'rgba(15, 23, 42, 0.95)',
-          titleColor: '#f8fafc',
+          backgroundColor: theme === 'light' ? '#ffffff' : 'rgba(15, 23, 42, 0.95)',
+          titleColor: theme === 'light' ? '#172033' : '#f8fafc',
           bodyColor: '#38bdf8',
           padding: 10,
           callbacks: {
@@ -605,30 +605,29 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
             color: '#38bdf8',
             font: { size: 11, weight: 'bold' as const }
           },
-          grid: { color: 'rgba(255, 255, 255, 0.06)' },
-          ticks: { color: 'rgba(255, 255, 255, 0.7)' }
+          grid: { color: theme === 'light' ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.06)' },
+          ticks: { color: theme === 'light' ? '#526179' : 'rgba(255, 255, 255, 0.7)' }
         },
         x: {
-          grid: { color: 'rgba(255, 255, 255, 0.05)' },
-          ticks: { color: '#f8fafc', font: { weight: 'bold' as const } }
+          grid: { color: theme === 'light' ? 'rgba(15, 23, 42, 0.06)' : 'rgba(255, 255, 255, 0.05)' },
+          ticks: { color: theme === 'light' ? '#172033' : '#f8fafc', font: { weight: 'bold' as const } }
         }
       }
     };
-  }, []);
+  }, [theme]);
 
   return (
     <div className="view-section active">
       {/* Selector de Empresa / Flota (Visible si es admin o si el usuario tiene más de 1 empresa) */}
       {(userRole === 'admin' || companies.length > 1) && (
         <div
-          className="glass-card no-print"
+          className="glass-card no-print metrics-filter-bar"
           style={{
             padding: '0.9rem 1.25rem',
             marginBottom: '1.25rem',
             display: 'flex',
             alignItems: 'center',
-            gap: '1rem',
-            background: 'linear-gradient(135deg, rgba(17, 24, 39, 0.9), rgba(15, 23, 42, 0.8))'
+            gap: '1rem'
           }}
         >
           <span style={{ fontSize: '1.3rem' }}>🏢</span>
@@ -644,7 +643,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
                 setRankingPage(1);
                 setDriversPage(1);
               }}
-              style={{ width: '100%', padding: '0.55rem 0.85rem', background: '#0e1422', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#38bdf8', fontWeight: 600, fontSize: '0.9rem' }}
+              style={{ width: '100%', padding: '0.55rem 0.85rem', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: 'var(--text-main)', colorScheme: theme, fontWeight: 600, fontSize: '0.9rem' }}
             >
               {userRole === 'admin' && (
                 <option value="all">🌐 Todas las Empresas (Consolidado)</option>
@@ -683,7 +682,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
               <span style={{ fontSize: '1.25rem' }}>📊</span>
               <div>
-                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)' }}>
                   Rendimiento Promedio en Ejercicios
                 </h3>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
@@ -770,7 +769,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
               <span style={{ fontSize: '1.25rem' }}>🚨</span>
               <div>
-                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)' }}>
                   Tasa de Accidentes por Conductor
                 </h3>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>

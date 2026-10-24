@@ -62,7 +62,7 @@ export const DriverSessionHistoryTable: React.FC<DriverSessionHistoryTableProps>
                       Sesión #{idx + 1}
                     </span>
                   </td>
-                  <td style={{ fontSize: '0.86rem', color: '#fff', fontWeight: 600 }}>
+                  <td style={{ fontSize: '0.86rem', color: 'var(--text-main)', fontWeight: 600 }}>
                     📅 {dateFormatted}
                   </td>
                   <td style={{ fontSize: '0.84rem', color: 'var(--text-muted)' }}>

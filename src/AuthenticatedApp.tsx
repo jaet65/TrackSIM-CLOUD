@@ -19,7 +19,7 @@ const TabLoadingFallback: React.FC = () => (
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: '50vh',
-    color: '#38bdf8',
+    color: 'var(--primary)',
     fontFamily: 'Plus Jakarta Sans, sans-serif'
   }}>
     <div style={{
@@ -46,8 +46,8 @@ const InitialLoadingScreen: React.FC<{ message: string }> = ({ message }) => (
       alignItems: 'center',
       justifyContent: 'center',
       height: '100vh',
-      background: '#080c14',
-      color: '#38bdf8',
+      background: 'var(--bg-app)',
+      color: 'var(--primary)',
       fontFamily: 'Plus Jakarta Sans, sans-serif'
     }}
   >
@@ -60,7 +60,7 @@ const InitialLoadingScreen: React.FC<{ message: string }> = ({ message }) => (
       animation: 'spin 0.8s linear infinite',
       marginBottom: '1rem'
     }} />
-    <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>{message}</p>
+    <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{message}</p>
     <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
   </div>
 );

@@ -157,7 +157,7 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
           alignItems: 'center',
           padding: '1.25rem 1.5rem',
           borderBottom: '1px solid var(--border-subtle)',
-          background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.75), rgba(30, 41, 59, 0.6))',
+          background: 'var(--bg-roster-header)',
           flexWrap: 'wrap',
           gap: '1rem'
         }}
@@ -165,7 +165,7 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <span style={{ fontSize: '1.4rem' }}>👨‍✈️</span>
           <div>
-            <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.01em' }}>
+            <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.01em' }}>
               Operadores Pertenecientes a esta Flota
             </h3>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
@@ -191,10 +191,10 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
               style={{
                 width: '100%',
                 padding: '0.55rem 0.9rem 0.55rem 2.25rem',
-                background: 'rgba(15, 23, 42, 0.85)',
+                background: 'var(--bg-roster-search)',
                 border: '1px solid rgba(56, 189, 248, 0.3)',
                 borderRadius: '10px',
-                color: '#fff',
+                color: 'var(--text-main)',
                 fontSize: '0.85rem',
                 outline: 'none',
                 transition: 'border-color 0.2s',
@@ -262,7 +262,7 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
           alignItems: 'center',
           gap: '0.5rem',
           padding: '0.65rem 1.5rem',
-          background: 'rgba(15, 23, 42, 0.4)',
+          background: 'var(--bg-roster-filter)',
           borderBottom: '1px solid var(--border-subtle)',
           overflowX: 'auto',
           flexWrap: 'wrap'
@@ -310,9 +310,9 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
               style={{
                 background: isActive
                   ? chip.color ? `${chip.color}25` : 'rgba(56, 189, 248, 0.2)'
-                  : 'rgba(255, 255, 255, 0.04)',
-                border: `1px solid ${isActive ? chip.color || '#38bdf8' : 'rgba(255, 255, 255, 0.08)'}`,
-                color: isActive ? chip.color || '#38bdf8' : '#94a3b8',
+                  : 'var(--bg-card-hover)',
+                border: `1px solid ${isActive ? chip.color || 'var(--primary)' : 'var(--border-subtle)'}`,
+                color: isActive ? chip.color || 'var(--primary)' : 'var(--text-secondary)',
                 borderRadius: '9999px',
                 padding: '0.2rem 0.65rem',
                 fontSize: '0.75rem',
@@ -327,8 +327,8 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
               <span>{chip.label}</span>
               <span
                 style={{
-                  background: isActive ? (chip.color || '#38bdf8') : 'rgba(255, 255, 255, 0.1)',
-                  color: isActive ? '#0f172a' : '#cbd5e1',
+                  background: isActive ? (chip.color || 'var(--primary)') : 'var(--bg-surface)',
+                  color: isActive ? '#0f172a' : 'var(--text-secondary)',
                   borderRadius: '10px',
                   padding: '0.05rem 0.35rem',
                   fontSize: '0.68rem',
@@ -346,29 +346,29 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
       <div className="table-responsive screen-only">
         <table className="data-table" style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
           <thead>
-            <tr style={{ background: 'rgba(15, 23, 42, 0.95)' }}>
-              <th onClick={() => onSort('nombre')} style={{ cursor: 'pointer', padding: '1rem 1.25rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>
+            <tr style={{ background: 'var(--bg-roster-table-header)' }}>
+              <th onClick={() => onSort('nombre')} style={{ cursor: 'pointer', padding: '1rem 1.25rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)' }}>
                 Operador {sortKey === 'nombre' && (sortDir === 'asc' ? '▲' : '▼')}
               </th>
-              <th onClick={() => onSort('totalEvaluaciones')} style={{ cursor: 'pointer', padding: '1rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', textAlign: 'center' }}>
+              <th onClick={() => onSort('totalEvaluaciones')} style={{ cursor: 'pointer', padding: '1rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', textAlign: 'center' }}>
                 Sesiones {sortKey === 'totalEvaluaciones' && (sortDir === 'asc' ? '▲' : '▼')}
               </th>
-              <th onClick={() => onSort('ultimaFecha')} style={{ cursor: 'pointer', padding: '1rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>
+              <th onClick={() => onSort('ultimaFecha')} style={{ cursor: 'pointer', padding: '1rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)' }}>
                 Última Fecha {sortKey === 'ultimaFecha' && (sortDir === 'asc' ? '▲' : '▼')}
               </th>
-              <th onClick={() => onSort('promedioScore')} style={{ cursor: 'pointer', padding: '1rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>
+              <th onClick={() => onSort('promedioScore')} style={{ cursor: 'pointer', padding: '1rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)' }}>
                 Score Promedio {sortKey === 'promedioScore' && (sortDir === 'asc' ? '▲' : '▼')}
               </th>
-              <th style={{ padding: '1rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>
+              <th style={{ padding: '1rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)' }}>
                 Ejercicios Realizados
               </th>
-              <th onClick={() => onSort('incidentes')} style={{ cursor: 'pointer', padding: '1rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', textAlign: 'center' }}>
+              <th onClick={() => onSort('incidentes')} style={{ cursor: 'pointer', padding: '1rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', textAlign: 'center' }}>
                 Incidentes {sortKey === 'incidentes' && (sortDir === 'asc' ? '▲' : '▼')}
               </th>
-              <th onClick={() => onSort('estado')} style={{ cursor: 'pointer', padding: '1rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', textAlign: 'center' }}>
+              <th onClick={() => onSort('estado')} style={{ cursor: 'pointer', padding: '1rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', textAlign: 'center' }}>
                 Estado {sortKey === 'estado' && (sortDir === 'asc' ? '▲' : '▼')}
               </th>
-              <th className="no-print" style={{ padding: '1rem 1.25rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', textAlign: 'right' }}>
+              <th className="no-print" style={{ padding: '1rem 1.25rem', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', textAlign: 'right' }}>
                 Acciones
               </th>
             </tr>
@@ -378,7 +378,7 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
               <tr>
                 <td colSpan={8} style={{ textAlign: 'center', padding: '3.5rem 1.5rem', color: 'var(--text-muted)' }}>
                   <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🔍</div>
-                  <div style={{ fontSize: '1rem', fontWeight: 600, color: '#f8fafc' }}>
+                  <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-main)' }}>
                     No se encontraron operadores
                   </div>
                   <div style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>
@@ -468,7 +468,7 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
                           {initials || `#${globalIdx}`}
                         </div>
                         <div>
-                          <div style={{ fontWeight: 700, color: '#f8fafc', fontSize: '0.92rem' }}>
+                          <div style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.92rem' }}>
                             {c.nombre}
                           </div>
                           <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.15rem' }}>
@@ -757,13 +757,13 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
           alignItems: 'center',
           padding: '1rem 1.5rem',
           borderTop: '1px solid var(--border-subtle)',
-          background: 'rgba(15, 23, 42, 0.85)',
+          background: 'var(--bg-roster-pagination)',
           flexWrap: 'wrap',
           gap: '0.75rem'
         }}
       >
         <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-          Mostrando operadores <strong style={{ color: '#f8fafc' }}>{(effectiveDriversPage - 1) * pageSize + 1}</strong> a <strong style={{ color: '#f8fafc' }}>{Math.min(effectiveDriversPage * pageSize, displayedConductores.length)}</strong> de <strong style={{ color: '#38bdf8' }}>{displayedConductores.length}</strong>
+          Mostrando operadores <strong style={{ color: 'var(--text-main)' }}>{(effectiveDriversPage - 1) * pageSize + 1}</strong> a <strong style={{ color: 'var(--text-main)' }}>{Math.min(effectiveDriversPage * pageSize, displayedConductores.length)}</strong> de <strong style={{ color: 'var(--primary)' }}>{displayedConductores.length}</strong>
           {statusFilter !== 'all' && ` (filtro "${statusFilter}")`}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
@@ -786,7 +786,7 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
           >
             « Ant
           </button>
-          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#38bdf8', padding: '0 0.6rem' }}>
+          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--primary)', padding: '0 0.6rem' }}>
             Pág. {effectiveDriversPage} / {effectiveTotalPages}
           </span>
           <button

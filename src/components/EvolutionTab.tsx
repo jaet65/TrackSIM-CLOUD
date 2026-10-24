@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { Evaluation } from '../types';
 import { MISTAKE_DIMENSIONS, findCatalogMistake } from '../services/mistakeCatalog';
 import { ReportDetailModal } from './ReportDetailModal';
@@ -41,6 +42,7 @@ ChartJS.register(
 
 export const EvolutionTab: React.FC = () => {
   const { userRole } = useAuth();
+  const { theme } = useTheme();
   const { driverSummaries, companiesSummaries, filteredEvaluations, selectedDriverName, setSelectedDriverName } = useData();
 
   const [activeSubtab, setActiveSubtab] = useState<'driver' | 'company'>('driver');
@@ -787,45 +789,41 @@ export const EvolutionTab: React.FC = () => {
 
           meta.data.forEach((element: any, index: number) => {
             const val = dataset.data[index];
-            if (val === null || val === undefined || isNaN(val)) return;
+            if (val === null || val === undefined || !Number.isFinite(Number(val))) return;
 
-            const item = currentItems[index] || dataset.itemsMetadata?.[index];
+            const item = dataset.itemsMetadata?.[index] || currentItems[index];
             if (item?.isSpacer) return;
 
-            const title = item?.exerciseName || '';
-            // Formato exacto: "Titulo de ejercicio X.XX" (ej. "Montaña 8.15")
-            const fullText = title ? `${title}  (${val})` : `${val}`;
+            const title = item?.exerciseName?.trim() || '';
+            const scoreText = String(val);
 
             ctx.save();
             ctx.beginPath();
 
             const { x, y, base } = element;
             const barHeight = Math.abs(base - y);
+            ctx.fillStyle = theme === 'light' ? '#172033' : '#ffffff';
 
             if (barHeight > 50) {
               ctx.translate(x, base - 14);
               ctx.rotate(-Math.PI / 2);
-              ctx.fillStyle = '#ffffff';
               ctx.font = 'bold 11px "Plus Jakarta Sans", sans-serif';
               ctx.textAlign = 'left';
               ctx.textBaseline = 'middle';
 
-              ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
-              ctx.shadowBlur = 4;
-              ctx.shadowOffsetX = 1;
-              ctx.shadowOffsetY = 1;
-
-              let displayText = fullText;
-              if (ctx.measureText(displayText).width > barHeight - 20) {
-                displayText = `${title.slice(0, 16)}.. ${val}`;
+              const availableWidth = barHeight - 20;
+              let displayTitle = title;
+              let displayText = displayTitle ? `${displayTitle} (${scoreText})` : scoreText;
+              while (displayTitle && ctx.measureText(displayText).width > availableWidth) {
+                displayTitle = displayTitle.length > 2 ? displayTitle.slice(0, -2) : '';
+                displayText = displayTitle ? `${displayTitle}… (${scoreText})` : scoreText;
               }
               ctx.fillText(displayText, 0, 0);
             } else {
-              ctx.fillStyle = '#e2e8f0';
               ctx.font = 'bold 9.5px "Plus Jakarta Sans", sans-serif';
               ctx.textAlign = 'center';
               ctx.textBaseline = 'bottom';
-              ctx.fillText(`${val}`, x, y - 3);
+              ctx.fillText(scoreText, x, y - 3);
             }
 
             ctx.restore();
@@ -833,7 +831,7 @@ export const EvolutionTab: React.FC = () => {
         });
       }
     };
-  }, [companyExerciseEvolution]);
+  }, [companyExerciseEvolution, theme]);
 
   // Opciones del gráfico de barras por ejercicio
   const exerciseBarOptions = useMemo(() => {
@@ -845,10 +843,10 @@ export const EvolutionTab: React.FC = () => {
           display: false
         },
         tooltip: {
-          backgroundColor: 'rgba(15, 23, 42, 0.95)',
-          titleColor: '#fff',
+          backgroundColor: theme === 'light' ? '#ffffff' : 'rgba(15, 23, 42, 0.95)',
+          titleColor: theme === 'light' ? '#172033' : '#fff',
           bodyColor: '#38bdf8',
-          borderColor: 'rgba(255, 255, 255, 0.12)',
+          borderColor: theme === 'light' ? 'rgba(15, 23, 42, 0.14)' : 'rgba(255, 255, 255, 0.12)',
           borderWidth: 1,
           padding: 12,
           boxPadding: 6,
@@ -877,14 +875,14 @@ export const EvolutionTab: React.FC = () => {
           max: 10,
           ticks: {
             stepSize: 2,
-            color: '#64748b'
+            color: theme === 'light' ? '#526179' : '#64748b'
           },
-          grid: { color: 'rgba(255, 255, 255, 0.05)' }
+          grid: { color: theme === 'light' ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.05)' }
         },
         x: {
-          grid: { color: 'rgba(255, 255, 255, 0.04)' },
+          grid: { color: theme === 'light' ? 'rgba(15, 23, 42, 0.06)' : 'rgba(255, 255, 255, 0.04)' },
           ticks: {
-            color: '#38bdf8',
+            color: theme === 'light' ? '#075985' : '#38bdf8',
             font: { weight: 'bold' as const, size: 13 },
             maxRotation: 0,
             autoSkip: false
@@ -892,7 +890,7 @@ export const EvolutionTab: React.FC = () => {
         }
       }
     };
-  }, []);
+  }, [theme]);
 
   // Evaluaciones ordenadas cronológicamente para el conductor seleccionado
   const driverEvaluations = useMemo(() => {
@@ -1106,18 +1104,18 @@ export const EvolutionTab: React.FC = () => {
     maintainAspectRatio: false,
     plugins: {
       legend: {
-        labels: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans', size: 12 } }
+        labels: { color: theme === 'light' ? '#526179' : '#94a3b8', font: { family: 'Plus Jakarta Sans', size: 12 } }
       }
     },
     scales: {
       y: {
         min: 0,
-        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-        ticks: { color: '#64748b' }
+        grid: { color: theme === 'light' ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.05)' },
+        ticks: { color: theme === 'light' ? '#526179' : '#64748b' }
       },
       x: {
-        grid: { color: 'rgba(255, 255, 255, 0.03)' },
-        ticks: { color: '#94a3b8' }
+        grid: { color: theme === 'light' ? 'rgba(15, 23, 42, 0.06)' : 'rgba(255, 255, 255, 0.03)' },
+        ticks: { color: theme === 'light' ? '#526179' : '#94a3b8' }
       }
     }
   };
@@ -1127,13 +1125,13 @@ export const EvolutionTab: React.FC = () => {
     maintainAspectRatio: false,
     plugins: {
       legend: {
-        labels: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans' } }
+        labels: { color: theme === 'light' ? '#526179' : '#94a3b8', font: { family: 'Plus Jakarta Sans' } }
       },
       tooltip: {
-        backgroundColor: 'rgba(15, 23, 42, 0.95)',
-        titleColor: '#f8fafc',
-        bodyColor: '#cbd5e1',
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: theme === 'light' ? '#ffffff' : 'rgba(15, 23, 42, 0.95)',
+        titleColor: theme === 'light' ? '#172033' : '#f8fafc',
+        bodyColor: theme === 'light' ? '#526179' : '#cbd5e1',
+        borderColor: theme === 'light' ? 'rgba(15, 23, 42, 0.14)' : 'rgba(255, 255, 255, 0.1)',
         borderWidth: 1,
         padding: 10,
         callbacks: {
@@ -1155,10 +1153,10 @@ export const EvolutionTab: React.FC = () => {
       r: {
         min: 0,
         max: 10,
-        angleLines: { color: 'rgba(255, 255, 255, 0.08)' },
-        grid: { color: 'rgba(255, 255, 255, 0.08)' },
-        pointLabels: { color: '#cbd5e1', font: { size: 10, weight: 'bold' as const } },
-        ticks: { backdropColor: 'transparent', color: '#64748b', stepSize: 2 }
+        angleLines: { color: theme === 'light' ? 'rgba(15, 23, 42, 0.1)' : 'rgba(255, 255, 255, 0.08)' },
+        grid: { color: theme === 'light' ? 'rgba(15, 23, 42, 0.1)' : 'rgba(255, 255, 255, 0.08)' },
+        pointLabels: { color: theme === 'light' ? '#172033' : '#cbd5e1', font: { size: 10, weight: 'bold' as const } },
+        ticks: { backdropColor: 'transparent', color: theme === 'light' ? '#526179' : '#64748b', stepSize: 2 }
       }
     }
   };
@@ -1194,7 +1192,7 @@ export const EvolutionTab: React.FC = () => {
       {activeSubtab === 'driver' ? (
         <>
           {/* Selector de Conductor */}
-          <div className="glass-card" style={{ padding: '0.9rem 1.25rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', background: 'linear-gradient(135deg, rgba(17, 24, 39, 0.9), rgba(15, 23, 42, 0.8))' }}>
+          <div className="glass-card evolution-filter-bar" style={{ padding: '0.9rem 1.25rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, minWidth: '260px' }}>
               <span style={{ fontSize: '1.3rem' }}>👨‍✈️</span>
               <div style={{ width: '100%', maxWidth: '380px' }}>
@@ -1209,7 +1207,7 @@ export const EvolutionTab: React.FC = () => {
                   <select
                     value={currentDriver?.nombre || ''}
                     onChange={(e) => setSelectedDriverName(e.target.value)}
-                    style={{ width: '100%', padding: '0.55rem 0.85rem', background: '#0e1422', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#38bdf8', fontWeight: 600, fontSize: '0.9rem' }}
+                    style={{ width: '100%', padding: '0.55rem 0.85rem', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: 'var(--primary)', colorScheme: theme, fontWeight: 600, fontSize: '0.9rem' }}
                   >
                     {eligibleDrivers.map((d) => (
                       <option key={d.nombre} value={d.nombre}>
@@ -1224,7 +1222,7 @@ export const EvolutionTab: React.FC = () => {
             {currentDriver && (
               <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                 <span>Historial del Operador: </span>
-                <strong style={{ color: '#38bdf8' }}>{currentDriver.totalEvaluaciones} sesiones completadas</strong>
+                <strong style={{ color: 'var(--primary)' }}>{currentDriver.totalEvaluaciones} sesiones completadas</strong>
               </div>
             )}
           </div>
@@ -1276,14 +1274,13 @@ export const EvolutionTab: React.FC = () => {
           {/* Selector de Flota / Empresa */}
           {companiesSummaries.length > 1 && (
             <div
-              className="glass-card"
+              className="glass-card evolution-filter-bar"
               style={{
                 padding: '0.9rem 1.25rem',
                 marginBottom: '1.25rem',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '1rem',
-                background: 'linear-gradient(135deg, rgba(17, 24, 39, 0.9), rgba(15, 23, 42, 0.8))'
+                gap: '1rem'
               }}
             >
               <span style={{ fontSize: '1.3rem' }}>🏢</span>
@@ -1294,7 +1291,7 @@ export const EvolutionTab: React.FC = () => {
                 <select
                   value={currentCompany?.nombre || ''}
                   onChange={(e) => setSelectedCompanyName(e.target.value)}
-                  style={{ width: '100%', padding: '0.55rem 0.85rem', background: '#0e1422', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#38bdf8', fontWeight: 600, fontSize: '0.9rem' }}
+                  style={{ width: '100%', padding: '0.55rem 0.85rem', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: 'var(--primary)', colorScheme: theme, fontWeight: 600, fontSize: '0.9rem' }}
                 >
                   {availableCompanies.map((c) => (
                     <option key={c.nombre} value={c.nombre}>

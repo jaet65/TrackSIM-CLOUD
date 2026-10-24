@@ -102,15 +102,11 @@ export const CompanyAnnualChartsSection: React.FC<CompanyAnnualChartsSectionProp
               ...chartOptions,
               scales: {
                 y: {
+                  ...chartOptions.scales.y,
                   min: 0,
-                  max: 10,
-                  grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                  ticks: { color: '#64748b' }
+                  max: 10
                 },
-                x: {
-                  grid: { color: 'rgba(255, 255, 255, 0.04)' },
-                  ticks: { color: '#94a3b8', font: { weight: 'bold' } }
-                }
+                x: chartOptions.scales.x
               }
             }}
           />
@@ -133,12 +129,13 @@ export const CompanyAnnualChartsSection: React.FC<CompanyAnnualChartsSectionProp
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
             <div
+              className="accident-view-toggle"
               style={{
                 display: 'inline-flex',
-                background: 'rgba(15, 23, 42, 0.65)',
+                background: 'var(--bg-card-hover)',
                 padding: '3px',
                 borderRadius: '10px',
-                border: '1px solid rgba(255, 255, 255, 0.08)'
+                border: '1px solid var(--border-subtle)'
               }}
             >
               <button
@@ -153,7 +150,7 @@ export const CompanyAnnualChartsSection: React.FC<CompanyAnnualChartsSectionProp
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
                   background: accidentViewMode === 'counts' ? '#f43f5e' : 'transparent',
-                  color: accidentViewMode === 'counts' ? '#ffffff' : '#94a3b8',
+                  color: accidentViewMode === 'counts' ? '#ffffff' : 'var(--text-secondary)',
                   boxShadow: accidentViewMode === 'counts' ? '0 2px 8px rgba(244, 63, 94, 0.35)' : 'none'
                 }}
               >
@@ -171,7 +168,7 @@ export const CompanyAnnualChartsSection: React.FC<CompanyAnnualChartsSectionProp
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
                   background: accidentViewMode === 'rate' ? '#38bdf8' : 'transparent',
-                  color: accidentViewMode === 'rate' ? '#0f172a' : '#94a3b8',
+                  color: accidentViewMode === 'rate' ? '#0f172a' : 'var(--text-secondary)',
                   boxShadow: accidentViewMode === 'rate' ? '0 2px 8px rgba(56, 189, 248, 0.35)' : 'none'
                 }}
               >

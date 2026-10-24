@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { normalizeExerciseName, findCatalogExercise } from '../services/exerciseCatalog';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import {
@@ -21,6 +22,7 @@ interface DashboardTabProps {
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
   const { userRole } = useAuth();
+  const { theme } = useTheme();
   const {
     filteredEvaluations,
     companies,
@@ -245,7 +247,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
           metrics.noAprobados
         ],
         backgroundColor: ['#10b981', '#38bdf8', '#f59e0b', '#ef4444'],
-        borderColor: '#0f172a',
+        borderColor: theme === 'light' ? '#ffffff' : '#0f172a',
         borderWidth: 3
       }
     ]
@@ -258,7 +260,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
       legend: {
         position: 'bottom' as const,
         labels: {
-          color: '#94a3b8',
+          color: theme === 'light' ? '#526179' : '#94a3b8',
           boxWidth: 10,
           font: { family: 'Plus Jakarta Sans', size: 11 },
           padding: 12
@@ -318,13 +320,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
       y: {
         min: 0,
         max: 10,
-        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-        ticks: { color: '#64748b' }
+        grid: { color: theme === 'light' ? 'rgba(15, 23, 42, 0.08)' : 'rgba(255, 255, 255, 0.05)' },
+        ticks: { color: theme === 'light' ? '#526179' : '#64748b' }
       },
       x: {
         grid: { display: false },
         ticks: {
-          color: '#94a3b8',
+          color: theme === 'light' ? '#526179' : '#94a3b8',
           font: { size: barCount > 15 ? 9 : 11 },
           maxRotation: barCount > 5 ? 45 : 0,
           minRotation: barCount > 8 ? 25 : 0,
@@ -365,30 +367,30 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
 
       {companies.length > 1 && (
         <div
-          className="glass-card"
+          className="glass-card dashboard-filter-bar"
           style={{
             padding: '0.9rem 1.25rem',
             marginBottom: '1.75rem',
             display: 'flex',
             gap: '1rem',
             alignItems: 'center',
-            flexWrap: 'wrap',
-            background: 'linear-gradient(135deg, rgba(17, 24, 39, 0.9), rgba(15, 23, 42, 0.8))'
+            flexWrap: 'wrap'
           }}
         >
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>🏢 Flota:</span>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>🏢 Flota:</span>
             <select
               value={selectedCompany}
               onChange={(e) => setSelectedCompany(e.target.value)}
               style={{
                 minWidth: '220px',
                 padding: '0.55rem 0.85rem',
-                background: '#0e1422',
+                background: 'var(--bg-surface)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: '8px',
-                color: '#38bdf8',
+                color: 'var(--primary)',
+                colorScheme: theme,
                 fontWeight: 600,
                 fontSize: '0.88rem'
               }}
@@ -407,124 +409,69 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
 
       {/* 2.5. Tarjeta Resumen Ejecutivo de la Flota */}
       <div
-        className="glass-card"
+        className="glass-card company-overview-card"
         style={{
           padding: '1.25rem 1.75rem',
           marginBottom: '2rem',
-          background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(30, 41, 59, 0.7) 100%)',
-          border: '1px solid rgba(56, 189, 248, 0.25)',
-          borderRadius: '14px',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.28)'
+          borderRadius: '14px'
         }}
       >
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '1.25rem', alignItems: 'center' }}>
           {/* Nombre de la Empresa */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', borderRight: '1px solid rgba(255,255,255,0.08)', paddingRight: '1rem' }}>
-            <div
-              style={{
-                width: '46px',
-                height: '46px',
-                borderRadius: '12px',
-                background: 'rgba(56, 189, 248, 0.15)',
-                color: '#38bdf8',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '1.4rem',
-                flexShrink: 0
-              }}
-            >
+          <div className="company-overview-item">
+            <div className="company-overview-icon blue">
               🏢
             </div>
             <div>
-              <span style={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', fontWeight: 700, display: 'block' }}>
+              <span className="company-overview-label">
                 Empresa / Flota
               </span>
-              <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#fff', marginTop: '0.15rem' }}>
+              <div className="company-overview-value">
                 {companyOverviewStats.nombreEmpresa}
               </div>
             </div>
           </div>
 
           {/* Años Evaluados */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', borderRight: '1px solid rgba(255,255,255,0.08)', paddingRight: '1rem' }}>
-            <div
-              style={{
-                width: '46px',
-                height: '46px',
-                borderRadius: '12px',
-                background: 'rgba(168, 85, 247, 0.15)',
-                color: '#c084fc',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '1.4rem',
-                flexShrink: 0
-              }}
-            >
+          <div className="company-overview-item">
+            <div className="company-overview-icon purple">
               📅
             </div>
             <div>
-              <span style={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', fontWeight: 700, display: 'block' }}>
+              <span className="company-overview-label">
                 Años Evaluados
               </span>
-              <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#c084fc', marginTop: '0.15rem' }}>
+              <div className="company-overview-value purple">
                 {companyOverviewStats.aniosEvaluados}
               </div>
             </div>
           </div>
 
           {/* Sedes */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', borderRight: '1px solid rgba(255,255,255,0.08)', paddingRight: '1rem' }}>
-            <div
-              style={{
-                width: '46px',
-                height: '46px',
-                borderRadius: '12px',
-                background: 'rgba(16, 185, 129, 0.15)',
-                color: '#34d399',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '1.4rem',
-                flexShrink: 0
-              }}
-            >
+          <div className="company-overview-item">
+            <div className="company-overview-icon emerald">
               📍
             </div>
             <div>
-              <span style={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', fontWeight: 700, display: 'block' }}>
+              <span className="company-overview-label">
                 Sedes
               </span>
-              <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#34d399', marginTop: '0.15rem' }}>
+              <div className="company-overview-value emerald">
                 {companyOverviewStats.totalSedes} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-muted)' }}>{companyOverviewStats.totalSedes === 1 ? 'ubicación' : 'ciudades'}</span>
               </div>
             </div>
           </div>
 
           {/* Cantidad de Variantes de Ejercicio */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div
-              style={{
-                width: '46px',
-                height: '46px',
-                borderRadius: '12px',
-                background: 'rgba(245, 158, 11, 0.15)',
-                color: '#fbbf24',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '1.4rem',
-                flexShrink: 0
-              }}
-            >
+          <div className="company-overview-item">
+            <div className="company-overview-icon amber">
               🚛
             </div>
             <div>
-              <span style={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', fontWeight: 700, display: 'block' }}>
+              <span className="company-overview-label">
                 Variantes de Ejercicio
               </span>
-              <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#fbbf24', marginTop: '0.15rem' }}>
+              <div className="company-overview-value amber">
                 {companyOverviewStats.totalEjercicios} <span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-muted)' }}>modalidades aplicadas</span>
               </div>
             </div>
@@ -542,7 +489,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
           </div>
           <div className="kpi-value">{metrics.total}</div>
           <div className="kpi-footer">
-            <span style={{ color: '#38bdf8', fontWeight: 600 }}>{metrics.totalDrivers}</span> operadores únicos
+            <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{metrics.totalDrivers}</span> operadores únicos
           </div>
         </div>
 
@@ -552,7 +499,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
             <span className="kpi-label">Calificación Promedio</span>
             <div className="kpi-icon emerald">⭐</div>
           </div>
-          <div className="kpi-value" style={{ color: '#22c55e' }}>
+          <div className="kpi-value" style={{ color: 'var(--success)' }}>
             {metrics.avgScore} <small style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>/ 10</small>
           </div>
           <div className="kpi-footer">
@@ -568,7 +515,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
             <span className="kpi-label">Tasa de Aprobación</span>
             <div className="kpi-icon purple">🎯</div>
           </div>
-          <div className="kpi-value" style={{ color: '#c084fc' }}>{metrics.passingRate}%</div>
+          <div className="kpi-value" style={{ color: 'var(--accent-purple)' }}>{metrics.passingRate}%</div>
           <div className="kpi-footer">Criterio aprobatorio ≥ 6.0 pts</div>
         </div>
 
@@ -578,7 +525,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
             <span className="kpi-label">Incidentes en Simulador</span>
             <div className="kpi-icon rose">⚠️</div>
           </div>
-          <div className="kpi-value" style={{ color: metrics.totalIncidentes > 0 ? '#ef4444' : '#10b981' }}>
+          <div className="kpi-value" style={{ color: metrics.totalIncidentes > 0 ? 'var(--danger)' : 'var(--success)' }}>
             {metrics.totalIncidentes}
           </div>
           <div className="kpi-footer" style={{ fontSize: '0.74rem', lineHeight: 1.35 }}>
@@ -607,19 +554,19 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border-subtle)', textAlign: 'center' }}>
             <div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Sobresaliente</div>
-              <div style={{ fontWeight: 800, color: '#10b981', fontSize: '1.1rem' }}>{metrics.sobresalientes}</div>
+              <div style={{ fontWeight: 800, color: 'var(--success)', fontSize: '1.1rem' }}>{metrics.sobresalientes}</div>
             </div>
             <div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Aprobado</div>
-              <div style={{ fontWeight: 800, color: '#38bdf8', fontSize: '1.1rem' }}>{metrics.aprobados}</div>
+              <div style={{ fontWeight: 800, color: 'var(--primary)', fontSize: '1.1rem' }}>{metrics.aprobados}</div>
             </div>
             <div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Reforzar</div>
-              <div style={{ fontWeight: 800, color: '#f59e0b', fontSize: '1.1rem' }}>{metrics.refuerzo}</div>
+              <div style={{ fontWeight: 800, color: 'var(--warning)', fontSize: '1.1rem' }}>{metrics.refuerzo}</div>
             </div>
             <div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>No Aprobado</div>
-              <div style={{ fontWeight: 800, color: '#ef4444', fontSize: '1.1rem' }}>{metrics.noAprobados}</div>
+              <div style={{ fontWeight: 800, color: 'var(--danger)', fontSize: '1.1rem' }}>{metrics.noAprobados}</div>
             </div>
           </div>
         </div>
@@ -709,7 +656,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
                     return (
                       <tr key={ev.id}>
                         <td>
-                          <div style={{ fontWeight: 600, color: '#fff' }}>{ev.conductor || ev.operador}</div>
+                          <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{ev.conductor || ev.operador}</div>
                           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                             ID: {ev.id.substring(0, 14)}
                           </div>
