@@ -61,6 +61,7 @@ describe('Navbar component', () => {
       loginWithGoogle: vi.fn(),
       loginWithEmail: vi.fn(),
       registerWithEmail: vi.fn(),
+      resetPassword: vi.fn(),
       reauthenticateForMassDelete: vi.fn(),
       logout: vi.fn()
     });
@@ -89,6 +90,7 @@ describe('Navbar component', () => {
       loginWithGoogle: vi.fn(),
       loginWithEmail: vi.fn(),
       registerWithEmail: vi.fn(),
+      resetPassword: vi.fn(),
       reauthenticateForMassDelete: vi.fn(),
       logout: vi.fn()
     });
@@ -112,6 +114,7 @@ describe('Navbar component', () => {
       loginWithGoogle: vi.fn(),
       loginWithEmail: vi.fn(),
       registerWithEmail: vi.fn(),
+      resetPassword: vi.fn(),
       reauthenticateForMassDelete: vi.fn(),
       logout: vi.fn()
     });
@@ -135,6 +138,7 @@ describe('Navbar component', () => {
       loginWithGoogle: vi.fn(),
       loginWithEmail: vi.fn(),
       registerWithEmail: vi.fn(),
+      resetPassword: vi.fn(),
       reauthenticateForMassDelete: vi.fn(),
       logout: vi.fn()
     });
@@ -160,6 +164,7 @@ describe('Navbar component', () => {
       loginWithGoogle: vi.fn(),
       loginWithEmail: vi.fn(),
       registerWithEmail: vi.fn(),
+      resetPassword: vi.fn(),
       reauthenticateForMassDelete: vi.fn(),
       logout: vi.fn()
     });
