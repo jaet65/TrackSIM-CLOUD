@@ -127,7 +127,7 @@ describe('Navbar component', () => {
     expect(mockOnTabChange).toHaveBeenCalledWith('evolucion');
   });
 
-  it('debe cambiar al tema claro y guardar la preferencia', () => {
+  it('debe iniciar en tema claro y guardar los cambios de preferencia', () => {
     vi.spyOn(AuthContext, 'useAuth').mockReturnValue({
       user: { displayName: 'Admin Master', email: 'admin@tracksim.com' } as any,
       userRole: 'admin',
@@ -144,13 +144,42 @@ describe('Navbar component', () => {
     });
 
     renderNavbar('dashboard');
-    expect(screen.getByAltText('TrackSIM Logo')).toHaveAttribute('src', '/Logo.png');
+    expect(document.documentElement).toHaveAttribute('data-theme', 'light');
+    expect(window.localStorage.getItem('tracksim-theme')).toBe('light');
+    expect(screen.getByAltText('TrackSIM Logo')).toHaveAttribute('src', '/Logo%20NN.png');
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar a tema oscuro' }));
+
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+    expect(window.localStorage.getItem('tracksim-theme')).toBe('dark');
     fireEvent.click(screen.getByRole('button', { name: 'Cambiar a tema claro' }));
 
     expect(document.documentElement).toHaveAttribute('data-theme', 'light');
     expect(window.localStorage.getItem('tracksim-theme')).toBe('light');
     expect(screen.getByAltText('TrackSIM Logo')).toHaveAttribute('src', '/Logo%20NN.png');
     expect(screen.getByRole('button', { name: 'Cambiar a tema oscuro' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('debe respetar la preferencia de tema oscuro guardada', () => {
+    vi.spyOn(AuthContext, 'useAuth').mockReturnValue({
+      user: { displayName: 'Admin Master', email: 'admin@tracksim.com' } as any,
+      userRole: 'admin',
+      allowedCompanies: ['all'],
+      isDemo: false,
+      profile: null,
+      loading: false,
+      loginWithGoogle: vi.fn(),
+      loginWithEmail: vi.fn(),
+      registerWithEmail: vi.fn(),
+      resetPassword: vi.fn(),
+      reauthenticateForMassDelete: vi.fn(),
+      logout: vi.fn()
+    });
+    window.localStorage.setItem('tracksim-theme', 'dark');
+
+    renderNavbar('dashboard');
+
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+    expect(screen.getByRole('button', { name: 'Cambiar a tema claro' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('debe mostrar el modo demo sin exponer pestañas administrativas', () => {
