@@ -1,5 +1,6 @@
 import React from 'react';
 import { CompanySummary } from '../../types';
+import { logAudit } from '../../services/auditLog';
 
 interface CompanyOverviewCardProps {
   comp: (CompanySummary & { esGlobal?: boolean });
@@ -98,7 +99,15 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
           <button
             type="button"
             className="btn btn-secondary btn-sm company-export-btn"
-            onClick={() => window.print()}
+            onClick={() => {
+              void logAudit({
+                categoria: 'datos',
+                accion: 'imprimir',
+                empresas: [comp.nombre],
+                detalle: `Impresión / PDF del resumen de ${comp.nombre}`
+              });
+              window.print();
+            }}
             style={{
               display: 'inline-flex',
               alignItems: 'center',

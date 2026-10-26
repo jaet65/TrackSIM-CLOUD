@@ -105,6 +105,48 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Bitácora de auditoría: eventos propios, inmutables y con fecha del servidor; lectura solo admin.
+    // Cualquier usuario autenticado puede registrar accesos, lecturas/exportaciones y su autoregistro;
+    // el resto de categorías (reportes, usuarios, seguridad) solo las registra un admin.
+    function auditShapeOk() {
+      let d = request.resource.data;
+      return d.keys().hasOnly([
+               'categoria', 'accion', 'actorUid', 'actorEmail', 'fecha', 'detalle', 'empresas',
+               'cantidad', 'metodo', 'critico', 'antes', 'despues', 'sesionId', 'navegador'
+             ]) &&
+             d.keys().hasAll(['categoria', 'accion', 'actorUid', 'actorEmail', 'fecha']) &&
+             d.categoria is string && d.accion is string &&
+             d.actorUid == request.auth.uid &&
+             d.actorEmail == request.auth.token.email.lower() &&
+             d.fecha == request.time &&
+             d.get('detalle', '') is string && d.get('detalle', '').size() <= 500 &&
+             d.get('empresas', []) is list && d.get('empresas', []).size() <= 20 &&
+             d.get('cantidad', 0) is int &&
+             d.get('metodo', '') is string && d.get('metodo', '').size() <= 40 &&
+             d.get('critico', false) is bool &&
+             d.get('antes', '') is string && d.get('antes', '').size() <= 1200 &&
+             d.get('despues', '') is string && d.get('despues', '').size() <= 1200 &&
+             d.get('sesionId', '') is string && d.get('sesionId', '').size() <= 64 &&
+             d.get('navegador', '') is string && d.get('navegador', '').size() <= 250;
+    }
+
+    function auditSelfServiceOk() {
+      let d = request.resource.data;
+      return (d.categoria == 'acceso' && d.accion in ['login', 'logout']) ||
+             (d.categoria == 'datos' && d.accion in ['ver', 'exportar', 'imprimir']) ||
+             (d.categoria == 'seguridad' && d.accion == 'autoregistro');
+    }
+
+    match /auditoria/{eventId} {
+      allow read: if isAdmin();
+      allow create: if signedIn() &&
+                      request.auth.token.email is string &&
+                      auditShapeOk() &&
+                      (auditSelfServiceOk() ||
+                       (isAdmin() && request.resource.data.categoria in ['reporte', 'usuarios', 'seguridad']));
+      allow update, delete: if false;
+    }
+
     // Tombstones de sincronización incremental, limitados a las empresas permitidas
     match /_eliminaciones/{delId} {
       allow read: if canReadEmpresa(resource.data.empresa);

@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { ExerciseCatalogModal } from './ExerciseCatalogModal';
 import { loadPdfJs } from '../services/pdfJsLoader';
+import { logAudit } from '../services/auditLog';
 import { StagedEvaluation } from '../types';
 
 export const IngestaTab: React.FC = () => {
@@ -122,7 +123,13 @@ export const IngestaTab: React.FC = () => {
       }
 
       await reloadEvaluations();
-      setStagingFiles([]);
+      void logAudit({
+        categoria: 'reporte',
+        accion: 'crear',
+        cantidad: stagingFiles.length,
+        empresas: stagingFiles.map((f) => f.empresa).filter(Boolean),
+        detalle: stagingFiles.slice(0, 5).map((f) => f.conductor || f.operador || f.folio || f.id).filter(Boolean).join(', ')
+      });
       setFeedback({ message: `¡Se han guardado ${stagingFiles.length} evaluaciones en Firestore exitosamente!`, type: 'success' });
     } catch (e: any) {
       console.error('Error guardando evaluaciones:', e);

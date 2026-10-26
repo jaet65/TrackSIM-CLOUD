@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { UserProfile } from '../types';
+import { AuditHistoryPanel } from './AuditHistoryPanel';
+import { logAudit, diffSnapshots, snapshotText } from '../services/auditLog';
 import { db, collection, getDocs, doc, setDoc, deleteDoc } from '../services/firebaseFirestore';
 
 interface DomainRecord {
@@ -42,6 +44,7 @@ export const UserManagementTab: React.FC = () => {
 
   // Edición de usuario
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [subTab, setSubTab] = useState<'usuarios' | 'historial'>('usuarios');
 
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'warning' | 'error' | 'info' } | null>(null);
 
@@ -98,6 +101,14 @@ export const UserManagementTab: React.FC = () => {
       };
 
       await setDoc(doc(db, 'usuarios', generatedUid), userData, { merge: true });
+      void logAudit({
+        categoria: 'usuarios',
+        accion: 'crear',
+        critico: userData.role === 'admin' || userData.empresaPermitida === 'all',
+        detalle: `Usuario ${userData.email} (${newRole})`,
+        empresas: [userData.empresaPermitida || ''],
+        despues: snapshotText({ role: userData.role, empresaPermitida: userData.empresaPermitida })
+      });
       setFeedback({ message: `Usuario ${newEmail} registrado exitosamente.`, type: 'success' });
       setNewEmail('');
       setNewCompany('');
@@ -126,7 +137,17 @@ export const UserManagementTab: React.FC = () => {
         empresa: domainCompany.trim(),
         fechaRegistro: new Date().toISOString()
       };
+      const previousDomain = domains.find((d) => d.dominio === cleanDomain);
       await setDoc(doc(db, 'dominios_empresas', cleanDomain), record, { merge: true });
+      void logAudit({
+        categoria: 'usuarios',
+        accion: previousDomain ? 'modificar' : 'crear',
+        critico: record.empresa === 'all' || (!!previousDomain && previousDomain.empresa !== record.empresa),
+        detalle: `Dominio @${cleanDomain} ${previousDomain ? 'reasignado' : 'vinculado'}`,
+        empresas: [record.empresa],
+        antes: previousDomain ? snapshotText({ empresa: previousDomain.empresa }) : undefined,
+        despues: snapshotText({ empresa: record.empresa })
+      });
       setFeedback({ message: `Dominio @${cleanDomain} vinculado a "${domainCompany}".`, type: 'success' });
       setNewDomain('');
       setDomainCompany('');
@@ -140,7 +161,15 @@ export const UserManagementTab: React.FC = () => {
   const handleDeleteDomain = async (domain: string) => {
     if (!window.confirm(`¿Eliminar la vinculación del dominio @${domain}?`)) return;
     try {
+      const removedDomain = domains.find((d) => d.dominio === domain);
       await deleteDoc(doc(db, 'dominios_empresas', domain));
+      void logAudit({
+        categoria: 'usuarios',
+        accion: 'eliminar',
+        detalle: `Dominio @${domain} desvinculado`,
+        empresas: [removedDomain?.empresa || ''],
+        antes: removedDomain ? snapshotText({ empresa: removedDomain.empresa }) : undefined
+      });
       setFeedback({ message: `Dominio @${domain} eliminado.`, type: 'info' });
       await loadData();
     } catch (err) {
@@ -152,6 +181,14 @@ export const UserManagementTab: React.FC = () => {
     if (!window.confirm(`¿Eliminar al usuario ${u.email}?`)) return;
     try {
       await deleteDoc(doc(db, 'usuarios', u.uid));
+      void logAudit({
+        categoria: 'usuarios',
+        accion: 'eliminar',
+        critico: u.role === 'admin',
+        detalle: `Usuario ${u.email} eliminado`,
+        empresas: [u.empresaPermitida || ''],
+        antes: snapshotText({ role: u.role, empresaPermitida: u.empresaPermitida })
+      });
       setFeedback({ message: `Usuario ${u.email} eliminado del sistema.`, type: 'info' });
       await loadData();
     } catch (err) {
@@ -163,7 +200,22 @@ export const UserManagementTab: React.FC = () => {
     e.preventDefault();
     if (!editingUser) return;
     try {
+      const originalUser = users.find((u) => u.uid === editingUser.uid);
       await setDoc(doc(db, 'usuarios', editingUser.uid), editingUser, { merge: true });
+      const diff = diffSnapshots(
+        originalUser as unknown as Record<string, unknown> | undefined,
+        editingUser as unknown as Record<string, unknown>,
+        ['role', 'empresaPermitida', 'empresasPermitidas']
+      );
+      void logAudit({
+        categoria: 'usuarios',
+        accion: 'modificar',
+        critico: diff.changed.includes('role') || diff.changed.includes('empresaPermitida'),
+        detalle: `Usuario ${editingUser.email}: ${diff.changed.length ? diff.changed.join(', ') : 'sin cambios de valor'}`,
+        empresas: [editingUser.empresaPermitida || ''],
+        antes: diff.antes,
+        despues: diff.despues
+      });
       setFeedback({ message: `Perfil de ${editingUser.email} actualizado.`, type: 'success' });
       setEditingUser(null);
       await loadData();
@@ -211,6 +263,18 @@ export const UserManagementTab: React.FC = () => {
         </div>
       )}
 
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+        <button type="button" className={`btn ${subTab === 'usuarios' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setSubTab('usuarios')}>
+          👥 Usuarios y Dominios
+        </button>
+        <button type="button" className={`btn ${subTab === 'historial' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setSubTab('historial')}>
+          🕘 Historial
+        </button>
+      </div>
+
+      {subTab === 'historial' && <AuditHistoryPanel />}
+
+      {subTab === 'usuarios' && (<>
       {/* Formularios: Nuevo Usuario y Vinculación de Dominios */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
         {/* Crear Usuario Lector */}
@@ -223,7 +287,7 @@ export const UserManagementTab: React.FC = () => {
               </label>
               <input
                 type="email"
-                placeholder="ej: analista@almex.com"
+                placeholder="ej: analista@contoso.com"
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
                 style={{ width: '100%', padding: '0.55rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#fff' }}
@@ -316,26 +380,27 @@ export const UserManagementTab: React.FC = () => {
           <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--border-subtle)' }}>
             <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>🌐 Dominios Corporativos Vinculados ({domains.length})</h3>
           </div>
-          <div className="table-responsive" style={{ width: '100%' }}>
-            <table className="custom-table" style={{ width: '100%', minWidth: '700px' }}>
+          <div className="table-responsive" style={{ width: '100%', maxHeight: '320px', overflowY: 'auto' }}>
+            <table className="custom-table" style={{ width: '100%', minWidth: '500px', fontSize: '0.85rem' }}>
               <thead>
                 <tr>
-                  <th>Dominio</th>
-                  <th>Empresa Asignada</th>
-                  <th style={{ textAlign: 'right' }}>Acciones</th>
+                  <th style={{ position: 'sticky', top: 0, zIndex: 1, padding: '0.4rem 0.75rem', background: 'var(--bg-card, #fff)' }}>Dominio</th>
+                  <th style={{ position: 'sticky', top: 0, zIndex: 1, padding: '0.4rem 0.75rem', background: 'var(--bg-card, #fff)' }}>Empresa Asignada</th>
+                  <th style={{ position: 'sticky', top: 0, zIndex: 1, padding: '0.4rem 0.75rem', background: 'var(--bg-card, #fff)', textAlign: 'right' }}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {domains.map((d) => (
                   <tr key={d.dominio}>
-                    <td>
+                    <td style={{ padding: '0.3rem 0.75rem' }}>
                       <strong style={{ color: '#38bdf8' }}>@{d.dominio}</strong>
                     </td>
-                    <td>🏢 {d.empresa}</td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td style={{ padding: '0.3rem 0.75rem' }}>🏢 {d.empresa}</td>
+                    <td style={{ padding: '0.3rem 0.75rem', textAlign: 'right' }}>
                       <button
                         type="button"
                         className="btn btn-danger btn-sm"
+                        style={{ padding: '0.15rem 0.5rem', fontSize: '0.75rem' }}
                         onClick={() => handleDeleteDomain(d.dominio)}
                       >
                         🗑️ Desvincular
@@ -425,6 +490,7 @@ export const UserManagementTab: React.FC = () => {
           </table>
         </div>
       </div>
+      </>)}
 
       {/* Modal Editar Usuario Centrada */}
       {editingUser && (

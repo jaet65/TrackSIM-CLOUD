@@ -1,4 +1,7 @@
 import {
+  addDoc,
+  limit,
+  serverTimestamp,
   collection,
   deleteDoc,
   doc,
@@ -25,6 +28,9 @@ export const db = initializeFirestore(app, {
 });
 
 export {
+  addDoc,
+  limit,
+  serverTimestamp,
   collection,
   deleteDoc,
   doc,

@@ -73,6 +73,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const email = (currentUser.email || '').toLowerCase().trim();
       const isGoogleAuth = currentUser.providerData?.some((p) => p.providerId === 'google.com');
 
+      // Se registra cada acceso (inicio de sesión o sesión restaurada), incluidos los administradores
+      void import('../services/auditLog').then(({ logAudit }) =>
+        logAudit({ categoria: 'acceso', accion: 'login', metodo: isGoogleAuth ? 'google' : 'password' })
+      );
+
       if (isVerifiedCorporateAdmin(currentUser.email, currentUser.emailVerified)) {
         setUserRole('admin');
         setAllowedCompanies(['all']);
@@ -128,6 +133,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
           try {
             await setDoc(userDocRef, newUserData);
+            void import('../services/auditLog').then(({ logAudit }) =>
+              logAudit({
+                categoria: 'seguridad',
+                accion: 'autoregistro',
+                critico: true,
+                detalle: `Alta automática de ${email} como lector`,
+                empresas: domainMatchedCompany ? [domainMatchedCompany] : [],
+                metodo: isGoogleAuth ? 'google' : 'password',
+                despues: JSON.stringify({ role: 'viewer', empresaPermitida: domainMatchedCompany || '', dominio: userDomain })
+              })
+            );
           } catch (regErr) {
             console.warn('Error al autoguardar documento de usuario en Firestore:', regErr);
           }
@@ -186,6 +202,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       window.location.assign(`${url.pathname}${url.search}${url.hash}`);
       return;
     }
+    const { logAudit } = await import('../services/auditLog');
+    await logAudit({ categoria: 'acceso', accion: 'logout' });
     await signOut(auth);
   };
 

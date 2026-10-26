@@ -7,6 +7,8 @@ import {
   type RulesTestEnvironment
 } from '@firebase/rules-unit-testing';
 import {
+  addDoc,
+  serverTimestamp,
   collection,
   deleteDoc,
   doc,
@@ -252,5 +254,53 @@ describe('Firestore Security Rules', () => {
       where('empresa', '==', 'Empresa A')
     )));
     await assertFails(getDocs(collection(viewer, '_eliminaciones')));
+  });
+
+  it('allows own audit events, forbids forged or report events from viewers, and restricts reads to admin', async () => {
+    const viewer = testEnv.authenticatedContext('domain-user', {
+      email: 'Viewer@lacostena.com.mx',
+      email_verified: true
+    }).firestore();
+    const admin = testEnv.authenticatedContext('admin-user', {
+      email: 'admin@corporativomaf.com',
+      email_verified: true
+    }).firestore();
+    const login = { categoria: 'acceso', accion: 'login', actorUid: 'domain-user', actorEmail: 'viewer@lacostena.com.mx', fecha: serverTimestamp() };
+
+    await assertSucceeds(addDoc(collection(viewer, 'auditoria'), login));
+    await assertFails(addDoc(collection(viewer, 'auditoria'), { ...login, actorUid: 'someone-else' }));
+    await assertFails(addDoc(collection(viewer, 'auditoria'), { ...login, actorEmail: 'admin@corporativomaf.com' }));
+    await assertFails(addDoc(collection(viewer, 'auditoria'), { ...login, fecha: new Date('2020-01-01') }));
+    await assertFails(addDoc(collection(viewer, 'auditoria'), { ...login, categoria: 'reporte', accion: 'eliminar' }));
+    await assertSucceeds(addDoc(collection(admin, 'auditoria'), {
+      categoria: 'reporte', accion: 'eliminar', actorUid: 'admin-user', actorEmail: 'admin@corporativomaf.com', fecha: serverTimestamp(), cantidad: 1
+    }));
+    await assertFails(getDocs(collection(viewer, 'auditoria')));
+    const adminRead = await assertSucceeds(getDocs(collection(admin, 'auditoria')));
+    await assertFails(deleteDoc(doc(admin, 'auditoria', adminRead.docs[0].id)));
+    await assertFails(updateDoc(doc(admin, 'auditoria', adminRead.docs[0].id), { detalle: 'x' }));
+  });
+
+  it('lets viewers log reads, exports and self-registration but not security or admin events', async () => {
+    const viewer = testEnv.authenticatedContext('domain-user', {
+      email: 'viewer@lacostena.com.mx',
+      email_verified: true
+    }).firestore();
+    const admin = testEnv.authenticatedContext('admin-user', {
+      email: 'admin@corporativomaf.com',
+      email_verified: true
+    }).firestore();
+    const base = { actorUid: 'domain-user', actorEmail: 'viewer@lacostena.com.mx', fecha: serverTimestamp(), sesionId: 's_1', navegador: 'test' };
+
+    await assertSucceeds(addDoc(collection(viewer, 'auditoria'), { ...base, categoria: 'datos', accion: 'exportar', cantidad: 3, critico: true }));
+    await assertSucceeds(addDoc(collection(viewer, 'auditoria'), { ...base, categoria: 'seguridad', accion: 'autoregistro', despues: '{"role":"viewer"}' }));
+    await assertFails(addDoc(collection(viewer, 'auditoria'), { ...base, categoria: 'seguridad', accion: 'intento' }));
+    await assertFails(addDoc(collection(viewer, 'auditoria'), { ...base, categoria: 'usuarios', accion: 'modificar' }));
+    await assertFails(addDoc(collection(viewer, 'auditoria'), { ...base, categoria: 'datos', accion: 'exportar', antes: 'x'.repeat(1300) }));
+    await assertFails(addDoc(collection(viewer, 'auditoria'), { ...base, categoria: 'datos', accion: 'exportar', extra: 'campo-no-permitido' }));
+    await assertSucceeds(addDoc(collection(admin, 'auditoria'), {
+      ...base, actorUid: 'admin-user', actorEmail: 'admin@corporativomaf.com',
+      categoria: 'seguridad', accion: 'intento', critico: true, cantidad: 10
+    }));
   });
 });

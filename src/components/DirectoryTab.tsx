@@ -5,6 +5,7 @@ import { Evaluation, ExerciseItem } from '../types';
 import { findCatalogExercise } from '../services/exerciseCatalog';
 import { ReportDetailModal } from './ReportDetailModal';
 import { getMassDeleteReauthMethod } from '../services/authorization';
+import { logAudit } from '../services/auditLog';
 import { isEvaluationBackup, parseEvaluationBackup, serializeEvaluationBackup } from '../services/evaluationBackup';
 
 /** Escapa un valor para CSV (comillas dobles, comas y saltos de línea) */
@@ -333,6 +334,14 @@ export const DirectoryTab: React.FC = () => {
       total: null
     });
     try {
+      void logAudit({
+        categoria: 'seguridad',
+        accion: 'intento',
+        critico: true,
+        cantidad: target.length,
+        empresas: target.map((e) => e.empresa),
+        detalle: isFiltered ? 'Intento de eliminación masiva (selección filtrada)' : 'Intento de eliminación masiva (todos los reportes)'
+      });
       await reauthenticateForMassDelete();
       setActionStatus({
         operation: 'Eliminación masiva',
@@ -378,6 +387,13 @@ export const DirectoryTab: React.FC = () => {
         total: target.length
       });
       alert(`No se completó la eliminación:\n\n${message}`);
+      void logAudit({
+        categoria: 'seguridad',
+        accion: 'rechazar',
+        critico: true,
+        cantidad: completedDeletions,
+        detalle: `Eliminación masiva no completada (${completedDeletions} de ${target.length} borrados): ${message}`
+      });
     } finally {
       setIsDeletingAll(false);
     }
@@ -564,6 +580,14 @@ export const DirectoryTab: React.FC = () => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      void logAudit({
+        categoria: 'datos',
+        accion: 'exportar',
+        critico: !hasActiveFilters,
+        cantidad: backupEvaluations.length,
+        empresas: backupEvaluations.map((e) => e.empresa).filter(Boolean),
+        detalle: hasActiveFilters ? 'Exportación CSV de selección filtrada' : 'Exportación CSV de respaldo completo'
+      });
       setActionStatus({
         operation: 'Exportación CSV',
         message: `CSV descargado correctamente (${backupEvaluations.length} evaluaciones).`,

@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Evaluation } from '../types';
+import { logAudit } from '../services/auditLog';
 import { findCatalogExercise } from '../services/exerciseCatalog';
 import { SessionRadarWidget } from './SessionRadarWidget';
 
@@ -9,6 +10,22 @@ interface ReportDetailModalProps {
 }
 
 export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation, onClose }) => {
+  const viewedId = evaluation?.id;
+  const viewedCompany = evaluation?.empresa;
+  const viewedLabel = evaluation ? (evaluation.conductor || evaluation.operador || evaluation.folio || evaluation.id) : '';
+  useEffect(() => {
+    if (!viewedId) return;
+    void logAudit({
+      categoria: 'datos',
+      accion: 'ver',
+      cantidad: 1,
+      empresas: viewedCompany ? [viewedCompany] : [],
+      detalle: `Reporte de ${viewedLabel}`
+    });
+    // Solo al abrir cada reporte
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewedId]);
+
   if (!evaluation) return null;
 
   const score = evaluation.evaluacionFinalPuntos ?? evaluation.calificacionExacta ?? evaluation.promedioScore ?? 0;

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CatalogExercise, getActiveCatalog, persistCatalogLocally, EXERCISE_CATALOG } from '../services/exerciseCatalog';
 import { db, doc, getDoc, setDoc } from '../services/firebaseFirestore';
+import { logAudit } from '../services/auditLog';
 
 interface ExerciseCatalogModalProps {
   isOpen: boolean;
@@ -111,6 +112,7 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
       );
 
       // Guardar local
+      void logAudit({ categoria: 'usuarios', accion: 'modificar', detalle: 'Catálogo de ejercicios actualizado' });
       persistCatalogLocally(updatedList);
       setExercises(updatedList);
       if (onCatalogUpdated) onCatalogUpdated(updatedList);
@@ -142,6 +144,7 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
         { merge: true }
       );
 
+      void logAudit({ categoria: 'usuarios', accion: 'eliminar', detalle: `Ejercicio "${target.nombre}" eliminado del catálogo` });
       persistCatalogLocally(updatedList);
       setExercises(updatedList);
       if (onCatalogUpdated) onCatalogUpdated(updatedList);
@@ -167,6 +170,7 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
         { ejercicios: EXERCISE_CATALOG, updatedAt: new Date().toISOString() },
         { merge: true }
       );
+      void logAudit({ categoria: 'usuarios', accion: 'modificar', detalle: 'Catálogo de ejercicios restablecido a valores oficiales' });
       persistCatalogLocally(EXERCISE_CATALOG);
       setExercises([...EXERCISE_CATALOG]);
       if (onCatalogUpdated) onCatalogUpdated([...EXERCISE_CATALOG]);

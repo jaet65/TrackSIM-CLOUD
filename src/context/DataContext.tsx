@@ -5,6 +5,7 @@ import { processCompanySummaries, processDriverSummaries, createCompanySummaryFr
 import { initializeActiveCatalog } from '../services/exerciseCatalog';
 import { DEMO_EVALUATIONS } from '../data/demoEvaluations';
 import { useAuth } from './AuthContext';
+import { logAudit, diffSnapshots, snapshotText } from '../services/auditLog';
 
 import { loadEvalCache, saveEvalCache, clearEvalCache, EvalCacheRecord } from '../services/evalCache';
 
@@ -327,6 +328,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deletedAt: nowIso
       });
       await batch.commit();
+      void logAudit({
+        categoria: 'reporte',
+        accion: 'eliminar',
+        cantidad: 1,
+        empresas: [evaluation.empresa],
+        detalle: [evaluation.conductor || evaluation.operador, evaluation.folio].filter(Boolean).join(' · ') || id,
+        antes: snapshotText({
+          conductor: evaluation.conductor || evaluation.operador,
+          folio: evaluation.folio,
+          empresa: evaluation.empresa,
+          sede: evaluation.sede,
+          fecha: evaluation.fechaCapacitacion || evaluation.fechaReporte || evaluation.fecha,
+          estado: evaluation.estado
+        })
+      });
     } catch (e) {
       console.warn('Error eliminando de Firestore:', e);
     }
@@ -412,6 +428,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Actualizar estado local únicamente con los documentos que realmente se borraron en Firestore
     if (successfullyDeletedIds.length > 0) {
+      void logAudit({
+        categoria: 'reporte',
+        accion: 'eliminar',
+        cantidad: successfullyDeletedIds.length,
+        empresas: successfullyDeletedIds.map((id) => companyByEvaluationId.get(id) || '').filter(Boolean),
+        detalle: isTotalWipe ? 'Eliminación masiva de reportes' : undefined
+      });
       const deleteSet = new Set(successfullyDeletedIds);
       setEvaluations((prev) => {
         const next = prev.filter((item) => !deleteSet.has(item.id));
@@ -458,6 +481,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const cleanUpdates = sanitizeForFirestore(rawUpdates);
     try {
       await setDoc(doc(db, 'evaluaciones', id), cleanUpdates, { merge: true });
+      const existing = evaluations.find((item) => item.id === id);
+      const diff = diffSnapshots(existing as unknown as Record<string, unknown>, cleanUpdates, Object.keys(updatedData));
+      void logAudit({
+        categoria: 'reporte',
+        accion: 'modificar',
+        cantidad: 1,
+        empresas: [updatedData.empresa || existing?.empresa || ''].filter(Boolean),
+        detalle: `${existing?.conductor || existing?.operador || existing?.folio || id} — campos: ${diff.changed.join(', ') || 'sin cambios de valor'}`,
+        antes: diff.antes,
+        despues: diff.despues
+      });
     } catch (e) {
       console.warn('Error actualizando en Firestore:', e);
     }
@@ -496,6 +530,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       onProgress?.(Math.min(i + chunk.length, updates.length), updates.length);
     }
+    const beforeById: Record<string, Record<string, unknown>> = {};
+    const afterById: Record<string, Record<string, unknown>> = {};
+    updates.slice(0, 10).forEach(({ id, fields }) => {
+      const existing = evaluations.find((e) => e.id === id) as unknown as Record<string, unknown> | undefined;
+      const diff = diffSnapshots(existing, fields as Record<string, unknown>, Object.keys(fields));
+      if (diff.antes && diff.despues) {
+        beforeById[id] = JSON.parse(diff.antes);
+        afterById[id] = JSON.parse(diff.despues);
+      }
+    });
+    void logAudit({
+      categoria: 'reporte',
+      accion: 'modificar',
+      cantidad: updates.length,
+      empresas: updates.map(({ id, fields }) => fields.empresa || evaluations.find((e) => e.id === id)?.empresa || '').filter(Boolean),
+      detalle: `Edición por lote — campos: ${Array.from(new Set(updates.flatMap(({ fields }) => Object.keys(fields)))).join(', ')}${updates.length > 10 ? ' (antes/después de los primeros 10)' : ''}`,
+      antes: Object.keys(beforeById).length ? snapshotText(beforeById) : undefined,
+      despues: Object.keys(afterById).length ? snapshotText(afterById) : undefined
+    });
   };
 
   const getEvaluationsBackup = async (): Promise<Evaluation[]> => {
@@ -534,6 +587,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await batch.commit();
       onProgress?.(Math.min(i + BATCH_SIZE, backupEvaluations.length), backupEvaluations.length);
     }
+    void logAudit({
+      categoria: 'reporte',
+      accion: 'restaurar',
+      cantidad: backupEvaluations.length,
+      empresas: backupEvaluations.map((e) => e.empresa).filter(Boolean),
+      detalle: 'Restauración de respaldo'
+    });
 
     setEvaluations((current) => {
       const restoredById = new Map(current.map((evaluation) => [evaluation.id, evaluation]));

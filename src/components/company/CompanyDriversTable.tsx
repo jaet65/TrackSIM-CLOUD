@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Evaluation } from '../../types';
+import { logAudit } from '../../services/auditLog';
 
 export type CompanySortKey = 'promedioScore' | 'nombre' | 'totalEvaluaciones' | 'ultimaFecha' | 'incidentes' | 'estado';
 export type StatusFilterOption = 'all' | 'sobresaliente' | 'aprobado' | 'reforzar' | 'incidentes';
@@ -145,6 +146,13 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    void logAudit({
+      categoria: 'datos',
+      accion: 'exportar',
+      cantidad: displayedConductores.length,
+      empresas: [comp.nombre],
+      detalle: `Exportación CSV del roster de operadores de ${comp.nombre}`
+    });
   };
 
   return (
