@@ -70,6 +70,7 @@ node_modules/
 # Production build outputs
 dist/
 dist-ssr/
+videos/
 
 # dataconnect generated files
 .dataconnect
