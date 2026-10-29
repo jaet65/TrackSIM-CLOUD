@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@600&family=Reenie+Beanie&display=swap');
 /* ==========================================================================
    TrackSIM CLOUD - Design System & Modern UI
    Estilo Premium para Trazabilidad y Evaluación de Capacitaciones de Operadores
@@ -2332,28 +2333,74 @@ body.role-viewer div.viewer-only {
   }
 
   /* Modo Reporte Single-Page Ejecutivo (1 Página estricta) */
-  body.single-page-report-active #appContainer > *:not(.modal-overlay) {
+  body.single-page-report-active {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  body.single-page-report-active .navbar,
+  body.single-page-report-active .metrics-filter-bar,
+  body.single-page-report-active .company-executive-card,
+  body.single-page-report-active .card,
+  body.single-page-report-active .table-responsive,
+  body.single-page-report-active .custom-table,
+  body.single-page-report-active > *:not(#root) {
     display: none !important;
+  }
+
+  body.single-page-report-active #root,
+  body.single-page-report-active #appContainer,
+  body.single-page-report-active .main-content,
+  body.single-page-report-active .view-section {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    overflow: visible !important;
   }
 
   body.single-page-report-active .modal-overlay {
     position: static !important;
     inset: auto !important;
-    background: none !important;
+    background: #ffffff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
     padding: 0 !important;
     margin: 0 !important;
     display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    opacity: 1 !important;
+    visibility: visible !important;
   }
 
   body.single-page-report-active .single-page-modal-dialog {
     border: none !important;
     box-shadow: none !important;
     max-width: 100% !important;
+    width: 100% !important;
     max-height: none !important;
     overflow: visible !important;
     background: #ffffff !important;
     margin: 0 !important;
     padding: 0 !important;
+    transform: none !important;
+  }
+
+  body.single-page-report-active .single-page-modal-dialog > div:nth-child(2),
+  body.single-page-report-active .single-page-scroll-wrapper {
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    max-height: none !important;
+    background: #ffffff !important;
+    display: block !important;
   }
 
   body.single-page-report-active .single-page-sheet {
@@ -2361,9 +2408,13 @@ body.role-viewer div.viewer-only {
     width: 100% !important;
     min-height: auto !important;
     padding: 0 !important;
-    margin: 0 !important;
+    margin: 0 auto !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
+    display: flex !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+    box-sizing: border-box !important;
   }
 }
 
