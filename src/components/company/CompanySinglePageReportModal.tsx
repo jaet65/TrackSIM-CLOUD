@@ -85,6 +85,65 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
       .slice(0, 3);
   }, [isOpen, allEvaluations]);
 
+  // Generación dinámica y contextual del Plan de Acción Recomendado
+  const dynamicActionPlan = React.useMemo(() => {
+    if (!isOpen) return '';
+
+    // 1. Si hay errores recurrentes detectados, correlacionamos con focos de entrenamiento específicos
+    if (topRecurringMistakes.length > 0) {
+      const errText = topRecurringMistakes.map((m) => m.error.toLowerCase()).join(' ');
+      const actions: string[] = [];
+
+      if (/velocidad|aceleraci|l[ií]mite|r[aá]pido|frenad|distancia|freno/.test(errText)) {
+        actions.push('gestión de velocidad regulada, anticipación visual y calibración de distancias de frenado');
+      }
+      if (/curva|derrap|peralte|giro|viraje/.test(errText)) {
+        actions.push('control de transferencia de masas, velocidad de entrada a curvas y trazado seguro');
+      }
+      if (/carril|inva|l[ií]nea|orilla|salida|v[ií]a/.test(errText)) {
+        actions.push('mantenimiento de carril, lectura de bordes de calzada y corrección de deriva lateral');
+      }
+      if (/intersecci|sem[aá]foro|alto|pare|cruce|prioridad|ceda/.test(errText)) {
+        actions.push('lectura de zonas de conflicto en intersecciones, respeto a la señalización y cruces seguros');
+      }
+      if (/espejo|reversa|estaciona|punto ciego|retrovisor|aculat/.test(errText)) {
+        actions.push('maniobras en reversa asistida, verificación de ángulos muertos y gestión del espacio perimetral');
+      }
+      if (/embrague|clutch|marcha|cambio|revoluci|motor|transmisi/.test(errText)) {
+        actions.push('optimización en el uso de la transmisión, operación de marchas y conducción técnica económica');
+      }
+      if (/impacto|choque|colisi|alcance/.test(errText)) {
+        actions.push('técnicas de frenado de emergencia y maniobras evasivas controladas');
+      }
+
+      // Si se encontraron 1 o más focos específicos mapeados
+      if (actions.length > 0) {
+        const uniqueActions = Array.from(new Set(actions));
+        if (uniqueActions.length === 1) {
+          return `Diseñar módulos de refuerzo intensivo focalizados en ${uniqueActions[0]}, respaldados por telemetría en simulador.`;
+        }
+        const lastAction = uniqueActions.pop();
+        return `Implementar sesiones prácticas dirigidas prioritariamente a ${uniqueActions.join(', ')} y ${lastAction}.`;
+      }
+
+      // Si los errores tienen otros nombres no contemplados en el diccionario
+      const nombresErrores = topRecurringMistakes.map((m) => `"${m.error}"`).join(' y ');
+      return `Estructurar clínicas correctivas de simulación enfocadas en mitigar incidencias de ${nombresErrores}, reforzando la toma de decisiones preventiva.`;
+    }
+
+    // 2. Fallback inteligente según siniestralidad o calificaciones si no hay errores específicos desglosados
+    const tieneSiniestros = (comp.totalColisiones || 0) + (comp.totalFueraVia || 0) > 0;
+    if (tieneSiniestros) {
+      return 'Priorizar talleres de conducción defensiva en simulador orientados a control de colisiones, maniobras de evasión y prevención de salidas de camino.';
+    }
+
+    if (comp.promedioFinal < 7.0) {
+      return 'Programar sesiones de seguimiento técnico focalizadas en el grupo de operadores con bandera roja (Red Flags), estandarizando hábitos de conducción preventiva y maniobrabilidad.';
+    }
+
+    return 'Continuar con el programa preventivo anual, incorporando escenarios de complejidad climática adversa y maniobras de precisión para preservar el estándar sobresaliente de la flota.';
+  }, [isOpen, topRecurringMistakes, comp.totalColisiones, comp.totalFueraVia, comp.promedioFinal]);
+
   if (!isOpen) return null;
 
   // Fecha y hora formateada para la emisión ejecutiva
@@ -672,21 +731,15 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
                 <span>Recomendaciones Preventivas (Basadas en Errores Más Recurrentes)</span>
               </div>
               <div style={{ fontSize: '7.6pt', color: '#1e3a8a', lineHeight: 1.45 }}>
-                {topRecurringMistakes.length > 0 ? (
-                  <>
-                    <p style={{ margin: '0 0 0.25rem 0' }}>
-                      • <strong>Patrones de Falla Detectados:</strong> Las incidencias con mayor frecuencia en la flota son:{' '}
-                      <strong>{topRecurringMistakes.map((m) => `"${m.error}" (${m.repeticiones} repeticiones)`).join(', ')}</strong>.
-                    </p>
-                    <p style={{ margin: 0 }}>
-                      • <strong>Plan de Acción Recomendado:</strong> Diseñar módulos de refuerzo centrados en anticipación visual de intersecciones, control de velocidad de entrada a curvas y calibración de distancias de frenado con carga dinámica.
-                    </p>
-                  </>
-                ) : (
-                  <p style={{ margin: 0 }}>
-                    • <strong>Plan de Acción Recomendado:</strong> Programar sesiones de seguimiento focalizadas en el grupo de operadores con bandera roja (Red Flags), fortaleciendo maniobras de evasión, gestión del espacio perimetral y hábitos de conducción preventiva.
+                {topRecurringMistakes.length > 0 && (
+                  <p style={{ margin: '0 0 0.25rem 0' }}>
+                    • <strong>Patrones de Falla Detectados:</strong> Las incidencias con mayor frecuencia en la flota son:{' '}
+                    <strong>{topRecurringMistakes.map((m) => `"${m.error}" (${m.repeticiones} repeticiones)`).join(', ')}</strong>.
                   </p>
                 )}
+                <p style={{ margin: 0 }}>
+                  • <strong>Plan de Acción Recomendado:</strong> {dynamicActionPlan}
+                </p>
               </div>
             </div>
 
