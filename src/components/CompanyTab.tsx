@@ -5,6 +5,7 @@ import { useTheme } from '../context/ThemeContext';
 import { createCompanySummaryFromEvaluations } from '../services/analytics';
 import { ReportDetailModal } from './ReportDetailModal';
 import { CompanyOverviewCard } from './company/CompanyOverviewCard';
+import { CompanySinglePageReportModal } from './company/CompanySinglePageReportModal';
 import { CompanyRankingChartCard } from './company/CompanyRankingChartCard';
 import { CompanyDriversTable, CompanySortKey } from './company/CompanyDriversTable';
 import { Bar, Line } from 'react-chartjs-2';
@@ -57,6 +58,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
   const [sortKey, setSortKey] = useState<SortKey>('promedioScore');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [viewReport, setViewReport] = useState<any | null>(null);
+  const [isSinglePageReportOpen, setIsSinglePageReportOpen] = useState(false);
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
 
   const toggleExpandExercises = (driverKey: string) => {
@@ -80,6 +82,16 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
     });
     return Array.from(set).sort().reverse();
   }, [filteredEvaluations]);
+
+  const periodText = useMemo(() => {
+    if (selectedYear && selectedYear !== 'all') {
+      return `Año ${selectedYear}`;
+    }
+    const sorted = [...availableYears].sort();
+    if (sorted.length === 0) return 'Histórico general';
+    if (sorted.length === 1) return `Año ${sorted[0]}`;
+    return `${sorted[0]} – ${sorted[sorted.length - 1]}`;
+  }, [selectedYear, availableYears]);
 
   // Evaluaciones filtradas por el año seleccionado (si aplica)
   const evaluationsByYear = useMemo(() => {
@@ -772,6 +784,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         selectedYear={selectedYear}
         availableYears={availableYears}
         operadoresConHistorialPrevio={operadoresConHistorialPrevio}
+        onOpenSinglePageReport={() => setIsSinglePageReportOpen(true)}
       />
 
       {/* Rendimiento Promedio en Ejercicios (Solo ejercicios realizados por la empresa) */}
@@ -928,6 +941,20 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
       <ReportDetailModal
         evaluation={viewReport}
         onClose={() => setViewReport(null)}
+      />
+      {/* Modal Reporte Single-Page PDF Ejecutivo */}
+      <CompanySinglePageReportModal
+        isOpen={isSinglePageReportOpen}
+        onClose={() => setIsSinglePageReportOpen(false)}
+        comp={comp}
+        selectedYear={selectedYear}
+        periodText={periodText}
+        conductoresRecurrentes={conductoresRecurrentes}
+        pctRecurrentes={pctRecurrentes}
+        operadoresConHistorialPrevio={operadoresConHistorialPrevio}
+        exerciseStats={exerciseStats}
+        topConductores={rankingList}
+        allEvaluations={evaluationsByYear}
       />
     </div>
   );

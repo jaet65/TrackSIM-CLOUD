@@ -9,6 +9,7 @@ interface CompanyOverviewCardProps {
   selectedYear?: string;
   availableYears?: string[];
   operadoresConHistorialPrevio?: { count: number; pct: string };
+  onOpenSinglePageReport?: () => void;
 }
 
 export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
@@ -17,7 +18,8 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
   pctRecurrentes,
   selectedYear,
   availableYears = [],
-  operadoresConHistorialPrevio
+  operadoresConHistorialPrevio,
+  onOpenSinglePageReport
 }) => {
   // Texto descriptivo del periodo / años contemplados
   const periodText = React.useMemo(() => {
@@ -31,16 +33,6 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
     return `${sorted[0]} – ${sorted[sorted.length - 1]}`;
   }, [selectedYear, availableYears]);
 
-  const periodSubtitle = React.useMemo(() => {
-    if (selectedYear && selectedYear !== 'all') {
-      return 'Filtro específico activo';
-    }
-    const sorted = [...availableYears].sort();
-    if (sorted.length > 1) {
-      return `(${sorted.length} años registrados)`;
-    }
-    return '(1 año registrado)';
-  }, [selectedYear, availableYears]);
   return (
     <div
       className="glass-card company-executive-card"
@@ -124,6 +116,32 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
 
         {/* Acciones Ejecutivas: Imprimir / Generar PDF */}
         <div className="no-print" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {onOpenSinglePageReport && (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm company-single-page-btn"
+              onClick={onOpenSinglePageReport}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                padding: '0.5rem 0.95rem',
+                borderRadius: '8px',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                border: '1px solid var(--border-glow)',
+                background: 'linear-gradient(135deg, #0284c7, #0369a1)',
+                color: '#ffffff',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                boxShadow: 'var(--shadow-card)'
+              }}
+              title="Generar reporte ejecutivo en formato PDF de 1 sola página con filtro de empresa y año"
+            >
+              <span>📄</span>
+              <span>Single-Page</span>
+            </button>
+          )}
           <button
             type="button"
             className="btn btn-secondary btn-sm company-export-btn"
@@ -168,7 +186,7 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
             title="Imprimir o guardar como PDF la ficha ejecutiva de la flota"
           >
             <span>🖨️</span>
-            <span>Exportar PDF / Imprimir</span>
+            <span>Expediente</span>
           </button>
         </div>
       </div>
