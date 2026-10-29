@@ -35,7 +35,7 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
   operadoresConHistorialPrevio,
   exerciseStats,
   topConductores,
-  allEvaluations: _allEvaluations
+  allEvaluations = []
 }) => {
   React.useEffect(() => {
     if (isOpen) {
@@ -61,6 +61,29 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
     });
     return sortedAsc.slice(0, 5);
   }, [isOpen, comp?.conductores]);
+
+  // Análisis de errores más recurrentes de la flota a partir de las evaluaciones
+  const topRecurringMistakes = React.useMemo(() => {
+    if (!isOpen || !allEvaluations || allEvaluations.length === 0) return [];
+
+    const map = new Map<string, { error: string; repeticiones: number }>();
+    allEvaluations.forEach((ev) => {
+      if (Array.isArray(ev.erroresFrecuentes)) {
+        ev.erroresFrecuentes.forEach((m) => {
+          const rawName = (m.error || m.errorRaw || '').trim();
+          if (!rawName) return;
+          const key = rawName.toLowerCase();
+          const current = map.get(key) || { error: rawName, repeticiones: 0 };
+          current.repeticiones += m.repeticiones || 1;
+          map.set(key, current);
+        });
+      }
+    });
+
+    return Array.from(map.values())
+      .sort((a, b) => b.repeticiones - a.repeticiones)
+      .slice(0, 3);
+  }, [isOpen, allEvaluations]);
 
   if (!isOpen) return null;
 
@@ -227,7 +250,7 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
               background: '#ffffff',
               color: '#0f172a',
               boxSizing: 'border-box',
-              padding: '1.75rem 2rem',
+              padding: '1.5rem 1.85rem',
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
@@ -238,8 +261,8 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
             <div
               style={{
                 borderBottom: '2.5px solid #0284c7',
-                paddingBottom: '0.85rem',
-                marginBottom: '1rem',
+                paddingBottom: '0.65rem',
+                marginBottom: '0.75rem',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'flex-start'
@@ -251,27 +274,27 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
                     src="/Logo%20NN.png"
                     alt="TrackSIM Logo"
                     style={{
-                      height: '42px',
-                      maxWidth: '150px',
+                      height: '38px',
+                      maxWidth: '140px',
                       objectFit: 'contain',
                       display: 'block'
                     }}
                   />
-                  <span style={{ fontSize: '1.45rem', fontWeight: 900, letterSpacing: '-0.02em', color: '#0f172a' }}>
-                    TRACK<span style={{ color: '#0284c7' }}>SIM</span> <span style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 600 }}>CLOUD</span>
+                  <span style={{ fontSize: '1.35rem', fontWeight: 900, letterSpacing: '-0.02em', color: '#0f172a' }}>
+                    TRACK<span style={{ color: '#0284c7' }}>SIM</span> <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600 }}>CLOUD</span>
                   </span>
                 </div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', marginTop: '0.35rem' }}>
+                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginTop: '0.25rem' }}>
                   INFORME EJECUTIVO DE RENDIMIENTO DE FLOTA
                 </div>
-                <div style={{ fontSize: '0.85rem', color: '#475569', marginTop: '0.2rem' }}>
+                <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: '0.1rem' }}>
                   Resumen de competencias en simulación de conducción y prevención vial
                 </div>
               </div>
 
-              <div style={{ textAlign: 'right', fontSize: '0.82rem', color: '#475569' }}>
-                <div style={{ fontWeight: 700, color: '#0284c7', fontSize: '0.9rem' }}>FICHA OFICIAL</div>
-                <div style={{ marginTop: '0.2rem' }}>Emisión: <strong>{fechaGeneracion}</strong></div>
+              <div style={{ textAlign: 'right', fontSize: '0.78rem', color: '#475569' }}>
+                <div style={{ fontWeight: 700, color: '#0284c7', fontSize: '0.85rem' }}>FICHA OFICIAL</div>
+                <div style={{ marginTop: '0.1rem' }}>Emisión: <strong>{fechaGeneracion}</strong></div>
                 <div style={{ marginTop: '0.1rem' }}>Estado: <strong style={{ color: '#16a34a' }}>Validado</strong></div>
               </div>
             </div>
@@ -282,34 +305,34 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
                 background: '#f8fafc',
                 border: '1px solid #cbd5e1',
                 borderRadius: '8px',
-                padding: '0.75rem 1rem',
-                marginBottom: '1.1rem',
+                padding: '0.55rem 0.85rem',
+                marginBottom: '0.75rem',
                 display: 'grid',
                 gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: '1rem',
-                fontSize: '0.84rem'
+                gap: '0.75rem',
+                fontSize: '0.8rem'
               }}
             >
               <div>
-                <span style={{ textTransform: 'uppercase', fontSize: '0.7rem', color: '#64748b', fontWeight: 700, display: 'block' }}>
+                <span style={{ textTransform: 'uppercase', fontSize: '0.66rem', color: '#64748b', fontWeight: 700, display: 'block' }}>
                   Flota / Empresa
                 </span>
-                <strong style={{ fontSize: '0.98rem', color: '#0f172a' }}>{comp.nombre}</strong>
-                {comp.esGlobal && <span style={{ fontSize: '0.75rem', color: '#0284c7', display: 'block' }}>(Consolidado)</span>}
+                <strong style={{ fontSize: '0.92rem', color: '#0f172a' }}>{comp.nombre}</strong>
+                {comp.esGlobal && <span style={{ fontSize: '0.72rem', color: '#0284c7', display: 'block' }}>(Consolidado)</span>}
               </div>
 
               <div>
-                <span style={{ textTransform: 'uppercase', fontSize: '0.7rem', color: '#64748b', fontWeight: 700, display: 'block' }}>
+                <span style={{ textTransform: 'uppercase', fontSize: '0.66rem', color: '#64748b', fontWeight: 700, display: 'block' }}>
                   Periodo Evaluado
                 </span>
-                <strong style={{ fontSize: '0.98rem', color: '#0284c7' }}>{periodText}</strong>
+                <strong style={{ fontSize: '0.92rem', color: '#0284c7' }}>{periodText}</strong>
               </div>
 
               <div>
-                <span style={{ textTransform: 'uppercase', fontSize: '0.7rem', color: '#64748b', fontWeight: 700, display: 'block' }}>
+                <span style={{ textTransform: 'uppercase', fontSize: '0.66rem', color: '#64748b', fontWeight: 700, display: 'block' }}>
                   Cobertura Geográfica
                 </span>
-                <span style={{ fontSize: '0.88rem', color: '#334155', fontWeight: 600 }}>
+                <span style={{ fontSize: '0.82rem', color: '#334155', fontWeight: 600 }}>
                   {comp.sedes && comp.sedes.length > 0 ? comp.sedes.join(', ') : 'Sede Principal'}
                 </span>
               </div>
@@ -320,68 +343,68 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(5, 1fr)',
-                gap: '0.75rem',
-                marginBottom: '1.1rem'
+                gap: '0.55rem',
+                marginBottom: '0.75rem'
               }}
             >
               {/* KPI 1: Operadores */}
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '0.85rem 0.6rem', textAlign: 'center' }}>
-                <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, display: 'block' }}>
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.6rem 0.45rem', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.66rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, display: 'block' }}>
                   Operadores
                 </span>
-                <div style={{ fontSize: '1.45rem', fontWeight: 800, color: '#0284c7', marginTop: '0.15rem' }}>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0284c7', marginTop: '0.1rem' }}>
                   {comp.totalConductores}
                 </div>
-                <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginTop: '0.1rem' }}>{comp.totalEvaluaciones} reportes</span>
+                <span style={{ fontSize: '0.66rem', color: '#64748b', display: 'block' }}>{comp.totalEvaluaciones} reportes</span>
               </div>
 
               {/* KPI 2: Calificación Promedio */}
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '0.85rem 0.6rem', textAlign: 'center' }}>
-                <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, display: 'block' }}>
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.6rem 0.45rem', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.66rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, display: 'block' }}>
                   Promedio Global
                 </span>
                 <div
                   style={{
-                    fontSize: '1.45rem',
+                    fontSize: '1.25rem',
                     fontWeight: 800,
                     color: comp.promedioFinal >= 8.0 ? '#16a34a' : comp.promedioFinal >= 6.0 ? '#0284c7' : '#dc2626',
-                    marginTop: '0.15rem'
+                    marginTop: '0.1rem'
                   }}
                 >
                   {comp.promedioFinal.toFixed(2)}
                 </div>
-                <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginTop: '0.1rem' }}>Escala 0 - 10</span>
+                <span style={{ fontSize: '0.66rem', color: '#64748b', display: 'block' }}>Escala 0 - 10</span>
               </div>
 
               {/* KPI 3: Aprobación */}
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '0.85rem 0.6rem', textAlign: 'center' }}>
-                <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, display: 'block' }}>
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.6rem 0.45rem', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.66rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, display: 'block' }}>
                   Tasa Aprobación
                 </span>
                 <div
                   style={{
-                    fontSize: '1.45rem',
+                    fontSize: '1.25rem',
                     fontWeight: 800,
                     color: comp.tasaAprobacion >= 80 ? '#16a34a' : comp.tasaAprobacion >= 60 ? '#d97706' : '#dc2626',
-                    marginTop: '0.15rem'
+                    marginTop: '0.1rem'
                   }}
                 >
                   {comp.tasaAprobacion.toFixed(1)}%
                 </div>
-                <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginTop: '0.1rem' }}>Calif. ≥ 6.0 pts</span>
+                <span style={{ fontSize: '0.66rem', color: '#64748b', display: 'block' }}>Calif. ≥ 6.0 pts</span>
               </div>
 
               {/* KPI 4: Recurrencia */}
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '0.85rem 0.6rem', textAlign: 'center' }}>
-                <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, display: 'block' }}>
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.6rem 0.45rem', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.66rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, display: 'block' }}>
                   {selectedYear && selectedYear !== 'all' ? 'Con Historial' : 'Recurrentes'}
                 </span>
-                <div style={{ fontSize: '1.45rem', fontWeight: 800, color: '#9333ea', marginTop: '0.15rem' }}>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#9333ea', marginTop: '0.1rem' }}>
                   {selectedYear && selectedYear !== 'all' && operadoresConHistorialPrevio
                     ? `${operadoresConHistorialPrevio.pct}%`
                     : `${pctRecurrentes}%`}
                 </div>
-                <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginTop: '0.1rem' }}>
+                <span style={{ fontSize: '0.66rem', color: '#64748b', display: 'block' }}>
                   {selectedYear && selectedYear !== 'all' && operadoresConHistorialPrevio
                     ? `${operadoresConHistorialPrevio.count} op. previos`
                     : `${conductoresRecurrentes} con >1 eval`}
@@ -389,21 +412,21 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
               </div>
 
               {/* KPI 5: Tasa Incidentes */}
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '0.85rem 0.6rem', textAlign: 'center' }}>
-                <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, display: 'block' }}>
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.6rem 0.45rem', textAlign: 'center' }}>
+                <span style={{ fontSize: '0.66rem', textTransform: 'uppercase', color: '#64748b', fontWeight: 700, display: 'block' }}>
                   Tasa Siniestros
                 </span>
                 <div
                   style={{
-                    fontSize: '1.45rem',
+                    fontSize: '1.25rem',
                     fontWeight: 800,
                     color: Number(incidentRate) > 1.0 ? '#dc2626' : Number(incidentRate) > 0 ? '#d97706' : '#16a34a',
-                    marginTop: '0.15rem'
+                    marginTop: '0.1rem'
                   }}
                 >
                   {incidentRate}
                 </div>
-                <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', marginTop: '0.1rem' }}>{totalIncidentes} tot / operador</span>
+                <span style={{ fontSize: '0.66rem', color: '#64748b', display: 'block' }}>{totalIncidentes} tot / operador</span>
               </div>
             </div>
 
@@ -413,22 +436,22 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
                 background: '#fff1f2',
                 border: '1px solid #fecdd3',
                 borderRadius: '8px',
-                padding: '0.65rem 1rem',
-                marginBottom: '1.1rem',
+                padding: '0.45rem 0.8rem',
+                marginBottom: '0.75rem',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 flexWrap: 'wrap',
-                gap: '0.5rem'
+                gap: '0.4rem'
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ fontSize: '1.1rem' }}>🚨</span>
-                <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#9f1239' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{ fontSize: '0.95rem' }}>🚨</span>
+                <span style={{ fontWeight: 700, fontSize: '0.76rem', color: '#9f1239' }}>
                   Desglose de Siniestros Acumulados ({totalIncidentes} eventos en total):
                 </span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1.75rem', fontSize: '0.82rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1.35rem', fontSize: '0.76rem' }}>
                 <span style={{ color: '#be123c', fontWeight: 600 }}>
                   💥 <strong>{comp.totalColisiones || 0}</strong> Colisiones
                 </span>
@@ -442,17 +465,17 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
             </div>
 
             {/* DISTRIBUCIÓN DE APTITUD VISUAL (BARRA SEGMENTADA) */}
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1.1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '0.82rem' }}>
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.55rem 0.85rem', marginBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem', fontSize: '0.76rem' }}>
                 <span style={{ fontWeight: 700, color: '#1e293b' }}>Distribución de Aptitud de la Flota</span>
-                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Total: {totalConductores} operadores calificados</span>
+                <span style={{ fontSize: '0.7rem', color: '#64748b' }}>Total: {totalConductores} operadores calificados</span>
               </div>
-              <div style={{ display: 'flex', height: '16px', borderRadius: '6px', overflow: 'hidden', background: '#e2e8f0' }}>
+              <div style={{ display: 'flex', height: '13px', borderRadius: '5px', overflow: 'hidden', background: '#e2e8f0' }}>
                 <div style={{ width: `${pctSobresalientes}%`, background: '#16a34a' }} title={`Sobresalientes: ${sobresalientes} (${pctSobresalientes}%)`} />
                 <div style={{ width: `${pctAprobados}%`, background: '#0284c7' }} title={`Aprobados: ${aprobados} (${pctAprobados}%)`} />
                 <div style={{ width: `${pctRefuerzo}%`, background: '#dc2626' }} title={`Requiere Refuerzo: ${refuerzo} (${pctRefuerzo}%)`} />
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.45rem', fontSize: '0.75rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.3rem', fontSize: '0.7rem' }}>
                 <span style={{ color: '#16a34a', fontWeight: 700 }}>● Sobresaliente (≥8.0): {sobresalientes} ({pctSobresalientes}%)</span>
                 <span style={{ color: '#0284c7', fontWeight: 700 }}>● Aprobado (6.0 - 7.9): {aprobados} ({pctAprobados}%)</span>
                 <span style={{ color: '#dc2626', fontWeight: 700 }}>● Requiere Refuerzo (&lt;6.0): {refuerzo} ({pctRefuerzo}%)</span>
@@ -460,20 +483,20 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
             </div>
 
             {/* SECCIÓN 2: 3 COLUMNAS (EJERCICIOS + CUADRO DE HONOR + RED FLAGS) */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '1.1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.6rem', marginBottom: '0.75rem' }}>
               {/* Columna 1: Ejercicios Realizados */}
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.7rem 0.8rem', background: '#ffffff' }}>
-                <div style={{ fontWeight: 700, fontSize: '0.84rem', color: '#0f172a', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between' }}>
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.55rem 0.65rem', background: '#ffffff' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.78rem', color: '#0f172a', marginBottom: '0.35rem', display: 'flex', justifyContent: 'space-between' }}>
                   <span>📊 Rendimiento Ejercicios</span>
-                  <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>{exerciseStats.length} reg.</span>
+                  <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 500 }}>{exerciseStats.length} reg.</span>
                 </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '7.8pt' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '7.2pt' }}>
                   <thead>
                     <tr style={{ background: '#f1f5f9', borderBottom: '1.5px solid #cbd5e1' }}>
-                      <th style={{ padding: '4px 4px', textAlign: 'left' }}>Ejercicio</th>
-                      <th style={{ padding: '4px 4px', textAlign: 'center', width: '32px' }}>Evs</th>
-                      <th style={{ padding: '4px 4px', textAlign: 'center', width: '45px' }}>Score</th>
-                      <th style={{ padding: '4px 4px', textAlign: 'center', width: '55px' }}>Estado</th>
+                      <th style={{ padding: '3px 4px', textAlign: 'left' }}>Ejercicio</th>
+                      <th style={{ padding: '3px 4px', textAlign: 'center', width: '28px' }}>Evs</th>
+                      <th style={{ padding: '3px 4px', textAlign: 'center', width: '40px' }}>Score</th>
+                      <th style={{ padding: '3px 4px', textAlign: 'center', width: '48px' }}>Estado</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -486,14 +509,14 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
 
                         return (
                           <tr key={ex.key} style={{ borderBottom: '1px solid #f1f5f9', background: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
-                            <td style={{ padding: '4px 4px', fontWeight: 600, color: '#334155', maxWidth: '105px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '2.5px 3px', fontWeight: 600, color: '#334155', maxWidth: '95px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {ex.nombre}
                             </td>
-                            <td style={{ padding: '4px 4px', textAlign: 'center', color: '#64748b' }}>{ex.totalEvaluaciones}</td>
-                            <td style={{ padding: '4px 4px', textAlign: 'center', fontWeight: 700, color: scoreColor }}>
+                            <td style={{ padding: '2.5px 3px', textAlign: 'center', color: '#64748b' }}>{ex.totalEvaluaciones}</td>
+                            <td style={{ padding: '2.5px 3px', textAlign: 'center', fontWeight: 700, color: scoreColor }}>
                               {ex.promedio.toFixed(1)}
                             </td>
-                            <td style={{ padding: '4px 4px', textAlign: 'center', fontSize: '7.2pt', fontWeight: 700, color: scoreColor }}>
+                            <td style={{ padding: '2.5px 3px', textAlign: 'center', fontSize: '6.8pt', fontWeight: 700, color: scoreColor }}>
                               {estado}
                             </td>
                           </tr>
@@ -501,7 +524,7 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
                       })
                     ) : (
                       <tr>
-                        <td colSpan={4} style={{ padding: '12px', textAlign: 'center', color: '#64748b' }}>
+                        <td colSpan={4} style={{ padding: '8px', textAlign: 'center', color: '#64748b' }}>
                           Sin ejercicios
                         </td>
                       </tr>
@@ -511,18 +534,18 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
               </div>
 
               {/* Columna 2: Cuadro de Honor (Top 5 Mejores) */}
-              <div style={{ border: '1px solid #dcfce7', borderRadius: '8px', padding: '0.7rem 0.8rem', background: '#f0fdf4' }}>
-                <div style={{ fontWeight: 700, fontSize: '0.84rem', color: '#166534', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between' }}>
+              <div style={{ border: '1px solid #dcfce7', borderRadius: '8px', padding: '0.55rem 0.65rem', background: '#f0fdf4' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.78rem', color: '#166534', marginBottom: '0.35rem', display: 'flex', justifyContent: 'space-between' }}>
                   <span>🏆 Cuadro de Honor</span>
-                  <span style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 600 }}>Top 5</span>
+                  <span style={{ fontSize: '0.68rem', color: '#15803d', fontWeight: 600 }}>Top 5</span>
                 </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '7.8pt' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '7.2pt' }}>
                   <thead>
                     <tr style={{ background: '#dcfce7', borderBottom: '1.5px solid #86efac' }}>
-                      <th style={{ padding: '4px 4px', textAlign: 'center', width: '24px' }}>#</th>
-                      <th style={{ padding: '4px 4px', textAlign: 'left' }}>Operador</th>
-                      <th style={{ padding: '4px 4px', textAlign: 'center', width: '45px' }}>Score</th>
-                      <th style={{ padding: '4px 4px', textAlign: 'center', width: '36px' }}>Siniest.</th>
+                      <th style={{ padding: '3px 4px', textAlign: 'center', width: '22px' }}>#</th>
+                      <th style={{ padding: '3px 4px', textAlign: 'left' }}>Operador</th>
+                      <th style={{ padding: '3px 4px', textAlign: 'center', width: '40px' }}>Score</th>
+                      <th style={{ padding: '3px 4px', textAlign: 'center', width: '32px' }}>Siniest.</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -534,14 +557,14 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
 
                         return (
                           <tr key={c.nombre + idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 0 ? '#ffffff' : '#f0fdf4' }}>
-                            <td style={{ padding: '4px 4px', textAlign: 'center', fontWeight: 700 }}>{rankLabel}</td>
-                            <td style={{ padding: '4px 4px', fontWeight: 600, color: '#0f172a', maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '2.5px 3px', textAlign: 'center', fontWeight: 700 }}>{rankLabel}</td>
+                            <td style={{ padding: '2.5px 3px', fontWeight: 600, color: '#0f172a', maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {c.nombre}
                             </td>
-                            <td style={{ padding: '4px 4px', textAlign: 'center', fontWeight: 700, color: '#15803d' }}>
+                            <td style={{ padding: '2.5px 3px', textAlign: 'center', fontWeight: 700, color: '#15803d' }}>
                               {c.promedioScore.toFixed(1)}
                             </td>
-                            <td style={{ padding: '4px 4px', textAlign: 'center', fontWeight: 600, color: totIncidentes > 0 ? '#dc2626' : '#15803d' }}>
+                            <td style={{ padding: '2.5px 3px', textAlign: 'center', fontWeight: 600, color: totIncidentes > 0 ? '#dc2626' : '#15803d' }}>
                               {totIncidentes}
                             </td>
                           </tr>
@@ -549,7 +572,7 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
                       })
                     ) : (
                       <tr>
-                        <td colSpan={4} style={{ padding: '12px', textAlign: 'center', color: '#64748b' }}>
+                        <td colSpan={4} style={{ padding: '8px', textAlign: 'center', color: '#64748b' }}>
                           Sin operadores
                         </td>
                       </tr>
@@ -559,18 +582,18 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
               </div>
 
               {/* Columna 3: Red Flags (Top 5 con Menor Calificación / Atención Prioritaria) */}
-              <div style={{ border: '1px solid #fee2e2', borderRadius: '8px', padding: '0.7rem 0.8rem', background: '#fff5f5' }}>
-                <div style={{ fontWeight: 700, fontSize: '0.84rem', color: '#991b1b', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between' }}>
+              <div style={{ border: '1px solid #fee2e2', borderRadius: '8px', padding: '0.55rem 0.65rem', background: '#fff5f5' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.78rem', color: '#991b1b', marginBottom: '0.35rem', display: 'flex', justifyContent: 'space-between' }}>
                   <span>🚩 Red Flags (Atención Prioritaria)</span>
-                  <span style={{ fontSize: '0.72rem', color: '#b91c1c', fontWeight: 600 }}>Top 5</span>
+                  <span style={{ fontSize: '0.68rem', color: '#b91c1c', fontWeight: 600 }}>Top 5</span>
                 </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '7.8pt' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '7.2pt' }}>
                   <thead>
                     <tr style={{ background: '#fee2e2', borderBottom: '1.5px solid #fca5a5' }}>
-                      <th style={{ padding: '4px 4px', textAlign: 'center', width: '24px' }}>#</th>
-                      <th style={{ padding: '4px 4px', textAlign: 'left' }}>Operador</th>
-                      <th style={{ padding: '4px 4px', textAlign: 'center', width: '45px' }}>Score</th>
-                      <th style={{ padding: '4px 4px', textAlign: 'center', width: '36px' }}>Siniest.</th>
+                      <th style={{ padding: '3px 4px', textAlign: 'center', width: '22px' }}>#</th>
+                      <th style={{ padding: '3px 4px', textAlign: 'left' }}>Operador</th>
+                      <th style={{ padding: '3px 4px', textAlign: 'center', width: '40px' }}>Score</th>
+                      <th style={{ padding: '3px 4px', textAlign: 'center', width: '32px' }}>Siniest.</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -580,16 +603,16 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
 
                         return (
                           <tr key={c.nombre + idx} style={{ borderBottom: '1px solid #fee2e2', background: idx % 2 === 0 ? '#ffffff' : '#fff5f5' }}>
-                            <td style={{ padding: '4px 4px', textAlign: 'center', fontWeight: 700, color: '#dc2626' }}>
+                            <td style={{ padding: '2.5px 3px', textAlign: 'center', fontWeight: 700, color: '#dc2626' }}>
                               ⚠️{idx + 1}
                             </td>
-                            <td style={{ padding: '4px 4px', fontWeight: 600, color: '#7f1d1d', maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '2.5px 3px', fontWeight: 600, color: '#7f1d1d', maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {c.nombre}
                             </td>
-                            <td style={{ padding: '4px 4px', textAlign: 'center', fontWeight: 700, color: '#dc2626' }}>
+                            <td style={{ padding: '2.5px 3px', textAlign: 'center', fontWeight: 700, color: '#dc2626' }}>
                               {c.promedioScore.toFixed(1)}
                             </td>
-                            <td style={{ padding: '4px 4px', textAlign: 'center', fontWeight: 700, color: '#dc2626' }}>
+                            <td style={{ padding: '2.5px 3px', textAlign: 'center', fontWeight: 700, color: '#dc2626' }}>
                               {totIncidentes}
                             </td>
                           </tr>
@@ -597,7 +620,7 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
                       })
                     ) : (
                       <tr>
-                        <td colSpan={4} style={{ padding: '12px', textAlign: 'center', color: '#64748b' }}>
+                        <td colSpan={4} style={{ padding: '8px', textAlign: 'center', color: '#64748b' }}>
                           Sin operadores
                         </td>
                       </tr>
@@ -607,26 +630,26 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
               </div>
             </div>
 
-            {/* SECCIÓN 3: DIAGNÓSTICO Y CONCLUSIONES RECOMENDADAS */}
+            {/* SECCIÓN 3: DIAGNÓSTICO OPERATIVO */}
             <div
               style={{
                 border: '1px solid #cbd5e1',
                 borderRadius: '8px',
                 background: '#f8fafc',
-                padding: '0.85rem 1.15rem',
-                marginBottom: '1.25rem'
+                padding: '0.65rem 0.95rem',
+                marginBottom: '0.65rem'
               }}
             >
-              <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#0f172a', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <span>📋</span>
-                <span>Diagnóstico Operativo y Recomendaciones de Seguridad</span>
+                <span>Diagnóstico Operativo y Estado de la Flota</span>
               </div>
-              <div style={{ fontSize: '8.2pt', color: '#334155', lineHeight: 1.55 }}>
-                <p style={{ margin: '0 0 0.45rem 0' }}>
-                  • <strong>Alineación Técnica:</strong> La flota alcanzó una calificación media de <strong>{comp.promedioFinal.toFixed(2)}/10</strong> con un <strong>{comp.tasaAprobacion.toFixed(1)}%</strong> de operadores aprobados. {comp.promedioFinal >= 7.5 ? 'El rendimiento demuestra solidez en el control vehicular y maniobrabilidad.' : 'Se recomienda reforzar prácticas en simulator para estandarizar el dominio técnico.'}
+              <div style={{ fontSize: '7.6pt', color: '#334155', lineHeight: 1.45 }}>
+                <p style={{ margin: '0 0 0.3rem 0' }}>
+                  • <strong>Alineación Técnica:</strong> La flota alcanzó una calificación media de <strong>{comp.promedioFinal.toFixed(2)}/10</strong> con un <strong>{comp.tasaAprobacion.toFixed(1)}%</strong> de operadores aprobados. {comp.promedioFinal >= 7.5 ? 'El rendimiento demuestra solidez en el control vehicular y maniobrabilidad.' : 'Se recomienda reforzar prácticas en simulador para estandarizar el dominio técnico.'}
                 </p>
-                <p style={{ margin: '0 0 0.45rem 0' }}>
-                  • <strong>Control de Incidentes:</strong> Se registraron {totalIncidentes} siniestros acumulados ({incidentRate} por conductor). {Number(incidentRate) <= 0.5 ? 'Excelente índice de seguridad y baja siniestralidad durante los escenarios simulados.' : 'Priorizar ejercicios de distancia de seguimiento y control de velocidad en curvas.'}
+                <p style={{ margin: '0 0 0.3rem 0' }}>
+                  • <strong>Control de Incidentes:</strong> Se registraron {totalIncidentes} siniestros acumulados ({incidentRate} por conductor) con {comp.totalColisiones || 0} colisiones y {comp.totalFueraVia || 0} salidas de vía registradas en el simulador.
                 </p>
                 <p style={{ margin: 0 }}>
                   • <strong>Continuidad de Capacitación:</strong> {selectedYear && selectedYear !== 'all' && operadoresConHistorialPrevio ? `El ${operadoresConHistorialPrevio.pct}% del grupo cuenta con registros previos en años anteriores, lo que facilita el análisis de evolución y retención de destrezas.` : `El ${pctRecurrentes}% de los conductores registra más de una sesión, facilitando el seguimiento preventivo continuo.`}
@@ -634,22 +657,55 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
               </div>
             </div>
 
+            {/* SECCIÓN 4: RECOMENDACIONES PREVENTIVAS BASADAS EN ERRORES RECURRENTES */}
+            <div
+              style={{
+                border: '1px solid #bfdbfe',
+                borderRadius: '8px',
+                background: '#eff6ff',
+                padding: '0.65rem 0.95rem',
+                marginBottom: '0.75rem'
+              }}
+            >
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#1e40af', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span>💡</span>
+                <span>Recomendaciones Preventivas (Basadas en Errores Más Recurrentes)</span>
+              </div>
+              <div style={{ fontSize: '7.6pt', color: '#1e3a8a', lineHeight: 1.45 }}>
+                {topRecurringMistakes.length > 0 ? (
+                  <>
+                    <p style={{ margin: '0 0 0.25rem 0' }}>
+                      • <strong>Patrones de Falla Detectados:</strong> Las incidencias con mayor frecuencia en la flota son:{' '}
+                      <strong>{topRecurringMistakes.map((m) => `"${m.error}" (${m.repeticiones} repeticiones)`).join(', ')}</strong>.
+                    </p>
+                    <p style={{ margin: 0 }}>
+                      • <strong>Plan de Acción Recomendado:</strong> Diseñar módulos de refuerzo centrados en anticipación visual de intersecciones, control de velocidad de entrada a curvas y calibración de distancias de frenado con carga dinámica.
+                    </p>
+                  </>
+                ) : (
+                  <p style={{ margin: 0 }}>
+                    • <strong>Plan de Acción Recomendado:</strong> Programar sesiones de seguimiento focalizadas en el grupo de operadores con bandera roja (Red Flags), fortaleciendo maniobras de evasión, gestión del espacio perimetral y hábitos de conducción preventiva.
+                  </p>
+                )}
+              </div>
+            </div>
+
             {/* PIE DE PÁGINA FORMAL Y FIRMAS */}
             <div
               style={{
                 borderTop: '1.5px solid #cbd5e1',
-                paddingTop: '0.85rem',
+                paddingTop: '0.65rem',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'flex-end',
-                fontSize: '7.5pt',
+                fontSize: '7pt',
                 color: '#64748b'
               }}
             >
               <div>
-                <div style={{ fontWeight: 700, color: '#334155', fontSize: '8pt' }}>TrackSIM Cloud • Plataforma de Telemetría y Simulación</div>
-                <div style={{ marginTop: '0.15rem' }}>Documento emitido para fines de análisis de seguridad patrimonial y acreditación técnica.</div>
-                <div style={{ marginTop: '0.15rem' }}>ID Reporte: TS-{comp.slug?.toUpperCase().slice(0, 6) || 'FLOTA'}-{selectedYear || 'ALL'}-{Math.random().toString(36).substring(2, 7).toUpperCase()}</div>
+                <div style={{ fontWeight: 700, color: '#334155', fontSize: '7.6pt' }}>TrackSIM Cloud • Plataforma de Telemetría y Seguimiento</div>
+                <div style={{ marginTop: '0.1rem' }}>Documento emitido para fines de análisis de seguridad patrimonial y acreditación técnica.</div>
+                <div style={{ marginTop: '0.1rem' }}>ID Reporte: TS-{comp.slug?.toUpperCase().slice(0, 6) || 'FLOTA'}-{selectedYear || 'ALL'}-{Math.random().toString(36).substring(2, 7).toUpperCase()}</div>
               </div>
             </div>
           </div>
