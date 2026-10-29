@@ -168,7 +168,7 @@ try {
     await delay(3_500);
 
     await clickNavigation(page, 'Métricas');
-    const companySelector = page.locator('.metrics-filter-bar select');
+    const companySelector = page.locator('.metrics-filter-bar select').first();
     await selectOptionMatching(companySelector, 'Transportes Horizonte');
     await delay(2_000);
     await delay(4_000);
