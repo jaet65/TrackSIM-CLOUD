@@ -22,6 +22,7 @@ interface CompanyDriversTableProps {
   onViewReport: (ev: any) => void;
   filteredEvaluations: Evaluation[];
   comp: any;
+  selectedYear?: string;
   onSelectDriverName: (name: string) => void;
   onNavigate?: (tab: 'dashboard' | 'evolucion' | 'empresas' | 'directorio' | 'ingesta' | 'usuarios') => void;
 }
@@ -43,6 +44,7 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
   onViewReport,
   filteredEvaluations,
   comp,
+  selectedYear,
   onSelectDriverName,
   onNavigate
 }) => {
@@ -234,6 +236,29 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
               </button>
             )}
           </div>
+
+          {/* Indicador de Año */}
+          {selectedYear && (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                padding: '0.45rem 0.75rem',
+                borderRadius: '8px',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                background: selectedYear === 'all' ? 'rgba(56, 189, 248, 0.1)' : 'rgba(34, 197, 94, 0.12)',
+                border: selectedYear === 'all' ? '1px solid rgba(56, 189, 248, 0.3)' : '1px solid rgba(34, 197, 94, 0.35)',
+                color: selectedYear === 'all' ? '#38bdf8' : '#22c55e',
+                whiteSpace: 'nowrap'
+              }}
+              title={selectedYear === 'all' ? 'Roster con historial de todos los años' : `Roster filtrado exclusivamente para el año ${selectedYear}`}
+            >
+              <span>📅</span>
+              <span>{selectedYear === 'all' ? 'Todos los Años' : `Año ${selectedYear}`}</span>
+            </span>
+          )}
 
           {/* Botón Exportar CSV */}
           <button

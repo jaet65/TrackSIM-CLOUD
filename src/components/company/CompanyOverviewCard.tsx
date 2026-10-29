@@ -6,13 +6,41 @@ interface CompanyOverviewCardProps {
   comp: (CompanySummary & { esGlobal?: boolean });
   conductoresRecurrentes: number;
   pctRecurrentes: string;
+  selectedYear?: string;
+  availableYears?: string[];
+  operadoresConHistorialPrevio?: { count: number; pct: string };
 }
 
 export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
   comp,
   conductoresRecurrentes,
-  pctRecurrentes
+  pctRecurrentes,
+  selectedYear,
+  availableYears = [],
+  operadoresConHistorialPrevio
 }) => {
+  // Texto descriptivo del periodo / años contemplados
+  const periodText = React.useMemo(() => {
+    if (selectedYear && selectedYear !== 'all') {
+      return `Año ${selectedYear}`;
+    }
+    // Ordenar años ascendentes
+    const sorted = [...availableYears].sort();
+    if (sorted.length === 0) return 'Histórico general';
+    if (sorted.length === 1) return `Año ${sorted[0]}`;
+    return `${sorted[0]} – ${sorted[sorted.length - 1]}`;
+  }, [selectedYear, availableYears]);
+
+  const periodSubtitle = React.useMemo(() => {
+    if (selectedYear && selectedYear !== 'all') {
+      return 'Filtro específico activo';
+    }
+    const sorted = [...availableYears].sort();
+    if (sorted.length > 1) {
+      return `(${sorted.length} años registrados)`;
+    }
+    return '(1 año registrado)';
+  }, [selectedYear, availableYears]);
   return (
     <div
       className="glass-card company-executive-card"
@@ -100,13 +128,28 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
             type="button"
             className="btn btn-secondary btn-sm company-export-btn"
             onClick={() => {
+              const prevTitle = document.title;
+              const safeCompany = (comp.nombre || 'Flota').trim();
+              const safeYears = periodText.replace(/\s*[–—]\s*/g, '-').replace(/\s+/g, '_');
+              const printFileName = `TrackSIM Cloud_${safeCompany}_${safeYears}`;
+
+              document.title = printFileName;
+
               void logAudit({
                 categoria: 'datos',
                 accion: 'imprimir',
                 empresas: [comp.nombre],
-                detalle: `Impresión / PDF del resumen de ${comp.nombre}`
+                detalle: `Impresión / PDF del resumen de ${comp.nombre}${selectedYear && selectedYear !== 'all' ? ` (Año ${selectedYear})` : ''}`
               });
-              window.print();
+
+              try {
+                window.print();
+              } finally {
+                // Restaurar el título original de la pestaña luego de disparar el diálogo de impresión
+                setTimeout(() => {
+                  document.title = prevTitle;
+                }, 1000);
+              }
             }}
             style={{
               display: 'inline-flex',
@@ -130,8 +173,34 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
         </div>
       </div>
 
-      {/* Tercer Nivel: Número de Operadores, Conductores Recurrentes (> 1 vez), Promedio de Flota, Tasa de Aprobación */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem', alignItems: 'center' }}>
+      {/* Tercer Nivel: Periodo de Años, Número de Operadores, Conductores Recurrentes (> 1 vez), Promedio de Flota, Tasa de Aprobación */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1.25rem', alignItems: 'center' }}>
+        {/* 3.0 Periodo / Años Contemplados (Primero) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', padding: '0.85rem 1rem', borderRadius: '12px' }}>
+          <div
+            style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '10px',
+              color: '#38bdf8',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.35rem',
+              flexShrink: 0
+            }}
+          >
+            📅
+          </div>
+          <div>
+            <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: 600, display: 'block' }}>
+              Periodo
+            </span>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--primary)', marginTop: '0.1rem' }}>
+              {periodText}
+            </div>
+          </div>
+        </div>
         {/* 3.1 Número de Operadores */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', padding: '0.85rem 1rem', borderRadius: '12px' }}>
           <div
@@ -159,7 +228,7 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
           </div>
         </div>
 
-        {/* 3.2 Conductores Recurrentes (> 1 vez) */}
+        {/* 3.2 Conductores Recurrentes (> 1 vez / Años Anteriores al filtrar) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', padding: '0.85rem 1rem', borderRadius: '12px' }}>
           <div
             style={{
@@ -178,11 +247,23 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
           </div>
           <div>
             <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: 600, display: 'block' }}>
-              Participación &gt; 1 Vez
+              {selectedYear && selectedYear !== 'all' ? 'Con Evaluaciones Previas' : 'Participación > 1 Vez'}
             </span>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--accent-purple)', marginTop: '0.1rem' }}>
-              {conductoresRecurrentes} <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 500 }}>({pctRecurrentes}% de flota)</span>
-            </div>
+            {selectedYear && selectedYear !== 'all' && operadoresConHistorialPrevio ? (
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--accent-purple)', marginTop: '0.1rem' }}>
+                {operadoresConHistorialPrevio.count}{' '}
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+                  ({operadoresConHistorialPrevio.pct}% en años anteriores)
+                </span>
+              </div>
+            ) : (
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--accent-purple)', marginTop: '0.1rem' }}>
+                {conductoresRecurrentes}{' '}
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+                  ({pctRecurrentes}% de flota)
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
