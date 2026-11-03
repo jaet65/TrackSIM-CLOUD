@@ -69,6 +69,9 @@ export interface Evaluation {
   cursoCodigo?: string;
   cursoNombre?: string;
   folioGrupo?: string;
+  zeroGroupId?: string;
+  sourceEvaluationIds?: string[];
+  sourceSchemaVersion?: string;
 }
 
 export interface ParsedPdfEvaluation extends Omit<Evaluation, 'id'> {
