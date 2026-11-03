@@ -46,6 +46,10 @@ Permite explorar y administrar los registros de evaluación:
 
 Las operaciones de edición y eliminación cambian datos en Firestore. Revisa los filtros y la selección antes de aplicarlas.
 
+### Importación de evaluaciones desde ZERO — administradores
+
+La pestaña de ingesta ofrece dos orígenes: los grupos congelados de ZERO (Firestore, colección `cloud_exports`) o la carga de PDF (V2 y V1 Legacy). Desde Firestore solo se aceptan exportaciones con `schemaVersion` 1.0.0, estado `complete` y conteos coincidentes; la lista indica si cada grupo ya fue importado o está en revisión. Se requiere la misma cuenta Google corporativa verificada en ambos proyectos; ZERO debe tener Google Sign-In, el dominio de CLOUD autorizado y reglas de lectura para `cloud_exports`. No se usan credenciales de cuentas de servicio en el navegador. La empresa y la sede se asignan en CLOUD antes de guardar y las calificaciones congeladas no se recalculan. Ambos orígenes comparten la misma bandeja de revisión.
+
 ### Ingesta de reportes PDF — administradores
 
 La ingesta V2 procesa expedientes individuales PDF exportados desde TrackSIM-ZERO y presenta los datos detectados en una bandeja de revisión antes de guardarlos. Como el expediente no incluye la empresa, se debe asignar a cada archivo (o a todo el lote) antes de confirmar el guardado en Firestore. V2 extrae las calificaciones de Destreza (sobre 7) y Eco Driving (sobre 3), mientras que V1 conserva sus métricas de Habilidades de manejo y Práctica en simulador. La tasa de siniestros V2 cuenta solo errores clasificados como colisiones, salidas de vía o fatalidades; los demás puntos débiles no se suman como siniestros. Los incidentes se desglosan desde las repeticiones de “Puntos débiles”: atropellos de peatones y vuelcos cuentan como fatalidades, salirse de la vía como fuera de vía (o fatalidad si es crítico), y colisiones con objetos, vehículos, piedras o animales como colisiones. El conteo global de accidentes críticos se conserva aparte. La ingesta PDF Legacy V1 permanece disponible para compatibilidad con los reportes anteriores.
@@ -72,7 +76,7 @@ npm install
 npm run dev
 ```
 
-Vite muestra en la terminal la dirección local para abrir la aplicación. La configuración de Firebase está en `src/services/firebaseApp.ts`; los valores pueden proporcionarse mediante variables `VITE_FIREBASE_*`.
+Vite muestra en la terminal la dirección local para abrir la aplicación. La configuración de Firebase está en `src/services/firebaseApp.ts`; los valores pueden proporcionarse mediante variables `VITE_FIREBASE_*`. La configuración pública de ZERO puede sobrescribirse con `VITE_ZERO_FIREBASE_*`.
 
 ## Modo demostración
 
