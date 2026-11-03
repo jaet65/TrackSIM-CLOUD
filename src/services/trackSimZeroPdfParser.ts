@@ -336,6 +336,19 @@ function latestExerciseDate(exercises: ExerciseItem[]): string | undefined {
     ?.fecha;
 }
 
+function extractFolio(lines: PdfTextLine[]): string | undefined {
+  const folios = new Set<string>();
+  for (const line of lines) {
+    const match = lineText(line).match(/\bfolio\s*:\s*([A-Z0-9]+(?:-[A-Z0-9]+)+)\b/i);
+    if (match) folios.add(match[1].toUpperCase());
+  }
+
+  if (folios.size > 1) {
+    throw new Error('El expediente contiene folios distintos en sus páginas.');
+  }
+  return folios.values().next().value;
+}
+
 export function parseTrackSimZeroPdfLines(lines: PdfTextLine[], fileName: string): StagedEvaluation {
   const allText = normalizeText(lines.map(lineText).join(' '));
   if (
@@ -347,6 +360,9 @@ export function parseTrackSimZeroPdfLines(lines: PdfTextLine[], fileName: string
 
   const conductor = extractDriverName(lines, fileName);
   if (!conductor) throw new Error('No se pudo identificar al conductor en el expediente.');
+
+  const folio = extractFolio(lines);
+  if (!folio) throw new Error('No se pudo identificar el folio único del expediente.');
 
   const score = extractOverallScore(lines);
   if (score === undefined) throw new Error('No se pudo extraer la calificación global del expediente.');
@@ -388,6 +404,7 @@ export function parseTrackSimZeroPdfLines(lines: PdfTextLine[], fileName: string
 
   return {
     id,
+    folio,
     conductor,
     empresa: '',
     sede: '',

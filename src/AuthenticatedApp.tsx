@@ -69,6 +69,7 @@ const MainLayout: React.FC = () => {
   const { userRole, allowedCompanies, profile, isDemo } = useAuth();
   const { roleAllowedEvaluations, companies, initialLoaded } = useData();
   const [currentTab, setCurrentTab] = useState<TabType>('dashboard');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   const handleTabChange = (tab: TabType) => {
     if ((isDemo || userRole !== 'admin') && (tab === 'directorio' || tab === 'ingesta' || tab === 'usuarios')) {
@@ -114,8 +115,13 @@ const MainLayout: React.FC = () => {
   }
 
   return (
-    <div id="appContainer">
-      <Navbar currentTab={currentTab} onTabChange={handleTabChange} />
+    <div id="appContainer" className={isSidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-expanded'}>
+      <Navbar
+        currentTab={currentTab}
+        onTabChange={handleTabChange}
+        isCollapsed={isSidebarCollapsed}
+        onCollapsedChange={setIsSidebarCollapsed}
+      />
       <div className="app-content">
         <AppHeader />
         <main

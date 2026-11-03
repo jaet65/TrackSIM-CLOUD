@@ -5,6 +5,7 @@ import { ExerciseCatalogModal } from './ExerciseCatalogModal';
 import { loadPdfJs } from '../services/pdfJsLoader';
 import { logAudit } from '../services/auditLog';
 import { shortInstructorName } from '../services/instructorName';
+import { filterDuplicateEvaluationsByFolio } from '../services/evaluationDedupe';
 import { StagedEvaluation } from '../types';
 
 export const IngestaTab: React.FC = () => {
@@ -51,32 +52,20 @@ export const IngestaTab: React.FC = () => {
         const { results, failures } = await parseTrackSimZeroPdfBatch(pdfFiles, (current, total, text) => {
           setProgress({ current, total, text });
         });
-        const known = new Set<string>([
-          ...evaluations.map((e) => e.id),
-          ...stagingFiles.map((s) => s.id)
-        ]);
-        const fresh: StagedEvaluation[] = [];
-        const duplicates: string[] = [];
+        const { fresh, duplicates } = filterDuplicateEvaluationsByFolio(results, [...evaluations, ...stagingFiles]);
         const instructor = shortInstructorName(profile?.displayName || user?.displayName || user?.email);
-        for (const parsed of results) {
-          const item = instructor ? { ...parsed, instructor } : parsed;
-          if (known.has(item.id)) {
-            duplicates.push(item.fileName || item.conductor || item.id);
-          } else {
-            known.add(item.id);
-            fresh.push(item);
-          }
-        }
-        setStagingFiles((prev) => [...prev, ...fresh]);
+        const attributedFresh = fresh.map((item) => instructor ? { ...item, instructor } : item);
+        setStagingFiles((prev) => [...prev, ...attributedFresh]);
+        const duplicateNames = duplicates.map((item) => item.fileName || item.conductor || item.folio || item.id);
         const failureSummary = failures.length > 0
           ? ` ${failures.length} archivo(s) no se pudieron importar: ${failures.slice(0, 3).map((failure) => `${failure.fileName}: ${failure.error}`).join(' | ')}`
           : '';
         const duplicateSummary = duplicates.length > 0
-          ? ` ${duplicates.length} duplicado(s) omitido(s) (ya cargados o guardados): ${duplicates.slice(0, 3).join(', ')}.`
+          ? ` ${duplicates.length} duplicado(s) omitido(s) (folio ya cargado, guardado o repetido en el lote): ${duplicateNames.slice(0, 3).join(', ')}.`
           : '';
         setFeedback({
-          message: `Se agregaron ${fresh.length} de ${pdfFiles.length} expedientes V2.${duplicateSummary}${failureSummary} Revisa los datos antes de guardar.`,
-          type: failures.length > 0 || duplicates.length > 0 ? 'warning' : fresh.length > 0 ? 'success' : 'error'
+          message: `Se agregaron ${attributedFresh.length} de ${pdfFiles.length} expedientes V2.${duplicateSummary}${failureSummary} Revisa los datos antes de guardar.`,
+          type: failures.length > 0 || duplicates.length > 0 ? 'warning' : attributedFresh.length > 0 ? 'success' : 'error'
         });
       } else {
         await loadPdfJs();

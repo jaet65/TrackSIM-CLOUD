@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Menu, PanelLeftClose } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -9,6 +9,8 @@ import { TabType } from '../types';
 interface NavbarProps {
   currentTab: TabType;
   onTabChange: (tab: TabType) => void;
+  isCollapsed: boolean;
+  onCollapsedChange: (isCollapsed: boolean) => void;
 }
 
 const getNavigationItems = (userRole: string | null, isDemo: boolean): { id: TabType; icon: string; label: string }[] => {
@@ -29,15 +31,14 @@ const getNavigationItems = (userRole: string | null, isDemo: boolean): { id: Tab
   return items;
 };
 
-export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
+export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange, isCollapsed, onCollapsedChange }) => {
   const { userRole, isDemo } = useAuth();
-  const [isCollapsed, setIsCollapsed] = useState(true);
   const navigationItems = getNavigationItems(userRole, isDemo);
 
   const handleNavigation = (tab: TabType) => {
     onTabChange(tab);
     if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches) {
-      setIsCollapsed(true);
+      onCollapsedChange(true);
     }
   };
 
@@ -66,7 +67,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
       <button
         type="button"
         className="sidebar-toggle"
-        onClick={() => setIsCollapsed((collapsed) => !collapsed)}
+        onClick={() => onCollapsedChange(!isCollapsed)}
         aria-label={isCollapsed ? 'Expandir navegación' : 'Contraer navegación'}
         title={isCollapsed ? 'Expandir navegación' : 'Contraer navegación'}
       >

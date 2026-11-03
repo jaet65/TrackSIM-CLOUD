@@ -20,6 +20,7 @@ function individualPdfLines(): PdfTextLine[] {
     textLine(1, 700, [{ text: 'CALIFICACIÓN GLOBAL PROMEDIADA', x: 57 }]),
     textLine(1, 663, [{ text: '8.4', x: 57 }, { text: '/ 10 pts', x: 153 }]),
     textLine(1, 646, [{ text: 'Calculada sobre 4 ejercicios esperados en 2 fases', x: 57 }]),
+    textLine(1, 25, [{ text: 'Folio: EXP-20261016-F5E6-D51F', x: 340 }]),
     textLine(2, 550, [{ text: 'Puntos Débiles (Análisis por Gravedad)', x: 14 }]),
     textLine(2, 530, [{ text: 'Nivel Críticas', x: 22 }]),
     textLine(2, 518, [{ text: 'Pisar el acotamiento derecho', x: 18 }, { text: '22× veces', x: 175 }]),
@@ -68,6 +69,7 @@ describe('TrackSIM-ZERO individual PDF parser', () => {
     const parsed = parseTrackSimZeroPdfLines(individualPdfLines(), 'Ana_Conductora_expediente.pdf');
 
     expect(parsed.conductor).toBe('Ana Conductora');
+    expect(parsed.folio).toBe('EXP-20261016-F5E6-D51F');
     expect(parsed.evaluacionFinalPuntos).toBe(8.4);
     expect(parsed.destrezaPuntos).toBe(3.9);
     expect(parsed.destrezaMax).toBe(7);
@@ -217,5 +219,14 @@ describe('TrackSIM-ZERO individual PDF parser', () => {
 
     expect(() => parseTrackSimZeroPdfLines(lines, 'Ana_Conductora_expediente.pdf'))
       .toThrow('No se pudo extraer el conteo de accidentes críticos del expediente.');
+  });
+
+  it('rejects dossiers without the unique folio needed for duplicate validation', () => {
+    const lines = individualPdfLines().filter((line) =>
+      !line.items.some((item) => item.text.startsWith('Folio:'))
+    );
+
+    expect(() => parseTrackSimZeroPdfLines(lines, 'Ana_Conductora_expediente.pdf'))
+      .toThrow('No se pudo identificar el folio único del expediente.');
   });
 });

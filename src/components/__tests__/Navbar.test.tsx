@@ -44,15 +44,28 @@ describe('Navbar component', () => {
     });
   });
 
-  const renderNavbar = (currentTab: 'dashboard' | 'evolucion' | 'empresas' | 'directorio' | 'ingesta' | 'usuarios') =>
-    render(
+  const renderNavbar = (currentTab: 'dashboard' | 'evolucion' | 'empresas' | 'directorio' | 'ingesta' | 'usuarios') => {
+    const NavbarHarness: React.FC = () => {
+      const [isCollapsed, setIsCollapsed] = React.useState(true);
+      return (
+        <Navbar
+          currentTab={currentTab}
+          onTabChange={mockOnTabChange}
+          isCollapsed={isCollapsed}
+          onCollapsedChange={setIsCollapsed}
+        />
+      );
+    };
+
+    return render(
       <ThemeProvider>
         <>
-          <Navbar currentTab={currentTab} onTabChange={mockOnTabChange} />
+          <NavbarHarness />
           <AppHeader />
         </>
       </ThemeProvider>
     );
+  };
 
   it('debe renderizar pestañas básicas para rol lector y ocultar pestañas de admin', () => {
     vi.spyOn(AuthContext, 'useAuth').mockReturnValue({
