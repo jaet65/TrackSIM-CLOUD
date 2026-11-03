@@ -2,7 +2,7 @@ import React, { lazy, Suspense, useState } from 'react';
 import { DataProvider, useData } from './context/DataContext';
 import { useAuth } from './context/AuthContext';
 import { LobbyScreen } from './components/LobbyScreen';
-import { Navbar } from './components/Navbar';
+import { AppHeader, Navbar } from './components/Navbar';
 import { DashboardTab } from './components/DashboardTab';
 import { TabType } from './types';
 
@@ -69,6 +69,7 @@ const MainLayout: React.FC = () => {
   const { userRole, allowedCompanies, profile, isDemo } = useAuth();
   const { roleAllowedEvaluations, companies, initialLoaded } = useData();
   const [currentTab, setCurrentTab] = useState<TabType>('dashboard');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   const handleTabChange = (tab: TabType) => {
     if ((isDemo || userRole !== 'admin') && (tab === 'directorio' || tab === 'ingesta' || tab === 'usuarios')) {
@@ -114,21 +115,29 @@ const MainLayout: React.FC = () => {
   }
 
   return (
-    <div id="appContainer">
-      <Navbar currentTab={currentTab} onTabChange={handleTabChange} />
-      <main
-        className="main-content"
-        style={currentTab === 'directorio' || currentTab === 'usuarios' || currentTab === 'ingesta' ? { maxWidth: '100%', padding: '1.5rem 2rem' } : undefined}
-      >
-        <Suspense fallback={<TabLoadingFallback />}>
-          {currentTab === 'dashboard' && <DashboardTab onNavigate={handleTabChange} />}
-          {currentTab === 'evolucion' && <EvolutionTab />}
-          {currentTab === 'empresas' && <CompanyTab onNavigate={handleTabChange} />}
-          {currentTab === 'directorio' && (userRole === 'admin' && !isDemo ? <DirectoryTab /> : <DashboardTab onNavigate={handleTabChange} />)}
-          {currentTab === 'ingesta' && (userRole === 'admin' && !isDemo ? <IngestaTab /> : <DashboardTab onNavigate={handleTabChange} />)}
-          {currentTab === 'usuarios' && (userRole === 'admin' && !isDemo ? <UserManagementTab /> : <DashboardTab onNavigate={handleTabChange} />)}
-        </Suspense>
-      </main>
+    <div id="appContainer" className={isSidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-expanded'}>
+      <Navbar
+        currentTab={currentTab}
+        onTabChange={handleTabChange}
+        isCollapsed={isSidebarCollapsed}
+        onCollapsedChange={setIsSidebarCollapsed}
+      />
+      <div className="app-content">
+        <AppHeader />
+        <main
+          className="main-content"
+          style={currentTab === 'directorio' || currentTab === 'usuarios' || currentTab === 'ingesta' ? { maxWidth: '100%', padding: '1.5rem 2rem' } : undefined}
+        >
+          <Suspense fallback={<TabLoadingFallback />}>
+            {currentTab === 'dashboard' && <DashboardTab onNavigate={handleTabChange} />}
+            {currentTab === 'evolucion' && <EvolutionTab />}
+            {currentTab === 'empresas' && <CompanyTab onNavigate={handleTabChange} />}
+            {currentTab === 'directorio' && (userRole === 'admin' && !isDemo ? <DirectoryTab /> : <DashboardTab onNavigate={handleTabChange} />)}
+            {currentTab === 'ingesta' && (userRole === 'admin' && !isDemo ? <IngestaTab /> : <DashboardTab onNavigate={handleTabChange} />)}
+            {currentTab === 'usuarios' && (userRole === 'admin' && !isDemo ? <UserManagementTab /> : <DashboardTab onNavigate={handleTabChange} />)}
+          </Suspense>
+        </main>
+      </div>
     </div>
   );
 };

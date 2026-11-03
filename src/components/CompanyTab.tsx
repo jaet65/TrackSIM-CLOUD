@@ -1,9 +1,13 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { createCompanySummaryFromEvaluations } from '../services/analytics';
+import { getEvaluationIncidentCounts } from '../services/incidentMetrics';
 import { ReportDetailModal } from './ReportDetailModal';
 import { CompanyOverviewCard } from './company/CompanyOverviewCard';
+import { CompanySinglePageReportModal } from './company/CompanySinglePageReportModal';
+import { CompanyReportModal } from './company/CompanyReportModal';
 import { CompanyRankingChartCard } from './company/CompanyRankingChartCard';
 import { CompanyDriversTable, CompanySortKey } from './company/CompanyDriversTable';
 import { Bar, Line } from 'react-chartjs-2';
@@ -25,6 +29,12 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineEleme
 const DRIVERS_PAGE_SIZE = 30;
 const RANKING_PAGE_SIZE = 10;
 
+function getEvaluationYear(evalItem: any): string | null {
+  const date = evalItem?.fechaCapacitacion || evalItem?.fechaReporte || evalItem?.fecha || '';
+  const match = String(date).match(/\b(20\d{2}|19\d{2})\b/);
+  return match ? match[1] : (String(date).match(/\b\d{4}\b/)?.[0] || null);
+}
+
 type SortKey = CompanySortKey;
 
 interface CompanyTabProps {
@@ -35,21 +45,27 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
   const { userRole } = useAuth();
   const { theme } = useTheme();
   const {
-    companies,
     selectedCompany,
-    setSelectedCompany,
     selectedCompanySummary,
     setSelectedDriverName,
     filteredEvaluations
   } = useData();
 
+  const [selectedYear, setSelectedYear] = useState<string>('all');
   const [driverSearch, setDriverSearch] = useState('');
   const [rankingPage, setRankingPage] = useState(1);
   const [driversPage, setDriversPage] = useState(1);
   const [sortKey, setSortKey] = useState<SortKey>('promedioScore');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [viewReport, setViewReport] = useState<any | null>(null);
+  const [isSinglePageReportOpen, setIsSinglePageReportOpen] = useState(false);
+  const [isCompanyReportOpen, setIsCompanyReportOpen] = useState(false);
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setRankingPage(1);
+    setDriversPage(1);
+  }, [selectedCompany]);
 
   const toggleExpandExercises = (driverKey: string) => {
     setExpandedExercises((prev) => {
@@ -63,9 +79,50 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
     });
   };
 
-  const comp = selectedCompanySummary;
+  // Años disponibles para la flota seleccionada
+  const availableYears = useMemo(() => {
+    const set = new Set<string>();
+    filteredEvaluations.forEach((e) => {
+      const yr = getEvaluationYear(e);
+      if (yr) set.add(yr);
+    });
+    return Array.from(set).sort().reverse();
+  }, [filteredEvaluations]);
 
-  // Cantidad y porcentaje de conductores que han participado más de 1 vez
+  const periodText = useMemo(() => {
+    if (selectedYear && selectedYear !== 'all') {
+      return `Año ${selectedYear}`;
+    }
+    const sorted = [...availableYears].sort();
+    if (sorted.length === 0) return 'Histórico general';
+    if (sorted.length === 1) return `Año ${sorted[0]}`;
+    return `${sorted[0]} – ${sorted[sorted.length - 1]}`;
+  }, [selectedYear, availableYears]);
+
+  // Evaluaciones filtradas por el año seleccionado (si aplica)
+  const evaluationsByYear = useMemo(() => {
+    if (selectedYear === 'all') return filteredEvaluations;
+    return filteredEvaluations.filter((e) => getEvaluationYear(e) === selectedYear);
+  }, [filteredEvaluations, selectedYear]);
+
+  // Resumen ejecutivo de la empresa/flota considerando el año seleccionado
+  const comp = useMemo(() => {
+    if (selectedYear === 'all') {
+      if (userRole !== 'admin' && selectedCompany === 'all') {
+        return createCompanySummaryFromEvaluations('Flotas asignadas', 'flotas-asignadas', filteredEvaluations);
+      }
+      return selectedCompanySummary;
+    }
+    const companyDisplayName =
+      selectedCompany === 'all' ? 'Todas las empresas' : (selectedCompanySummary?.nombre || selectedCompany);
+    return createCompanySummaryFromEvaluations(
+      companyDisplayName,
+      selectedCompanySummary?.slug || 'flota',
+      evaluationsByYear
+    );
+  }, [selectedYear, selectedCompanySummary, selectedCompany, evaluationsByYear, userRole, filteredEvaluations]);
+
+  // Cantidad y porcentaje de conductores que han participado más de 1 vez en el periodo visible
   const { conductoresRecurrentes, pctRecurrentes } = useMemo(() => {
     if (!comp?.conductores || comp.conductores.length === 0) {
       return { conductoresRecurrentes: 0, pctRecurrentes: '0.0' };
@@ -74,6 +131,36 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
     const pct = ((recurrentes / comp.conductores.length) * 100).toFixed(1);
     return { conductoresRecurrentes: recurrentes, pctRecurrentes: pct };
   }, [comp]);
+
+  // Si se filtra por año, calcular cuántos operadores evaluados en ese año participaron en años anteriores
+  const operadoresConHistorialPrevio = useMemo(() => {
+    if (!selectedYear || selectedYear === 'all' || !comp?.conductores || comp.conductores.length === 0) {
+      return { count: 0, pct: '0.0', names: [] as string[] };
+    }
+
+    const currentYearNum = parseInt(selectedYear, 10);
+    const operadoresEnEsteAno = new Set(
+      comp.conductores.map((c) => (c.nombre || '').trim().toLowerCase()).filter(Boolean)
+    );
+
+    // Buscar en filteredEvaluations (historial de la flota) si tuvieron evaluaciones en un año anterior
+    const operadoresConPrevios = new Set<string>();
+    filteredEvaluations.forEach((e) => {
+      const yr = getEvaluationYear(e);
+      if (!yr) return;
+      const yrNum = parseInt(yr, 10);
+      if (yrNum < currentYearNum) {
+        const name = (e.conductor || e.operador || '').trim().toLowerCase();
+        if (name && operadoresEnEsteAno.has(name)) {
+          operadoresConPrevios.add(name);
+        }
+      }
+    });
+
+    const count = operadoresConPrevios.size;
+    const pct = ((count / comp.conductores.length) * 100).toFixed(1);
+    return { count, pct };
+  }, [selectedYear, comp, filteredEvaluations]);
 
   // Filtrado de operadores por búsqueda
   const filteredConductores = useMemo(() => {
@@ -519,9 +606,10 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
       const year = match ? match[1] : (dateStr ? dateStr.substring(0, 4) : '');
       if (!year) return;
 
-      const col = e.colisiones || e.totalColisiones || 0;
-      const fat = e.fatalidades || 0;
-      const off = e.vehiculoFueraVia || 0;
+      const incidents = getEvaluationIncidentCounts(e);
+      const col = incidents.colisiones;
+      const fat = incidents.fatalidades;
+      const off = incidents.vehiculoFueraVia;
       const op = (e.conductor || e.operador || 'Sin Asignar').trim();
 
       const current = yearDataMap.get(year) || { colisiones: 0, fatalidades: 0, fueraVia: 0, operators: new Set<string>() };
@@ -618,51 +706,66 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
 
   return (
     <div className="view-section active">
-      {/* Selector de Empresa / Flota (Visible si es admin o si el usuario tiene más de 1 empresa) */}
-      {(userRole === 'admin' || companies.length > 1) && (
-        <div
-          className="glass-card no-print metrics-filter-bar"
-          style={{
-            padding: '0.9rem 1.25rem',
-            marginBottom: '1.25rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '1rem'
-          }}
-        >
-          <span style={{ fontSize: '1.3rem' }}>🏢</span>
-          <div style={{ width: '100%', maxWidth: '380px' }}>
+      {/* Filtro de Año para la flota seleccionada globalmente */}
+      <div
+        className="glass-card no-print metrics-filter-bar"
+        style={{
+          padding: '0.9rem 1.25rem',
+          marginBottom: '1.25rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1.25rem',
+          flexWrap: 'wrap'
+        }}
+      >
+        {/* Filtro de Año */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: '220px', maxWidth: '280px', flex: '1 1 200px' }}>
+          <span style={{ fontSize: '1.3rem' }}>📅</span>
+          <div style={{ width: '100%' }}>
             <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
-              Seleccionar Flota / Empresa
+              Filtrar por Año
             </label>
             <select
               className="filter-select"
-              value={selectedCompany}
+              value={selectedYear}
               onChange={(e) => {
-                setSelectedCompany(e.target.value);
+                setSelectedYear(e.target.value);
                 setRankingPage(1);
                 setDriversPage(1);
               }}
-              style={{ width: '100%', padding: '0.55rem 0.85rem', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: 'var(--text-main)', colorScheme: theme, fontWeight: 600, fontSize: '0.9rem' }}
+              style={{
+                width: '100%',
+                padding: '0.55rem 0.85rem',
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: '8px',
+                color: 'var(--text-main)',
+                colorScheme: theme,
+                fontWeight: 600,
+                fontSize: '0.9rem'
+              }}
             >
-              {userRole === 'admin' && (
-                <option value="all">🌐 Todas las Empresas (Consolidado)</option>
-              )}
-              {companies.map((c) => (
-                <option key={c} value={c}>
-                  {c}
+              <option value="all">📅 Todos los Años</option>
+              {availableYears.map((yr) => (
+                <option key={yr} value={yr}>
+                  Año {yr}
                 </option>
               ))}
             </select>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Tarjeta Ejecutiva de 3 Niveles: Empresa -> Sedes -> Métricas (Operadores, Promedio, Aprobación) */}
+      {/* Tarjeta Ejecutiva de 3 Niveles: Empresa -> Sedes -> Métricas (Periodo, Operadores, Promedio, Aprobación) */}
       <CompanyOverviewCard
         comp={comp}
         conductoresRecurrentes={conductoresRecurrentes}
         pctRecurrentes={pctRecurrentes}
+        selectedYear={selectedYear}
+        availableYears={availableYears}
+        operadoresConHistorialPrevio={operadoresConHistorialPrevio}
+        onOpenSinglePageReport={() => setIsSinglePageReportOpen(true)}
+        onOpenCompanyReport={() => setIsCompanyReportOpen(true)}
       />
 
       {/* Rendimiento Promedio en Ejercicios (Solo ejercicios realizados por la empresa) */}
@@ -808,8 +911,9 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         expandedExercises={expandedExercises}
         onToggleExpandExercises={toggleExpandExercises}
         onViewReport={setViewReport}
-        filteredEvaluations={filteredEvaluations}
+        filteredEvaluations={evaluationsByYear}
         comp={comp}
+        selectedYear={selectedYear}
         onSelectDriverName={setSelectedDriverName}
         onNavigate={onNavigate}
       />
@@ -818,6 +922,27 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
       <ReportDetailModal
         evaluation={viewReport}
         onClose={() => setViewReport(null)}
+      />
+      {/* Modal Reporte Single-Page PDF Ejecutivo */}
+      <CompanySinglePageReportModal
+        isOpen={isSinglePageReportOpen}
+        onClose={() => setIsSinglePageReportOpen(false)}
+        comp={comp}
+        selectedYear={selectedYear}
+        periodText={periodText}
+        conductoresRecurrentes={conductoresRecurrentes}
+        pctRecurrentes={pctRecurrentes}
+        operadoresConHistorialPrevio={operadoresConHistorialPrevio}
+        exerciseStats={exerciseStats}
+        topConductores={rankingList}
+        allEvaluations={evaluationsByYear}
+      />
+      <CompanyReportModal
+        isOpen={isCompanyReportOpen}
+        onClose={() => setIsCompanyReportOpen(false)}
+        comp={comp}
+        selectedYear={selectedYear}
+        periodText={periodText}
       />
     </div>
   );

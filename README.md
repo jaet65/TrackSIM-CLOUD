@@ -4,11 +4,13 @@ Aplicación web para consultar y analizar evaluaciones de conducción en simulad
 
 ## Funciones de la plataforma
 
+Los botones Dashboard, Evolución, Métricas y las opciones administrativas están en una barra lateral colapsable que inicia compacta. El encabezado superior conserva la marca, el filtro global de empresa, el tema y las acciones de cuenta.
+
 ### Dashboard
 
 Presenta una vista ejecutiva de las evaluaciones disponibles y permite, según los permisos de la cuenta:
 
-- Filtrar los indicadores por empresa o consultar el consolidado global.
+- Aplicar el filtro global de empresa desde el badge de administrador; la selección se comparte con Evolución, Métricas y Directorio.
 - Consultar el número de reportes y operadores, la calificación promedio, la tasa de aprobación y los incidentes registrados.
 - Revisar los incidentes desglosados en colisiones, fatalidades y salidas de vía.
 - Visualizar la distribución de resultados y comparar el desempeño por empresa o por ciudad/sede.
@@ -19,11 +21,11 @@ Presenta una vista ejecutiva de las evaluaciones disponibles y permite, según l
 Incluye dos vistas de seguimiento:
 
 - **Conductor individual:** permite seleccionar operadores con al menos dos sesiones y revisar su resumen, la curva histórica de calificaciones, los incidentes por sesión y el historial cronológico. El radar interactivo muestra cinco dimensiones de competencia y se puede ampliar para consultar puntajes, incidencias y el desglose de errores detectados. Desde el historial se abre el reporte de cada sesión.
-- **Flota/empresa:** permite seleccionar una flota y consultar el resumen ejecutivo, la evolución anual de calificaciones, los siniestros anuales o su tasa por operador, el desempeño por ejercicio y el desglose anual consolidado.
+- **Flota/empresa:** sigue el filtro global para consultar el resumen ejecutivo, la evolución anual de calificaciones, los siniestros anuales o su tasa por operador, el desempeño por ejercicio y el desglose anual consolidado.
 
 ### Métricas
 
-Consolida el análisis de una empresa o, para administradores, de todas las empresas. Incluye:
+Consolida el análisis de la empresa seleccionada en el filtro global o, cuando se seleccionan todas, de las empresas permitidas por el rol. Incluye:
 
 - Indicadores ejecutivos de la flota y sus sedes.
 - Calificaciones promedio por ejercicio.
@@ -36,7 +38,7 @@ Consolida el análisis de una empresa o, para administradores, de todas las empr
 
 Permite explorar y administrar los registros de evaluación:
 
-- Buscar por operador, folio o instructor y filtrar por empresa, año, sede y dictamen.
+- Buscar por operador, folio o instructor y filtrar por año, sede y dictamen; la empresa se controla desde el filtro global del badge de administrador.
 - Ordenar y paginar resultados; revisar métricas del conjunto visible y abrir reportes individuales.
 - Editar evaluaciones individuales o seleccionar varias para cambios masivos y eliminación.
 - Importar y exportar CSV, con exportación de los registros filtrados o de un respaldo.
@@ -46,7 +48,7 @@ Las operaciones de edición y eliminación cambian datos en Firestore. Revisa lo
 
 ### Ingesta de reportes PDF — administradores
 
-Procesa uno o varios reportes PDF en el navegador y presenta los datos detectados en una bandeja de revisión antes de guardarlos. Se pueden asignar empresa y sede a todo el lote, restaurar los valores extraídos originalmente, descartar el lote o confirmar el guardado en Firestore. Incluye un catálogo de ejercicios reconocidos por el sistema.
+La ingesta V2 procesa expedientes individuales PDF exportados desde TrackSIM-ZERO y presenta los datos detectados en una bandeja de revisión antes de guardarlos. Como el expediente no incluye la empresa, se debe asignar a cada archivo (o a todo el lote) antes de confirmar el guardado en Firestore. V2 extrae las calificaciones de Destreza (sobre 7) y Eco Driving (sobre 3), mientras que V1 conserva sus métricas de Habilidades de manejo y Práctica en simulador. La tasa de siniestros V2 cuenta solo errores clasificados como colisiones, salidas de vía o fatalidades; los demás puntos débiles no se suman como siniestros. Los incidentes se desglosan desde las repeticiones de “Puntos débiles”: atropellos de peatones y vuelcos cuentan como fatalidades, salirse de la vía como fuera de vía (o fatalidad si es crítico), y colisiones con objetos, vehículos, piedras o animales como colisiones. El conteo global de accidentes críticos se conserva aparte. La ingesta PDF Legacy V1 permanece disponible para compatibilidad con los reportes anteriores.
 
 ### Usuarios y permisos — administradores
 

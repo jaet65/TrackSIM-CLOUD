@@ -8,6 +8,7 @@ import {
   googleProvider,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   reauthenticateForMassDelete
 } from '../services/firebaseAuth';
 import { UserProfile } from '../types';
@@ -23,6 +24,7 @@ interface AuthContextType {
   loginWithGoogle: () => Promise<void>;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
   registerWithEmail: (email: string, pass: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   reauthenticateForMassDelete: () => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -69,6 +71,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      // Mantener el spinner hasta resolver rol y empresa; evita mostrar "Sin empresa asignada" por error
+      setLoading(true);
       setUser(currentUser);
       const email = (currentUser.email || '').toLowerCase().trim();
       const isGoogleAuth = currentUser.providerData?.some((p) => p.providerId === 'google.com');
@@ -195,6 +199,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await createUserWithEmailAndPassword(auth, email, pass);
   };
 
+  const resetPassword = async (email: string) => {
+    auth.languageCode = 'es';
+    await sendPasswordResetEmail(auth, email.trim());
+  };
+
   const logout = async () => {
     if (isDemo) {
       const url = new URL(window.location.href);
@@ -219,6 +228,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginWithGoogle,
         loginWithEmail,
         registerWithEmail,
+        resetPassword,
         reauthenticateForMassDelete,
         logout
       }}

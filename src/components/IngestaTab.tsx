@@ -4,11 +4,13 @@ import { useData } from '../context/DataContext';
 import { ExerciseCatalogModal } from './ExerciseCatalogModal';
 import { loadPdfJs } from '../services/pdfJsLoader';
 import { logAudit } from '../services/auditLog';
+import { shortInstructorName } from '../services/instructorName';
+import { filterDuplicateEvaluationsByFolio } from '../services/evaluationDedupe';
 import { StagedEvaluation } from '../types';
 
 export const IngestaTab: React.FC = () => {
-  const { userRole } = useAuth();
-  const { reloadEvaluations } = useData();
+  const { userRole, profile, user } = useAuth();
+  const { reloadEvaluations, evaluations } = useData();
 
   if (userRole !== 'admin') {
     return (
@@ -24,6 +26,7 @@ export const IngestaTab: React.FC = () => {
 
   const [isDragging, setIsDragging] = useState(false);
   const [stagingFiles, setStagingFiles] = useState<StagedEvaluation[]>([]);
+  const [ingestVersion, setIngestVersion] = useState<'v2' | 'legacy'>('v2');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
@@ -43,27 +46,49 @@ export const IngestaTab: React.FC = () => {
 
     setIsProcessing(true);
     setProgress({ current: 0, total: pdfFiles.length, text: 'Iniciando procesamiento de reportes...' });
-
     try {
-      await loadPdfJs();
-      const { parsePDFBatch } = await import('../services/pdfBatchProcessor');
-      const results = await parsePDFBatch(pdfFiles, (current, total, text) => {
-        setProgress({ current, total, text });
-      });
-
-      setIsProcessing(false);
-      setStagingFiles((prev) => [...prev, ...results]);
-      setFeedback({
-        message: `¡Se procesaron ${results.length} de ${pdfFiles.length} reporte(s) con éxito! Revisa la información antes de guardar en Firestore.`,
-        type: results.length > 0 ? 'success' : 'warning'
-      });
-    } catch (err: any) {
+      if (ingestVersion === 'v2') {
+        const { parseTrackSimZeroPdfBatch } = await import('../services/trackSimZeroPdfParser');
+        const { results, failures } = await parseTrackSimZeroPdfBatch(pdfFiles, (current, total, text) => {
+          setProgress({ current, total, text });
+        });
+        const { fresh, duplicates } = filterDuplicateEvaluationsByFolio(results, [...evaluations, ...stagingFiles]);
+        const instructor = shortInstructorName(profile?.displayName || user?.displayName || user?.email);
+        const attributedFresh = fresh.map((item) => instructor ? { ...item, instructor } : item);
+        setStagingFiles((prev) => [...prev, ...attributedFresh]);
+        const duplicateNames = duplicates.map((item) => item.fileName || item.conductor || item.folio || item.id);
+        const failureSummary = failures.length > 0
+          ? ` ${failures.length} archivo(s) no se pudieron importar: ${failures.slice(0, 3).map((failure) => `${failure.fileName}: ${failure.error}`).join(' | ')}`
+          : '';
+        const duplicateSummary = duplicates.length > 0
+          ? ` ${duplicates.length} duplicado(s) omitido(s) (folio ya cargado, guardado o repetido en el lote): ${duplicateNames.slice(0, 3).join(', ')}.`
+          : '';
+        setFeedback({
+          message: `Se agregaron ${attributedFresh.length} de ${pdfFiles.length} expedientes V2.${duplicateSummary}${failureSummary} Revisa los datos antes de guardar.`,
+          type: failures.length > 0 || duplicates.length > 0 ? 'warning' : attributedFresh.length > 0 ? 'success' : 'error'
+        });
+      } else {
+        await loadPdfJs();
+        const { parsePDFBatch } = await import('../services/pdfBatchProcessor');
+        const results = await parsePDFBatch(pdfFiles, (current, total, text) => {
+          setProgress({ current, total, text });
+        });
+        setStagingFiles((prev) => [...prev, ...results]);
+        setFeedback({
+          message: `¡Se procesaron ${results.length} de ${pdfFiles.length} reporte(s) PDF Legacy con éxito! Revisa la información antes de guardar en Firestore.`,
+          type: results.length > 0 ? 'success' : 'warning'
+        });
+      }
+    } catch (err: unknown) {
       console.error('Error procesando lote de PDFs:', err);
-      setIsProcessing(false);
       setFeedback({
-        message: 'Ocurrió un error al procesar el lote de PDFs. Consulta la consola.',
+        message: err instanceof Error
+          ? `Ocurrió un error al procesar el lote de PDFs: ${err.message}`
+          : 'Ocurrió un error desconocido al procesar el lote de PDFs.',
         type: 'error'
       });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -100,6 +125,14 @@ export const IngestaTab: React.FC = () => {
 
   const handleConfirmAndSave = async () => {
     if (stagingFiles.length === 0) return;
+    if (stagingFiles.some((item) => item.origen === 'TrackSIM-ZERO-V2' && !item.empresa.trim())) {
+      setFeedback({
+        message: 'Asigna una empresa a todos los expedientes V2 antes de guardarlos. Usa la asignación en lote.',
+        type: 'warning'
+      });
+      return;
+    }
+
     setIsSaving(true);
     setProgress({ current: 0, total: stagingFiles.length, text: 'Guardando evaluaciones en Cloud Firestore...' });
 
@@ -123,6 +156,9 @@ export const IngestaTab: React.FC = () => {
       }
 
       await reloadEvaluations();
+      setStagingFiles([]);
+      setBatchEmpresa('');
+      setBatchSede('');
       void logAudit({
         categoria: 'reporte',
         accion: 'crear',
@@ -143,31 +179,42 @@ export const IngestaTab: React.FC = () => {
     <div className="view-section active">
       <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800 }}>📥 Ingesta y Procesamiento de Reportes PDF</h2>
+          <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800 }}>
+            {ingestVersion === 'v2' ? '📥 Ingesta V2 — Expedientes individuales' : '📥 Ingesta PDF Legacy (V1)'}
+          </h2>
           <p style={{ margin: '0.25rem 0 0', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            Extracción client-side ultra rápida de reportes de simulación TrackSIM
+            {ingestVersion === 'v2'
+              ? 'Carga expedientes individuales exportados desde TrackSIM-ZERO.'
+              : 'Compatibilidad con reportes PDF del formato anterior de TrackSIM CLOUD.'}
           </p>
         </div>
 
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={() => setIsCatalogModalOpen(true)}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            padding: '0.55rem 1rem',
-            background: 'rgba(56, 189, 248, 0.1)',
-            borderColor: 'rgba(56, 189, 248, 0.35)',
-            color: '#38bdf8',
-            fontSize: '0.88rem',
-            fontWeight: 600
-          }}
-          title="Administrar los ejercicios reconocidos por el sistema y sus descripciones oficiales"
-        >
-          <span>📚</span> Catálogo de Ejercicios
-        </button>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
+          <button
+            type="button"
+            className={ingestVersion === 'v2' ? 'btn btn-primary' : 'btn btn-secondary'}
+            onClick={() => setIngestVersion('v2')}
+            disabled={isProcessing || isSaving}
+          >
+            V2 · Expedientes individuales
+          </button>
+          <button
+            type="button"
+            className={ingestVersion === 'legacy' ? 'btn btn-primary' : 'btn btn-secondary'}
+            onClick={() => setIngestVersion('legacy')}
+            disabled={isProcessing || isSaving}
+          >
+            V1 · PDF Legacy
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setIsCatalogModalOpen(true)}
+            title="Administrar los ejercicios reconocidos por el sistema y sus descripciones oficiales"
+          >
+            📚 Catálogo de Ejercicios
+          </button>
+        </div>
       </div>
 
       {feedback && (
@@ -244,17 +291,19 @@ export const IngestaTab: React.FC = () => {
           multiple
           accept=".pdf"
           onChange={async (e) => {
-            if (e.target.files && e.target.files.length > 0) {
-              await handleFiles(Array.from(e.target.files));
-            }
+            const files = Array.from(e.currentTarget.files || []);
+            e.currentTarget.value = '';
+            if (files.length > 0) await handleFiles(files);
           }}
         />
         <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>📄</div>
         <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.2rem', fontWeight: 700 }}>
-          Arrastra tus reportes PDF aquí o haz clic para explorar
+          Arrastra tus expedientes PDF aquí o haz clic para explorar
         </h3>
         <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.88rem' }}>
-          Soporta carga masiva simultánea de múltiples evaluaciones en formato PDF
+          {ingestVersion === 'v2'
+            ? 'Carga múltiple de expedientes individuales TrackSIM-ZERO; asigna empresa antes de guardar.'
+            : 'Carga múltiple de reportes PDF del formato Legacy V1.'}
         </p>
       </div>
 
@@ -354,15 +403,43 @@ export const IngestaTab: React.FC = () => {
                   const incidentes = (item.colisiones || 0) + (item.fatalidades || 0) + (item.vehiculoFueraVia || 0);
 
                   return (
-                    <tr key={idx}>
+                    <tr key={item.id}>
                       <td style={{ color: 'var(--text-muted)', textAlign: 'center' }}>{idx + 1}</td>
                       <td>
                         <div style={{ fontWeight: 600, color: '#fff' }}>{item.conductor || item.operador}</div>
                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{item.fileName}</div>
                       </td>
-                      <td style={{ color: '#e2e8f0', fontWeight: 500 }}>{item.empresa || 'N/A'}</td>
+                      <td style={{ color: '#e2e8f0', fontWeight: 500 }}>
+                        {item.origen === 'TrackSIM-ZERO-V2' ? (
+                          <input
+                            type="text"
+                            aria-label={`Empresa de ${item.conductor || item.fileName}`}
+                            value={item.empresa}
+                            onChange={(event) => {
+                              const empresa = event.currentTarget.value;
+                              setStagingFiles((prev) =>
+                                prev.map((staged) => staged.id === item.id ? { ...staged, empresa } : staged)
+                              );
+                            }}
+                            style={{ minWidth: '140px', padding: '0.35rem 0.5rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#fff', fontSize: '0.82rem' }}
+                          />
+                        ) : item.empresa || 'N/A'}
+                      </td>
                       <td>
-                        {item.sede ? (
+                        {item.origen === 'TrackSIM-ZERO-V2' ? (
+                          <input
+                            type="text"
+                            aria-label={`Sede de ${item.conductor || item.fileName}`}
+                            value={item.sede || ''}
+                            onChange={(event) => {
+                              const sede = event.currentTarget.value;
+                              setStagingFiles((prev) =>
+                                prev.map((staged) => staged.id === item.id ? { ...staged, sede } : staged)
+                              );
+                            }}
+                            style={{ minWidth: '120px', padding: '0.35rem 0.5rem', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#fff', fontSize: '0.82rem' }}
+                          />
+                        ) : item.sede ? (
                           <span style={{ fontSize: '0.78rem', color: '#38bdf8', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
                             📍 {item.sede}
                           </span>

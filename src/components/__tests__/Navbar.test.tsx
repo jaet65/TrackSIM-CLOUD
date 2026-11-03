@@ -1,13 +1,14 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { Navbar } from '../Navbar';
+import { AppHeader, Navbar } from '../Navbar';
 import * as AuthContext from '../../context/AuthContext';
 import * as DataContext from '../../context/DataContext';
 import { ThemeProvider } from '../../context/ThemeContext';
 
 describe('Navbar component', () => {
   const mockOnTabChange = vi.fn();
+  const mockSetSelectedCompany = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -22,13 +23,13 @@ describe('Navbar component', () => {
       loading: false,
       evaluations: [],
       filteredEvaluations: [],
-      companies: [],
+      companies: ['Transportes Demo'],
       companiesSummaries: [],
       driverSummaries: [],
       selectedCompanySummary: null,
       selectedDriverName: '',
       setSelectedDriverName: vi.fn(),
-      setSelectedCompany: vi.fn(),
+      setSelectedCompany: mockSetSelectedCompany,
       searchFilter: '',
       setSearchFilter: vi.fn(),
       roleAllowedEvaluations: [],
@@ -43,12 +44,28 @@ describe('Navbar component', () => {
     });
   });
 
-  const renderNavbar = (currentTab: 'dashboard' | 'evolucion' | 'empresas' | 'directorio' | 'ingesta' | 'usuarios') =>
-    render(
+  const renderNavbar = (currentTab: 'dashboard' | 'evolucion' | 'empresas' | 'directorio' | 'ingesta' | 'usuarios') => {
+    const NavbarHarness: React.FC = () => {
+      const [isCollapsed, setIsCollapsed] = React.useState(true);
+      return (
+        <Navbar
+          currentTab={currentTab}
+          onTabChange={mockOnTabChange}
+          isCollapsed={isCollapsed}
+          onCollapsedChange={setIsCollapsed}
+        />
+      );
+    };
+
+    return render(
       <ThemeProvider>
-        <Navbar currentTab={currentTab} onTabChange={mockOnTabChange} />
+        <>
+          <NavbarHarness />
+          <AppHeader />
+        </>
       </ThemeProvider>
     );
+  };
 
   it('debe renderizar pestañas básicas para rol lector y ocultar pestañas de admin', () => {
     vi.spyOn(AuthContext, 'useAuth').mockReturnValue({
@@ -61,6 +78,7 @@ describe('Navbar component', () => {
       loginWithGoogle: vi.fn(),
       loginWithEmail: vi.fn(),
       registerWithEmail: vi.fn(),
+      resetPassword: vi.fn(),
       reauthenticateForMassDelete: vi.fn(),
       logout: vi.fn()
     });
@@ -89,16 +107,27 @@ describe('Navbar component', () => {
       loginWithGoogle: vi.fn(),
       loginWithEmail: vi.fn(),
       registerWithEmail: vi.fn(),
+      resetPassword: vi.fn(),
       reauthenticateForMassDelete: vi.fn(),
       logout: vi.fn()
     });
 
     renderNavbar('dashboard');
 
+    expect(document.querySelector('.navbar')).toHaveClass('is-collapsed');
+    expect(screen.getByRole('combobox', { name: 'Filtrar por empresa' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Expandir navegación' }));
+    expect(document.querySelector('.navbar')).toHaveClass('is-expanded');
+
     expect(screen.getByText('Directorio')).toBeInTheDocument();
     expect(screen.getByText('Ingesta PDF')).toBeInTheDocument();
     expect(screen.getByText('Usuarios')).toBeInTheDocument();
     expect(screen.getByText('Admin')).toBeInTheDocument();
+
+    const companyFilter = screen.getByRole('combobox', { name: 'Filtrar por empresa' });
+    expect(companyFilter).toHaveValue('Transportes Demo');
+    fireEvent.change(companyFilter, { target: { value: 'all' } });
+    expect(mockSetSelectedCompany).toHaveBeenCalledWith('all');
   });
 
   it('debe disparar onTabChange al hacer clic en una pestaña', () => {
@@ -112,6 +141,7 @@ describe('Navbar component', () => {
       loginWithGoogle: vi.fn(),
       loginWithEmail: vi.fn(),
       registerWithEmail: vi.fn(),
+      resetPassword: vi.fn(),
       reauthenticateForMassDelete: vi.fn(),
       logout: vi.fn()
     });
@@ -124,7 +154,7 @@ describe('Navbar component', () => {
     expect(mockOnTabChange).toHaveBeenCalledWith('evolucion');
   });
 
-  it('debe cambiar al tema claro y guardar la preferencia', () => {
+  it('debe iniciar en tema claro y guardar los cambios de preferencia', () => {
     vi.spyOn(AuthContext, 'useAuth').mockReturnValue({
       user: { displayName: 'Admin Master', email: 'admin@tracksim.com' } as any,
       userRole: 'admin',
@@ -135,18 +165,48 @@ describe('Navbar component', () => {
       loginWithGoogle: vi.fn(),
       loginWithEmail: vi.fn(),
       registerWithEmail: vi.fn(),
+      resetPassword: vi.fn(),
       reauthenticateForMassDelete: vi.fn(),
       logout: vi.fn()
     });
 
     renderNavbar('dashboard');
-    expect(screen.getByAltText('TrackSIM Logo')).toHaveAttribute('src', '/Logo.png');
+    expect(document.documentElement).toHaveAttribute('data-theme', 'light');
+    expect(window.localStorage.getItem('tracksim-theme')).toBe('light');
+    expect(screen.getByAltText('TrackSIM Logo')).toHaveAttribute('src', '/Logo%20NN.png');
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar a tema oscuro' }));
+
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+    expect(window.localStorage.getItem('tracksim-theme')).toBe('dark');
     fireEvent.click(screen.getByRole('button', { name: 'Cambiar a tema claro' }));
 
     expect(document.documentElement).toHaveAttribute('data-theme', 'light');
     expect(window.localStorage.getItem('tracksim-theme')).toBe('light');
     expect(screen.getByAltText('TrackSIM Logo')).toHaveAttribute('src', '/Logo%20NN.png');
     expect(screen.getByRole('button', { name: 'Cambiar a tema oscuro' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('debe respetar la preferencia de tema oscuro guardada', () => {
+    vi.spyOn(AuthContext, 'useAuth').mockReturnValue({
+      user: { displayName: 'Admin Master', email: 'admin@tracksim.com' } as any,
+      userRole: 'admin',
+      allowedCompanies: ['all'],
+      isDemo: false,
+      profile: null,
+      loading: false,
+      loginWithGoogle: vi.fn(),
+      loginWithEmail: vi.fn(),
+      registerWithEmail: vi.fn(),
+      resetPassword: vi.fn(),
+      reauthenticateForMassDelete: vi.fn(),
+      logout: vi.fn()
+    });
+    window.localStorage.setItem('tracksim-theme', 'dark');
+
+    renderNavbar('dashboard');
+
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+    expect(screen.getByRole('button', { name: 'Cambiar a tema claro' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('debe mostrar el modo demo sin exponer pestañas administrativas', () => {
@@ -160,6 +220,7 @@ describe('Navbar component', () => {
       loginWithGoogle: vi.fn(),
       loginWithEmail: vi.fn(),
       registerWithEmail: vi.fn(),
+      resetPassword: vi.fn(),
       reauthenticateForMassDelete: vi.fn(),
       logout: vi.fn()
     });

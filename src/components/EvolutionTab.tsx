@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
-import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { Evaluation } from '../types';
 import { MISTAKE_DIMENSIONS, findCatalogMistake } from '../services/mistakeCatalog';
+import { getEvaluationIncidentCounts } from '../services/incidentMetrics';
+import { processDriverSummaries } from '../services/analytics';
 import { ReportDetailModal } from './ReportDetailModal';
 import { DriverRadarModal } from './evolution/DriverRadarModal';
 import { DriverExecutiveHeader } from './evolution/DriverExecutiveHeader';
@@ -41,12 +42,16 @@ ChartJS.register(
 );
 
 export const EvolutionTab: React.FC = () => {
-  const { userRole } = useAuth();
   const { theme } = useTheme();
-  const { driverSummaries, companiesSummaries, filteredEvaluations, selectedDriverName, setSelectedDriverName } = useData();
+  const {
+    companiesSummaries,
+    roleAllowedEvaluations,
+    selectedCompany,
+    selectedDriverName,
+    setSelectedDriverName
+  } = useData();
 
   const [activeSubtab, setActiveSubtab] = useState<'driver' | 'company'>('driver');
-  const [selectedCompanyName, setSelectedCompanyName] = useState<string>('');
   const [accidentViewMode, setAccidentViewMode] = useState<'counts' | 'rate'>('counts');
   const [viewReport, setViewReport] = useState<Evaluation | null>(null);
   const [isRadarModalOpen, setIsRadarModalOpen] = useState(false);
@@ -64,9 +69,9 @@ export const EvolutionTab: React.FC = () => {
     }
   }, [selectedDriverName]);
 
-  // Resumen Consolidado Global "Todas las empresas" para administradores
+  // Resumen consolidado de todas las empresas permitidas por el rol.
   const allCompaniesSummary = useMemo(() => {
-    if (userRole !== 'admin' || !companiesSummaries || companiesSummaries.length === 0) return null;
+    if (!companiesSummaries || companiesSummaries.length === 0) return null;
 
     const allSedes = new Set<string>();
     let totalEvals = 0;
@@ -86,14 +91,15 @@ export const EvolutionTab: React.FC = () => {
       });
     });
 
-    filteredEvaluations.forEach((e) => {
+    roleAllowedEvaluations.forEach((e) => {
       totalEvals += 1;
       const score = e.evaluacionFinalPuntos ?? e.calificacionExacta ?? e.promedioScore ?? 0;
+      const incidents = getEvaluationIncidentCounts(e);
       totalScoreSum += score;
       if (score >= 6.0) approvedCount += 1;
-      totalCol += (e.colisiones || e.totalColisiones || 0);
-      totalFat += (e.fatalidades || 0);
-      totalOff += (e.vehiculoFueraVia || 0);
+      totalCol += incidents.colisiones;
+      totalFat += incidents.fatalidades;
+      totalOff += incidents.vehiculoFueraVia;
     });
 
     const avgScore = totalEvals > 0 ? Number((totalScoreSum / totalEvals).toFixed(2)) : 0;
@@ -121,21 +127,35 @@ export const EvolutionTab: React.FC = () => {
       },
       nombresSimulaciones: {}
     };
-  }, [userRole, companiesSummaries, filteredEvaluations]);
+  }, [companiesSummaries, roleAllowedEvaluations]);
 
-  // Lista disponible de flotas / empresas en el selector
-  const availableCompanies = useMemo(() => {
-    const list = [...(companiesSummaries || [])];
-    if (userRole === 'admin' && allCompaniesSummary) {
-      return [allCompaniesSummary, ...list];
-    }
-    return list;
-  }, [userRole, allCompaniesSummary, companiesSummaries]);
+  // La vista de flota usa el filtro global seleccionado en el badge de administración.
+  const currentCompany = useMemo(() => {
+    if (selectedCompany === 'all') return allCompaniesSummary;
+    return companiesSummaries.find(
+      (company) => company.nombre.trim().toLowerCase() === selectedCompany.trim().toLowerCase()
+    ) || null;
+  }, [allCompaniesSummary, companiesSummaries, selectedCompany]);
+
+  // Evaluaciones exclusivas de la empresa seleccionada
+  const companyEvaluations = useMemo(() => {
+    if (!currentCompany) return [];
+    const targetName = currentCompany.nombre.trim().toLowerCase();
+    return roleAllowedEvaluations.filter((e) => {
+      if (currentCompany.esGlobal) return true;
+      return (e.empresa || '').trim().toLowerCase() === targetName;
+    });
+  }, [currentCompany, roleAllowedEvaluations]);
+
+  const visibleDriverSummaries = useMemo(
+    () => processDriverSummaries(companyEvaluations),
+    [companyEvaluations]
+  );
 
   // Filtrar únicamente conductores con historial comparable (al menos 2 sesiones)
   const eligibleDrivers = useMemo(() => {
-    return (driverSummaries || []).filter((d) => d.totalEvaluaciones >= 2);
-  }, [driverSummaries]);
+    return visibleDriverSummaries.filter((d) => d.totalEvaluaciones >= 2);
+  }, [visibleDriverSummaries]);
 
   // Operador seleccionado (por defecto el primero disponible con al menos 2 sesiones)
   const currentDriver = useMemo(() => {
@@ -143,23 +163,6 @@ export const EvolutionTab: React.FC = () => {
     if (!selectedDriverName) return eligibleDrivers[0];
     return eligibleDrivers.find((d) => d.nombre === selectedDriverName) || eligibleDrivers[0];
   }, [eligibleDrivers, selectedDriverName]);
-
-  // Empresa seleccionada (por defecto la primera disponible)
-  const currentCompany = useMemo(() => {
-    if (!availableCompanies || availableCompanies.length === 0) return null;
-    if (!selectedCompanyName) return availableCompanies[0];
-    return availableCompanies.find((c) => c.nombre.trim().toLowerCase() === selectedCompanyName.trim().toLowerCase()) || availableCompanies[0];
-  }, [availableCompanies, selectedCompanyName]);
-
-  // Evaluaciones exclusivas de la empresa seleccionada
-  const companyEvaluations = useMemo(() => {
-    if (!currentCompany) return [];
-    const targetName = currentCompany.nombre.trim().toLowerCase();
-    return filteredEvaluations.filter((e) => {
-      if (currentCompany.esGlobal) return true;
-      return (e.empresa || '').trim().toLowerCase() === targetName;
-    });
-  }, [currentCompany, filteredEvaluations]);
 
   // Años evaluados para la empresa seleccionada
   const companyYearsStats = useMemo(() => {
@@ -216,9 +219,10 @@ export const EvolutionTab: React.FC = () => {
       const year = match ? match[1] : (dateStr ? dateStr.substring(0, 4) : '');
       if (!year) return;
       const score = e.evaluacionFinalPuntos ?? e.calificacionExacta ?? e.promedioScore ?? 0;
-      const col = e.colisiones || e.totalColisiones || 0;
-      const fat = e.fatalidades || 0;
-      const off = e.vehiculoFueraVia || 0;
+      const incidents = getEvaluationIncidentCounts(e);
+      const col = incidents.colisiones;
+      const fat = incidents.fatalidades;
+      const off = incidents.vehiculoFueraVia;
       const op = (e.conductor || e.operador || 'Sin Asignar').trim();
 
       const current = yearDataMap.get(year) || { totalScore: 0, count: 0, colisiones: 0, fatalidades: 0, fueraVia: 0, operators: new Set<string>() };
@@ -510,9 +514,10 @@ export const EvolutionTab: React.FC = () => {
       const score = e.evaluacionFinalPuntos ?? e.calificacionExacta ?? e.promedioScore ?? 0;
       data.totalScore += score;
       if (score >= 6.0) data.approvedCount += 1;
-      data.collisions += (e.colisiones || e.totalColisiones || 0);
-      data.offRoad += (e.vehiculoFueraVia || 0);
-      data.fatalities += (e.fatalidades || 0);
+      const incidents = getEvaluationIncidentCounts(e);
+      data.collisions += incidents.colisiones;
+      data.offRoad += incidents.vehiculoFueraVia;
+      data.fatalities += incidents.fatalidades;
     });
 
     const sortedYears = Array.from(map.keys()).sort();
@@ -920,8 +925,8 @@ export const EvolutionTab: React.FC = () => {
         pointRadius: 6
       },
       {
-        label: 'Práctica Simulador (0 - 7 ptos)',
-        data: driverEvaluations.map((e) => e.practicaSimuladorPuntos || 0),
+        label: 'Práctica Simulador (0 - 7 ptos, V1)',
+        data: driverEvaluations.map((e) => e.origen === 'TrackSIM-ZERO-V2' ? null : e.practicaSimuladorPuntos || 0),
         borderColor: '#a855f7',
         backgroundColor: 'transparent',
         borderDash: [5, 5],
@@ -931,14 +936,36 @@ export const EvolutionTab: React.FC = () => {
         pointRadius: 4
       },
       {
-        label: 'Habilidades Manejo (0 - 3 ptos)',
-        data: driverEvaluations.map((e) => e.habilidadesManejoPuntos || 0),
+        label: 'Habilidades Manejo (0 - 3 ptos, V1)',
+        data: driverEvaluations.map((e) => e.origen === 'TrackSIM-ZERO-V2' ? null : e.habilidadesManejoPuntos || 0),
         borderColor: '#10b981',
         backgroundColor: 'transparent',
         borderDash: [3, 3],
         tension: 0.35,
         borderWidth: 2,
         pointBackgroundColor: '#10b981',
+        pointRadius: 4
+      },
+      {
+        label: 'Destreza (0 - 7 ptos, V2)',
+        data: driverEvaluations.map((e) => e.origen === 'TrackSIM-ZERO-V2' ? e.destrezaPuntos ?? null : null),
+        borderColor: '#6366f1',
+        backgroundColor: 'transparent',
+        borderDash: [3, 3],
+        tension: 0.35,
+        borderWidth: 2,
+        pointBackgroundColor: '#6366f1',
+        pointRadius: 4
+      },
+      {
+        label: 'Eco Driving (0 - 3 ptos, V2)',
+        data: driverEvaluations.map((e) => e.origen === 'TrackSIM-ZERO-V2' ? e.ecoDrivingPuntos ?? null : null),
+        borderColor: '#f59e0b',
+        backgroundColor: 'transparent',
+        borderDash: [5, 5],
+        tension: 0.35,
+        borderWidth: 2,
+        pointBackgroundColor: '#f59e0b',
         pointRadius: 4
       }
     ]
@@ -950,7 +977,10 @@ export const EvolutionTab: React.FC = () => {
     datasets: [
       {
         label: 'Total Incidentes (Suma)',
-        data: driverEvaluations.map((e) => (e.colisiones || e.totalColisiones || 0) + (e.fatalidades || 0) + (e.vehiculoFueraVia || 0)),
+        data: driverEvaluations.map((e) => {
+          const incidents = getEvaluationIncidentCounts(e);
+          return incidents.colisiones + incidents.fatalidades + incidents.vehiculoFueraVia;
+        }),
         borderColor: '#f43f5e', // Rosa/Rojo Coral intenso
         backgroundColor: 'rgba(244, 63, 94, 0.12)',
         fill: true,
@@ -962,7 +992,7 @@ export const EvolutionTab: React.FC = () => {
       },
       {
         label: '💥 Colisiones',
-        data: driverEvaluations.map((e) => e.colisiones || e.totalColisiones || 0),
+        data: driverEvaluations.map((e) => getEvaluationIncidentCounts(e).colisiones),
         borderColor: '#f59e0b', // Ámbar / Amarillo vibrante
         backgroundColor: 'transparent',
         tension: 0.35,
@@ -973,7 +1003,7 @@ export const EvolutionTab: React.FC = () => {
       },
       {
         label: '💀 Fatalidades',
-        data: driverEvaluations.map((e) => e.fatalidades || 0),
+        data: driverEvaluations.map((e) => getEvaluationIncidentCounts(e).fatalidades),
         borderColor: '#a855f7', // Púrpura eléctrico distintivo
         backgroundColor: 'transparent',
         borderDash: [5, 4],
@@ -985,7 +1015,7 @@ export const EvolutionTab: React.FC = () => {
       },
       {
         label: '🛑 Fuera de Vía',
-        data: driverEvaluations.map((e) => e.vehiculoFueraVia || 0),
+        data: driverEvaluations.map((e) => getEvaluationIncidentCounts(e).vehiculoFueraVia),
         borderColor: '#06b6d4', // Cyan / Turquesa neón
         backgroundColor: 'transparent',
         borderDash: [3, 3],
@@ -1073,9 +1103,15 @@ export const EvolutionTab: React.FC = () => {
         if (!latest) return 7.0;
         const finalScore = latest.evaluacionFinalPuntos ?? latest.calificacionExacta ?? 7.0;
         const colFactor = Math.max(0, 10 - ((latest.colisiones || 0) * 2.5) - ((latest.fatalidades || 0) * 4));
-        if (dim.id === 1) return parseFloat(Math.min(10, Math.max(2, (latest.habilidadesManejoPct ? latest.habilidadesManejoPct / 10 : finalScore))).toFixed(1));
+        const destrezaPct = latest.destrezaPuntos !== undefined && latest.destrezaMax
+          ? latest.destrezaPuntos / latest.destrezaMax * 100
+          : latest.habilidadesManejoPct;
+        const ecoDrivingPct = latest.ecoDrivingPuntos !== undefined && latest.ecoDrivingMax
+          ? latest.ecoDrivingPuntos / latest.ecoDrivingMax * 100
+          : latest.practicaSimuladorPct;
+        if (dim.id === 1) return parseFloat(Math.min(10, Math.max(2, (destrezaPct ? destrezaPct / 10 : finalScore))).toFixed(1));
         if (dim.id === 2) return parseFloat(Math.min(10, Math.max(1, colFactor)).toFixed(1));
-        if (dim.id === 3) return parseFloat(Math.min(10, Math.max(2, (latest.practicaSimuladorPct ? latest.practicaSimuladorPct / 10 : finalScore))).toFixed(1));
+        if (dim.id === 3) return parseFloat(Math.min(10, Math.max(2, (ecoDrivingPct ? ecoDrivingPct / 10 : finalScore))).toFixed(1));
         if (dim.id === 4) return parseFloat(Math.min(10, Math.max(2, finalScore * 0.95)).toFixed(1));
         return parseFloat(Math.min(10, Math.max(2, finalScore)).toFixed(1));
       }
@@ -1271,38 +1307,6 @@ export const EvolutionTab: React.FC = () => {
       ) : (
         /* Vista Flota Empresa */
         <div>
-          {/* Selector de Flota / Empresa */}
-          {companiesSummaries.length > 1 && (
-            <div
-              className="glass-card evolution-filter-bar"
-              style={{
-                padding: '0.9rem 1.25rem',
-                marginBottom: '1.25rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '1rem'
-              }}
-            >
-              <span style={{ fontSize: '1.3rem' }}>🏢</span>
-              <div style={{ width: '100%', maxWidth: '380px' }}>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
-                  Seleccionar Flota / Empresa
-                </label>
-                <select
-                  value={currentCompany?.nombre || ''}
-                  onChange={(e) => setSelectedCompanyName(e.target.value)}
-                  style={{ width: '100%', padding: '0.55rem 0.85rem', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: 'var(--primary)', colorScheme: theme, fontWeight: 600, fontSize: '0.9rem' }}
-                >
-                  {availableCompanies.map((c) => (
-                    <option key={c.nombre} value={c.nombre}>
-                      {c.esGlobal ? '🌐 ' : ''}{c.nombre} ({c.totalConductores} operadores evaluados)
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          )}
-
           {/* Tarjeta Ejecutiva de Evolución de la Flota (3 Niveles de Prioridad) */}
           <CompanyExecutiveHeader
             currentCompany={currentCompany}

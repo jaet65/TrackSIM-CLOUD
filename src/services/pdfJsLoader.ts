@@ -1,9 +1,30 @@
+export interface PdfJsTextItem {
+  str?: string;
+  transform?: number[];
+}
+
+export interface PdfJsPage {
+  getTextContent(): Promise<{ items?: PdfJsTextItem[] }>;
+}
+
+export interface PdfJsDocument {
+  numPages: number;
+  getPage(pageNumber: number): Promise<PdfJsPage>;
+  cleanup(): Promise<void> | void;
+  destroy(): Promise<void> | void;
+}
+
+export interface PdfJsLoadingTask {
+  promise: Promise<PdfJsDocument>;
+  destroy(): Promise<void>;
+}
+
 declare global {
   interface Window {
     pdfjsLib?: {
       GlobalWorkerOptions: { workerSrc: string };
       verbosity: number;
-      getDocument: (options: { data: ArrayBuffer }) => unknown;
+      getDocument: (options: { data: ArrayBuffer }) => PdfJsLoadingTask;
     };
   }
 }

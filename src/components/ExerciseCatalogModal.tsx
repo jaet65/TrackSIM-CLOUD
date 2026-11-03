@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CatalogExercise, getActiveCatalog, persistCatalogLocally, EXERCISE_CATALOG } from '../services/exerciseCatalog';
 import { db, doc, getDoc, setDoc } from '../services/firebaseFirestore';
 import { logAudit } from '../services/auditLog';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 
 interface ExerciseCatalogModalProps {
   isOpen: boolean;
@@ -25,6 +26,8 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+
+  useEscapeKey(isOpen, onClose);
 
   // Cargar catálogo de Firestore y sincronizar
   const loadCatalog = async () => {
@@ -198,7 +201,7 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
       onClick={onClose}
       style={{
         zIndex: 1100,
-        backgroundColor: 'rgba(5, 8, 16, 0.85)',
+        backgroundColor: 'var(--modal-backdrop)',
         backdropFilter: 'blur(8px)',
         display: 'flex',
         alignItems: 'center',
@@ -213,10 +216,10 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
           width: '95%',
           maxWidth: '850px',
           maxHeight: '90vh',
-          background: 'linear-gradient(145deg, #0e1526, #090e1a)',
-          border: '1px solid rgba(56, 189, 248, 0.25)',
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-subtle)',
           borderRadius: '16px',
-          boxShadow: '0 20px 50px rgba(0,0,0,0.6)',
+          boxShadow: 'var(--shadow-card)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden'
@@ -226,11 +229,11 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
         <div
           style={{
             padding: '1.25rem 1.75rem',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+            borderBottom: '1px solid var(--border-subtle)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            background: 'rgba(255, 255, 255, 0.02)'
+            background: 'var(--bg-card)'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -239,8 +242,8 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
                 width: '40px',
                 height: '40px',
                 borderRadius: '10px',
-                background: 'rgba(56, 189, 248, 0.15)',
-                color: '#38bdf8',
+                background: 'var(--primary-glow)',
+                color: 'var(--primary)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -250,10 +253,10 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
               📚
             </div>
             <div>
-              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#fff' }}>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-main)' }}>
                 Catálogo Oficial de Ejercicios
               </h3>
-              <p style={{ margin: '0.15rem 0 0', color: 'var(--text-muted, #94a3b8)', fontSize: '0.8rem' }}>
+              <p style={{ margin: '0.15rem 0 0', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
                 Gestiona y personaliza las variantes de simulación y sus descripciones oficiales
               </p>
             </div>
@@ -264,7 +267,7 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
             style={{
               background: 'none',
               border: 'none',
-              color: '#94a3b8',
+              color: 'var(--text-muted)',
               fontSize: '1.4rem',
               cursor: 'pointer',
               padding: '0.2rem 0.5rem',
@@ -278,12 +281,12 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
 
         {/* Mensajes de Feedback */}
         {errorMsg && (
-          <div style={{ padding: '0.75rem 1.75rem', background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', fontSize: '0.85rem', borderBottom: '1px solid rgba(239, 68, 68, 0.3)' }}>
+          <div style={{ padding: '0.75rem 1.75rem', background: 'var(--danger-bg)', color: 'var(--danger)', fontSize: '0.85rem', borderBottom: '1px solid var(--danger-border)' }}>
             ⚠️ {errorMsg}
           </div>
         )}
         {successMsg && (
-          <div style={{ padding: '0.75rem 1.75rem', background: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', fontSize: '0.85rem', borderBottom: '1px solid rgba(34, 197, 94, 0.3)' }}>
+          <div style={{ padding: '0.75rem 1.75rem', background: 'var(--success-bg)', color: 'var(--success)', fontSize: '0.85rem', borderBottom: '1px solid var(--success-border)' }}>
             ✅ {successMsg}
           </div>
         )}
@@ -294,14 +297,14 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
           <form
             onSubmit={handleSaveExercise}
             style={{
-              background: 'rgba(15, 23, 42, 0.6)',
-              border: '1px solid rgba(56, 189, 248, 0.2)',
+              background: 'var(--bg-app)',
+              border: '1px solid var(--border-glow)',
               borderRadius: '12px',
               padding: '1.25rem'
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
-              <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#38bdf8' }}>
+              <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--primary)' }}>
                 {editingIndex !== null ? '✏️ Modificar Ejercicio' : '➕ Agregar Nuevo Ejercicio'}
               </span>
               {editingIndex !== null && (
@@ -311,7 +314,7 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: '#94a3b8',
+                    color: 'var(--text-muted)',
                     fontSize: '0.78rem',
                     cursor: 'pointer',
                     textDecoration: 'underline'
@@ -324,7 +327,7 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.85rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', marginBottom: '0.35rem' }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
                   Nombre del Ejercicio (ej: Montaña, Reparto, Enrampe, etc.) *
                 </label>
                 <input
@@ -335,10 +338,10 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
                   style={{
                     width: '100%',
                     padding: '0.55rem 0.85rem',
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-subtle)',
                     borderRadius: '8px',
-                    color: '#fff',
+                    color: 'var(--text-main)',
                     fontSize: '0.88rem'
                   }}
                   required
@@ -346,7 +349,7 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', marginBottom: '0.35rem' }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
                   Descripción / Objetivo Pedagógico
                 </label>
                 <textarea
@@ -357,10 +360,10 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
                   style={{
                     width: '100%',
                     padding: '0.55rem 0.85rem',
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-subtle)',
                     borderRadius: '8px',
-                    color: '#fff',
+                    color: 'var(--text-main)',
                     fontSize: '0.85rem',
                     resize: 'vertical'
                   }}
@@ -384,10 +387,10 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '0.5rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#fff' }}>
+                <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)' }}>
                   Ejercicios en Catálogo ({exercises.length})
                 </span>
-                {loading && <span style={{ fontSize: '0.75rem', color: '#38bdf8' }}>Cargando...</span>}
+                {loading && <span style={{ fontSize: '0.75rem', color: 'var(--primary)' }}>Cargando...</span>}
               </div>
 
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -398,10 +401,10 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
                   onChange={(e) => setSearchTerm(e.target.value)}
                   style={{
                     padding: '0.35rem 0.75rem',
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-subtle)',
                     borderRadius: '6px',
-                    color: '#fff',
+                    color: 'var(--text-main)',
                     fontSize: '0.8rem'
                   }}
                 />
@@ -411,9 +414,9 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
                   disabled={isSaving}
                   title="Restablece la lista a los 9 ejercicios estándar iniciales"
                   style={{
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.15)',
-                    color: '#94a3b8',
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border-subtle)',
+                    color: 'var(--text-secondary)',
                     padding: '0.35rem 0.65rem',
                     borderRadius: '6px',
                     fontSize: '0.78rem',
@@ -426,7 +429,7 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
             </div>
 
             {filteredExercises.length === 0 ? (
-              <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8', background: 'rgba(255,255,255,0.02)', borderRadius: '10px' }}>
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', background: 'var(--bg-card)', borderRadius: '10px' }}>
                 No se encontraron ejercicios con ese criterio de búsqueda.
               </div>
             ) : (
@@ -440,8 +443,8 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
                       key={ex.nombre}
                       style={{
                         padding: '0.85rem 1.1rem',
-                        background: isCurrentEditing ? 'rgba(56, 189, 248, 0.08)' : 'rgba(255, 255, 255, 0.03)',
-                        border: isCurrentEditing ? '1px solid rgba(56, 189, 248, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
+                        background: isCurrentEditing ? 'var(--primary-glow)' : 'var(--bg-card)',
+                        border: isCurrentEditing ? '1px solid var(--border-glow)' : '1px solid var(--border-subtle)',
                         borderRadius: '10px',
                         display: 'flex',
                         justifyContent: 'space-between',
@@ -452,11 +455,11 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
                     >
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <span style={{ fontWeight: 700, color: '#fff', fontSize: '0.92rem' }}>
+                          <span style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.92rem' }}>
                             🚚 {ex.nombre}
                           </span>
                         </div>
-                        <p style={{ margin: '0.25rem 0 0', color: 'var(--text-muted, #94a3b8)', fontSize: '0.8rem', lineHeight: '1.35' }}>
+                        <p style={{ margin: '0.25rem 0 0', color: 'var(--text-muted)', fontSize: '0.8rem', lineHeight: '1.35' }}>
                           {ex.descripcion || <em style={{ opacity: 0.6 }}>Sin descripción asignada</em>}
                         </p>
                       </div>
@@ -493,10 +496,10 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
         <div
           style={{
             padding: '1rem 1.75rem',
-            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+            borderTop: '1px solid var(--border-subtle)',
             display: 'flex',
             justifyContent: 'flex-end',
-            background: 'rgba(255, 255, 255, 0.02)'
+            background: 'var(--bg-card)'
           }}
         >
           <button type="button" className="btn btn-secondary" onClick={onClose} style={{ fontSize: '0.85rem' }}>

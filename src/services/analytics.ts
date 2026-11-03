@@ -1,4 +1,5 @@
 import { Evaluation, CompanySummary, DriverSummary, DriverConductor, ExerciseItem } from '../types';
+import { getEvaluationIncidentCounts } from './incidentMetrics';
 
 export function slugify(text: string): string {
   return (text || '')
@@ -75,12 +76,13 @@ export function processDriverSummaries(evaluations: Evaluation[]): DriverSummary
 
     summary.evaluaciones.forEach(ev => {
       const finalScore = ev.evaluacionFinalPuntos ?? ev.calificacionExacta ?? ev.promedioScore ?? 0;
+      const incidents = getEvaluationIncidentCounts(ev);
       sumFinal += finalScore;
       sumHab += (ev.habilidadesManejoPuntos || 0);
       sumSim += (ev.practicaSimuladorPuntos || 0);
-      summary.totalFatalidades += (ev.fatalidades || 0);
-      summary.totalColisiones += (ev.colisiones || ev.totalColisiones || 0);
-      summary.totalFueraVia += (ev.vehiculoFueraVia || 0);
+      summary.totalFatalidades += incidents.fatalidades;
+      summary.totalColisiones += incidents.colisiones;
+      summary.totalFueraVia += incidents.vehiculoFueraVia;
 
       if (finalScore > best) best = finalScore;
       if (finalScore < worst) worst = finalScore;
@@ -199,9 +201,10 @@ export function createCompanySummaryFromEvaluations(
     sumFinal += finalScore;
     sumHab += (ev.habilidadesManejoPuntos || 0);
     sumSim += (ev.practicaSimuladorPuntos || 0);
-    totalCollisions += (ev.colisiones || ev.totalColisiones || 0);
-    totalFatalities += (ev.fatalidades || 0);
-    totalOffRoad += (ev.vehiculoFueraVia || 0);
+    const incidents = getEvaluationIncidentCounts(ev);
+    totalCollisions += incidents.colisiones;
+    totalFatalities += incidents.fatalidades;
+    totalOffRoad += incidents.vehiculoFueraVia;
     if (finalScore >= 6.0) approvedCount++;
 
     if (ev.sede) sedesSet.add(ev.sede);
@@ -328,9 +331,9 @@ export function createCompanySummaryFromEvaluations(
       ultimoScore: latestScore,
       promedioScore: avgScore,
       sede: latest.sede || '',
-      colisiones: evals.reduce((a, b) => a + (b.colisiones || b.totalColisiones || 0), 0),
-      fatalidades: evals.reduce((a, b) => a + (b.fatalidades || 0), 0),
-      totalFueraVia: evals.reduce((a, b) => a + (b.vehiculoFueraVia || 0), 0),
+      colisiones: evals.reduce((sum, evaluation) => sum + getEvaluationIncidentCounts(evaluation).colisiones, 0),
+      fatalidades: evals.reduce((sum, evaluation) => sum + getEvaluationIncidentCounts(evaluation).fatalidades, 0),
+      totalFueraVia: evals.reduce((sum, evaluation) => sum + getEvaluationIncidentCounts(evaluation).vehiculoFueraVia, 0),
       estado,
       badgeColor,
       latestEvalId: latest.id,

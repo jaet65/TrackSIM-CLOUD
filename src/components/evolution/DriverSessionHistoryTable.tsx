@@ -29,8 +29,8 @@ export const DriverSessionHistoryTable: React.FC<DriverSessionHistoryTableProps>
               <th>Fecha de Sesión</th>
               <th>Sede / Ubicación</th>
               <th>Calificación Final</th>
-              <th>Práctica Simulador</th>
-              <th>Habilidades Manejo</th>
+              <th>Destreza / Habilidades Manejo</th>
+              <th>Eco Driving / Práctica Simulador</th>
               <th>Incidentes</th>
               <th>Estado</th>
               <th style={{ textAlign: 'right' }}>Acción</th>
@@ -44,6 +44,11 @@ export const DriverSessionHistoryTable: React.FC<DriverSessionHistoryTableProps>
               const fueraVia = ev.vehiculoFueraVia || 0;
               const totalIncidentes = colisiones + fatalidades + fueraVia;
               const dateFormatted = ev.fechaCapacitacionFormato || ev.fechaCapacitacion || ev.fechaReporte || ev.fecha || 'N/A';
+              const isTrackSimZeroV2 = ev.origen === 'TrackSIM-ZERO-V2';
+              const destrezaOrHandling = isTrackSimZeroV2 ? ev.destrezaPuntos : ev.habilidadesManejoPuntos;
+              const destrezaMax = isTrackSimZeroV2 ? ev.destrezaMax ?? 7 : 3;
+              const ecoDrivingOrSimulator = isTrackSimZeroV2 ? ev.ecoDrivingPuntos : ev.practicaSimuladorPuntos;
+              const ecoDrivingMax = isTrackSimZeroV2 ? ev.ecoDrivingMax ?? 3 : 7;
 
               return (
                 <tr key={ev.id || idx}>
@@ -74,11 +79,11 @@ export const DriverSessionHistoryTable: React.FC<DriverSessionHistoryTableProps>
                       <small style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}> / 10</small>
                     </span>
                   </td>
-                  <td style={{ fontSize: '0.85rem', color: '#c084fc', fontWeight: 600 }}>
-                    {(ev.practicaSimuladorPuntos || 0).toFixed(2)} <small style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>/ 7 ptos</small>
-                  </td>
                   <td style={{ fontSize: '0.85rem', color: '#34d399', fontWeight: 600 }}>
-                    {(ev.habilidadesManejoPuntos || 0).toFixed(2)} <small style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>/ 3 ptos</small>
+                    {destrezaOrHandling !== undefined ? destrezaOrHandling.toFixed(2) : 'N/D'} <small style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>/ {destrezaMax} ptos</small>
+                  </td>
+                  <td style={{ fontSize: '0.85rem', color: '#c084fc', fontWeight: 600 }}>
+                    {ecoDrivingOrSimulator !== undefined ? ecoDrivingOrSimulator.toFixed(2) : 'N/D'} <small style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>/ {ecoDrivingMax} ptos</small>
                   </td>
                   <td>
                     {totalIncidentes === 0 ? (

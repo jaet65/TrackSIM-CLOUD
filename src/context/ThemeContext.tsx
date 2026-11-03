@@ -12,10 +12,10 @@ const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
 const readStoredTheme = (): Theme => {
   try {
-    return window.localStorage.getItem(THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark';
+    return window.localStorage.getItem(THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light';
   } catch (error) {
     console.warn('No se pudo leer el tema guardado.', error);
-    return 'dark';
+    return 'light';
   }
 };
 

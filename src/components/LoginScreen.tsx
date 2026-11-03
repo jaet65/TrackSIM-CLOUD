@@ -4,8 +4,10 @@ import { BrandLogo } from './BrandLogo';
 import { ThemeToggleButton } from './ThemeToggleButton';
 
 export const LoginScreen: React.FC = () => {
-  const { loginWithGoogle, loginWithEmail, registerWithEmail } = useAuth();
+  const { loginWithGoogle, loginWithEmail, registerWithEmail, resetPassword } = useAuth();
   const [activeTab, setActiveTab] = useState<'signin' | 'signup'>('signin');
+  const [resetMode, setResetMode] = useState(false);
+  const [info, setInfo] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -29,15 +31,30 @@ export const LoginScreen: React.FC = () => {
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setInfo(null);
     setLoadingForm(true);
     try {
+      if (resetMode) {
+        await resetPassword(email);
+        // Mensaje genérico: no revela si el correo está registrado
+        setInfo('Si el correo está registrado, recibirás un enlace para restablecer tu contraseña. Revisa también tu carpeta de spam.');
+        return;
+      }
       if (activeTab === 'signin') {
         await loginWithEmail(email, password);
       } else {
         await registerWithEmail(email, password);
       }
     } catch (err: any) {
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+      if (resetMode) {
+        if (err.code === 'auth/invalid-email') {
+          setError('Ingresa un correo electrónico válido.');
+        } else if (err.code === 'auth/too-many-requests') {
+          setError('Demasiados intentos. Espera unos minutos e inténtalo de nuevo.');
+        } else {
+          setInfo('Si el correo está registrado, recibirás un enlace para restablecer tu contraseña. Revisa también tu carpeta de spam.');
+        }
+      } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
         setError('Correo o contraseña incorrectos.');
       } else if (err.code === 'auth/email-already-in-use') {
         setError('Este correo ya está registrado. Inicie sesión.');
@@ -64,6 +81,13 @@ export const LoginScreen: React.FC = () => {
         </div>
 
         {error && <div className="login-alert" style={{ display: 'block' }}>{error}</div>}
+        {info && <div className="login-alert" style={{ display: 'block', background: 'rgba(34, 197, 94, 0.15)', color: 'inherit' }}>{info}</div>}
+
+        <div className="login-columns">
+        <div className="login-col-social">
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted, #94a3b8)', textAlign: 'center', marginBottom: '0.9rem', lineHeight: 1.4 }}>
+          💡 Usa el correo que te dio tu empresa (por ejemplo, <strong>nombre@tuempresa.com</strong>) y no uno personal como Gmail o Hotmail.
+        </div>
 
         <div style={{ marginBottom: '0.5rem' }}>
           <button
@@ -84,7 +108,9 @@ export const LoginScreen: React.FC = () => {
             * Cuentas verificadas <strong>@corporativomaf.com</strong> ingresan como Administrador.
           </div>
         </div>
+        </div>
 
+        <div className="login-col-form">
         <div className="login-divider">
           <span>O con tu correo</span>
         </div>
@@ -93,14 +119,14 @@ export const LoginScreen: React.FC = () => {
           <button
             type="button"
             className={`auth-tab ${activeTab === 'signin' ? 'active' : ''}`}
-            onClick={() => setActiveTab('signin')}
+            onClick={() => { setActiveTab('signin'); setResetMode(false); setInfo(null); }}
           >
             Iniciar Sesión
           </button>
           <button
             type="button"
             className={`auth-tab ${activeTab === 'signup' ? 'active' : ''}`}
-            onClick={() => setActiveTab('signup')}
+            onClick={() => { setActiveTab('signup'); setResetMode(false); setInfo(null); }}
           >
             Registrarse
           </button>
@@ -118,6 +144,7 @@ export const LoginScreen: React.FC = () => {
               required
             />
           </div>
+          {!resetMode && (
           <div className="form-group">
             <label>Contraseña:</label>
             <input
@@ -129,14 +156,41 @@ export const LoginScreen: React.FC = () => {
               required
             />
           </div>
+          )}
+          {!resetMode && activeTab === 'signin' && (
+            <div style={{ textAlign: 'right', marginBottom: '0.75rem' }}>
+              <button
+                type="button"
+                onClick={() => { setResetMode(true); setError(null); setInfo(null); }}
+                style={{ background: 'none', border: 'none', color: 'var(--accent, #38bdf8)', cursor: 'pointer', fontSize: '0.82rem', padding: 0 }}
+              >
+                ¿Olvidaste tu contraseña?
+              </button>
+            </div>
+          )}
           <button type="submit" className="btn btn-primary btn-login-submit" disabled={loadingForm}>
             {loadingForm
               ? 'Procesando...'
+              : resetMode
+              ? 'Enviar enlace de recuperación'
               : activeTab === 'signin'
               ? 'Entrar a la Plataforma'
               : 'Completar Registro'}
           </button>
+          {resetMode && (
+            <div style={{ textAlign: 'center', marginTop: '0.75rem' }}>
+              <button
+                type="button"
+                onClick={() => { setResetMode(false); setError(null); setInfo(null); }}
+                style={{ background: 'none', border: 'none', color: 'var(--accent, #38bdf8)', cursor: 'pointer', fontSize: '0.82rem' }}
+              >
+                ← Volver a iniciar sesión
+              </button>
+            </div>
+          )}
         </form>
+        </div>
+        </div>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import { Evaluation } from '../types';
 import { logAudit } from '../services/auditLog';
 import { findCatalogExercise } from '../services/exerciseCatalog';
 import { SessionRadarWidget } from './SessionRadarWidget';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 
 interface ReportDetailModalProps {
   evaluation: Evaluation | null;
@@ -13,6 +14,8 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
   const viewedId = evaluation?.id;
   const viewedCompany = evaluation?.empresa;
   const viewedLabel = evaluation ? (evaluation.conductor || evaluation.operador || evaluation.folio || evaluation.id) : '';
+  useEscapeKey(Boolean(evaluation), onClose);
+
   useEffect(() => {
     if (!viewedId) return;
     void logAudit({
@@ -29,6 +32,13 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
   if (!evaluation) return null;
 
   const score = evaluation.evaluacionFinalPuntos ?? evaluation.calificacionExacta ?? evaluation.promedioScore ?? 0;
+  const isTrackSimZeroV2 = evaluation.origen === 'TrackSIM-ZERO-V2';
+  const firstMetric = isTrackSimZeroV2
+    ? { label: 'DESTREZA', value: evaluation.destrezaPuntos, max: evaluation.destrezaMax ?? 7 }
+    : { label: 'HABILIDADES DE MANEJO', value: evaluation.habilidadesManejoPuntos, max: 3 };
+  const secondMetric = isTrackSimZeroV2
+    ? { label: 'ECO DRIVING', value: evaluation.ecoDrivingPuntos, max: evaluation.ecoDrivingMax ?? 3 }
+    : { label: 'PRÁCTICA EN SIMULADOR', value: evaluation.practicaSimuladorPuntos, max: 7 };
   const colisiones = evaluation.colisiones || (evaluation as any).totalColisiones || 0;
   const fatalidades = evaluation.fatalidades || 0;
   const fueraVia = evaluation.vehiculoFueraVia || 0;
@@ -133,7 +143,7 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
           <div style={{ background: 'var(--bg-card-hover)', padding: '0.7rem 0.85rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Instructor & Folio</div>
             <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '0.2rem' }}>
-              {evaluation.instructor || 'Oficial'} {evaluation.folio ? `• Grupo: ${evaluation.folio}` : ''}
+              {evaluation.instructor || 'Oficial'} <br />{evaluation.folio ? `${evaluation.folio}` : ''}
             </div>
           </div>
         </div>
@@ -141,15 +151,15 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
         {/* Resumen Principal de Calificaciones */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.85rem', marginBottom: '1.25rem', textAlign: 'center' }}>
           <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '0.85rem', borderRadius: '10px' }}>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>HABILIDADES DE MANEJO</div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{firstMetric.label}</div>
             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#10b981', marginTop: '0.2rem' }}>
-              {(evaluation.habilidadesManejoPuntos || 0).toFixed(2)} <span style={{ fontSize: '0.75rem' }}>/ 3.0</span>
+              {firstMetric.value !== undefined ? firstMetric.value.toFixed(2) : 'N/D'} <span style={{ fontSize: '0.75rem' }}>/ {firstMetric.max.toFixed(1)}</span>
             </div>
           </div>
           <div style={{ background: 'rgba(168, 85, 247, 0.08)', border: '1px solid rgba(168, 85, 247, 0.25)', padding: '0.85rem', borderRadius: '10px' }}>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>PRÁCTICA EN SIMULADOR</div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{secondMetric.label}</div>
             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#c084fc', marginTop: '0.2rem' }}>
-              {(evaluation.practicaSimuladorPuntos || 0).toFixed(2)} <span style={{ fontSize: '0.75rem' }}>/ 7.0</span>
+              {secondMetric.value !== undefined ? secondMetric.value.toFixed(2) : 'N/D'} <span style={{ fontSize: '0.75rem' }}>/ {secondMetric.max.toFixed(1)}</span>
             </div>
           </div>
           <div style={{ background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)', padding: '0.85rem', borderRadius: '10px' }}>
