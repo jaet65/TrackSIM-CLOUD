@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { Navbar } from '../Navbar';
+import { AppHeader, Navbar } from '../Navbar';
 import * as AuthContext from '../../context/AuthContext';
 import * as DataContext from '../../context/DataContext';
 import { ThemeProvider } from '../../context/ThemeContext';
@@ -47,7 +47,10 @@ describe('Navbar component', () => {
   const renderNavbar = (currentTab: 'dashboard' | 'evolucion' | 'empresas' | 'directorio' | 'ingesta' | 'usuarios') =>
     render(
       <ThemeProvider>
-        <Navbar currentTab={currentTab} onTabChange={mockOnTabChange} />
+        <>
+          <Navbar currentTab={currentTab} onTabChange={mockOnTabChange} />
+          <AppHeader />
+        </>
       </ThemeProvider>
     );
 
@@ -97,6 +100,11 @@ describe('Navbar component', () => {
     });
 
     renderNavbar('dashboard');
+
+    expect(document.querySelector('.navbar')).toHaveClass('is-collapsed');
+    expect(screen.getByRole('combobox', { name: 'Filtrar por empresa' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Expandir navegación' }));
+    expect(document.querySelector('.navbar')).toHaveClass('is-expanded');
 
     expect(screen.getByText('Directorio')).toBeInTheDocument();
     expect(screen.getByText('Ingesta PDF')).toBeInTheDocument();

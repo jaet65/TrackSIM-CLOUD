@@ -4,11 +4,12 @@ import { useData } from '../context/DataContext';
 import { ExerciseCatalogModal } from './ExerciseCatalogModal';
 import { loadPdfJs } from '../services/pdfJsLoader';
 import { logAudit } from '../services/auditLog';
+import { shortInstructorName } from '../services/instructorName';
 import { StagedEvaluation } from '../types';
 
 export const IngestaTab: React.FC = () => {
-  const { userRole } = useAuth();
-  const { reloadEvaluations } = useData();
+  const { userRole, profile, user } = useAuth();
+  const { reloadEvaluations, evaluations } = useData();
 
   if (userRole !== 'admin') {
     return (
@@ -50,13 +51,32 @@ export const IngestaTab: React.FC = () => {
         const { results, failures } = await parseTrackSimZeroPdfBatch(pdfFiles, (current, total, text) => {
           setProgress({ current, total, text });
         });
-        setStagingFiles((prev) => [...prev, ...results]);
+        const known = new Set<string>([
+          ...evaluations.map((e) => e.id),
+          ...stagingFiles.map((s) => s.id)
+        ]);
+        const fresh: StagedEvaluation[] = [];
+        const duplicates: string[] = [];
+        const instructor = shortInstructorName(profile?.displayName || user?.displayName || user?.email);
+        for (const parsed of results) {
+          const item = instructor ? { ...parsed, instructor } : parsed;
+          if (known.has(item.id)) {
+            duplicates.push(item.fileName || item.conductor || item.id);
+          } else {
+            known.add(item.id);
+            fresh.push(item);
+          }
+        }
+        setStagingFiles((prev) => [...prev, ...fresh]);
         const failureSummary = failures.length > 0
           ? ` ${failures.length} archivo(s) no se pudieron importar: ${failures.slice(0, 3).map((failure) => `${failure.fileName}: ${failure.error}`).join(' | ')}`
           : '';
+        const duplicateSummary = duplicates.length > 0
+          ? ` ${duplicates.length} duplicado(s) omitido(s) (ya cargados o guardados): ${duplicates.slice(0, 3).join(', ')}.`
+          : '';
         setFeedback({
-          message: `Se procesaron ${results.length} de ${pdfFiles.length} expedientes V2.${failureSummary} Revisa los datos antes de guardar.`,
-          type: failures.length > 0 ? 'warning' : results.length > 0 ? 'success' : 'error'
+          message: `Se agregaron ${fresh.length} de ${pdfFiles.length} expedientes V2.${duplicateSummary}${failureSummary} Revisa los datos antes de guardar.`,
+          type: failures.length > 0 || duplicates.length > 0 ? 'warning' : fresh.length > 0 ? 'success' : 'error'
         });
       } else {
         await loadPdfJs();

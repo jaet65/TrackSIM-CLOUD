@@ -4,6 +4,8 @@ Aplicación web para consultar y analizar evaluaciones de conducción en simulad
 
 ## Funciones de la plataforma
 
+Los botones Dashboard, Evolución, Métricas y las opciones administrativas están en una barra lateral colapsable que inicia compacta. El encabezado superior conserva la marca, el filtro global de empresa, el tema y las acciones de cuenta.
+
 ### Dashboard
 
 Presenta una vista ejecutiva de las evaluaciones disponibles y permite, según los permisos de la cuenta:

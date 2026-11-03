@@ -2,7 +2,7 @@ import React, { lazy, Suspense, useState } from 'react';
 import { DataProvider, useData } from './context/DataContext';
 import { useAuth } from './context/AuthContext';
 import { LobbyScreen } from './components/LobbyScreen';
-import { Navbar } from './components/Navbar';
+import { AppHeader, Navbar } from './components/Navbar';
 import { DashboardTab } from './components/DashboardTab';
 import { TabType } from './types';
 
@@ -116,19 +116,22 @@ const MainLayout: React.FC = () => {
   return (
     <div id="appContainer">
       <Navbar currentTab={currentTab} onTabChange={handleTabChange} />
-      <main
-        className="main-content"
-        style={currentTab === 'directorio' || currentTab === 'usuarios' || currentTab === 'ingesta' ? { maxWidth: '100%', padding: '1.5rem 2rem' } : undefined}
-      >
-        <Suspense fallback={<TabLoadingFallback />}>
-          {currentTab === 'dashboard' && <DashboardTab onNavigate={handleTabChange} />}
-          {currentTab === 'evolucion' && <EvolutionTab />}
-          {currentTab === 'empresas' && <CompanyTab onNavigate={handleTabChange} />}
-          {currentTab === 'directorio' && (userRole === 'admin' && !isDemo ? <DirectoryTab /> : <DashboardTab onNavigate={handleTabChange} />)}
-          {currentTab === 'ingesta' && (userRole === 'admin' && !isDemo ? <IngestaTab /> : <DashboardTab onNavigate={handleTabChange} />)}
-          {currentTab === 'usuarios' && (userRole === 'admin' && !isDemo ? <UserManagementTab /> : <DashboardTab onNavigate={handleTabChange} />)}
-        </Suspense>
-      </main>
+      <div className="app-content">
+        <AppHeader />
+        <main
+          className="main-content"
+          style={currentTab === 'directorio' || currentTab === 'usuarios' || currentTab === 'ingesta' ? { maxWidth: '100%', padding: '1.5rem 2rem' } : undefined}
+        >
+          <Suspense fallback={<TabLoadingFallback />}>
+            {currentTab === 'dashboard' && <DashboardTab onNavigate={handleTabChange} />}
+            {currentTab === 'evolucion' && <EvolutionTab />}
+            {currentTab === 'empresas' && <CompanyTab onNavigate={handleTabChange} />}
+            {currentTab === 'directorio' && (userRole === 'admin' && !isDemo ? <DirectoryTab /> : <DashboardTab onNavigate={handleTabChange} />)}
+            {currentTab === 'ingesta' && (userRole === 'admin' && !isDemo ? <IngestaTab /> : <DashboardTab onNavigate={handleTabChange} />)}
+            {currentTab === 'usuarios' && (userRole === 'admin' && !isDemo ? <UserManagementTab /> : <DashboardTab onNavigate={handleTabChange} />)}
+          </Suspense>
+        </main>
+      </div>
     </div>
   );
 };
