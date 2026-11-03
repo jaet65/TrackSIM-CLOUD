@@ -1,6 +1,7 @@
 import React from 'react';
 import { CompanySummary, Evaluation } from '../../types';
 import { logAudit } from '../../services/auditLog';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 interface ExerciseStatItem {
   key: string;
@@ -37,6 +38,8 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
   topConductores,
   allEvaluations = []
 }) => {
+  useEscapeKey(isOpen, onClose);
+
   React.useEffect(() => {
     if (isOpen) {
       document.body.classList.add('single-page-report-active');

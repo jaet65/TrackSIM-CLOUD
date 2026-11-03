@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CatalogExercise, getActiveCatalog, persistCatalogLocally, EXERCISE_CATALOG } from '../services/exerciseCatalog';
 import { db, doc, getDoc, setDoc } from '../services/firebaseFirestore';
 import { logAudit } from '../services/auditLog';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 
 interface ExerciseCatalogModalProps {
   isOpen: boolean;
@@ -25,6 +26,8 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+
+  useEscapeKey(isOpen, onClose);
 
   // Cargar catálogo de Firestore y sincronizar
   const loadCatalog = async () => {

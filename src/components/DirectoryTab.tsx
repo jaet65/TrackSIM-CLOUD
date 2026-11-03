@@ -7,6 +7,7 @@ import { ReportDetailModal } from './ReportDetailModal';
 import { getMassDeleteReauthMethod } from '../services/authorization';
 import { logAudit } from '../services/auditLog';
 import { isEvaluationBackup, parseEvaluationBackup, serializeEvaluationBackup } from '../services/evaluationBackup';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 
 /** Escapa un valor para CSV (comillas dobles, comas y saltos de línea) */
 function csvCell(v: any): string {
@@ -168,6 +169,10 @@ export const DirectoryTab: React.FC = () => {
   const [batchSede, setBatchSede] = useState('__KEEP__');
   const [batchInstructor, setBatchInstructor] = useState('__KEEP__');
   const [isSavingBatch, setIsSavingBatch] = useState(false);
+  useEscapeKey(isBatchModalOpen, () => {
+    if (!isSavingBatch) setIsBatchModalOpen(false);
+  });
+  useEscapeKey(Boolean(editingItem), () => setEditingItem(null));
 
   // Ordenamiento interactivo por columnas
   type SortColumn = 'conductor' | 'empresa' | 'sede' | 'fecha' | 'score' | 'estado';

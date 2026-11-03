@@ -5,6 +5,7 @@ import { UserProfile } from '../types';
 import { AuditHistoryPanel } from './AuditHistoryPanel';
 import { logAudit, diffSnapshots, snapshotText } from '../services/auditLog';
 import { db, collection, getDocs, doc, setDoc, deleteDoc } from '../services/firebaseFirestore';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 
 interface DomainRecord {
   dominio: string;
@@ -45,6 +46,7 @@ export const UserManagementTab: React.FC = () => {
   // Edición de usuario
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [subTab, setSubTab] = useState<'usuarios' | 'historial'>('usuarios');
+  useEscapeKey(Boolean(editingUser), () => setEditingUser(null));
 
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'warning' | 'error' | 'info' } | null>(null);
 

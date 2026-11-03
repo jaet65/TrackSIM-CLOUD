@@ -3,6 +3,7 @@ import { Evaluation } from '../types';
 import { logAudit } from '../services/auditLog';
 import { findCatalogExercise } from '../services/exerciseCatalog';
 import { SessionRadarWidget } from './SessionRadarWidget';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 
 interface ReportDetailModalProps {
   evaluation: Evaluation | null;
@@ -13,6 +14,8 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
   const viewedId = evaluation?.id;
   const viewedCompany = evaluation?.empresa;
   const viewedLabel = evaluation ? (evaluation.conductor || evaluation.operador || evaluation.folio || evaluation.id) : '';
+  useEscapeKey(Boolean(evaluation), onClose);
+
   useEffect(() => {
     if (!viewedId) return;
     void logAudit({
@@ -140,7 +143,7 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
           <div style={{ background: 'var(--bg-card-hover)', padding: '0.7rem 0.85rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Instructor & Folio</div>
             <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '0.2rem' }}>
-              {evaluation.instructor || 'Oficial'} {evaluation.folio ? `• Grupo: ${evaluation.folio}` : ''}
+              {evaluation.instructor || 'Oficial'} <br />{evaluation.folio ? `${evaluation.folio}` : ''}
             </div>
           </div>
         </div>

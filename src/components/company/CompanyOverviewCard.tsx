@@ -1,6 +1,5 @@
 import React from 'react';
 import { CompanySummary } from '../../types';
-import { logAudit } from '../../services/auditLog';
 
 interface CompanyOverviewCardProps {
   comp: (CompanySummary & { esGlobal?: boolean });
@@ -10,6 +9,7 @@ interface CompanyOverviewCardProps {
   availableYears?: string[];
   operadoresConHistorialPrevio?: { count: number; pct: string };
   onOpenSinglePageReport?: () => void;
+  onOpenCompanyReport?: () => void;
 }
 
 export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
@@ -19,7 +19,8 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
   selectedYear,
   availableYears = [],
   operadoresConHistorialPrevio,
-  onOpenSinglePageReport
+  onOpenSinglePageReport,
+  onOpenCompanyReport
 }) => {
   // Texto descriptivo del periodo / años contemplados
   const periodText = React.useMemo(() => {
@@ -145,30 +146,7 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
           <button
             type="button"
             className="btn btn-secondary btn-sm company-export-btn"
-            onClick={() => {
-              const prevTitle = document.title;
-              const safeCompany = (comp.nombre || 'Flota').trim();
-              const safeYears = periodText.replace(/\s*[–—]\s*/g, '-').replace(/\s+/g, '_');
-              const printFileName = `TrackSIM Cloud_${safeCompany}_${safeYears}`;
-
-              document.title = printFileName;
-
-              void logAudit({
-                categoria: 'datos',
-                accion: 'imprimir',
-                empresas: [comp.nombre],
-                detalle: `Impresión / PDF del resumen de ${comp.nombre}${selectedYear && selectedYear !== 'all' ? ` (Año ${selectedYear})` : ''}`
-              });
-
-              try {
-                window.print();
-              } finally {
-                // Restaurar el título original de la pestaña luego de disparar el diálogo de impresión
-                setTimeout(() => {
-                  document.title = prevTitle;
-                }, 1000);
-              }
-            }}
+            onClick={onOpenCompanyReport}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -183,7 +161,7 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
               transition: 'all 0.2s ease',
               boxShadow: 'var(--shadow-card)'
             }}
-            title="Imprimir o guardar como PDF la ficha ejecutiva de la flota"
+            title="Vista previa del expediente PDF de la flota"
           >
             <span>🖨️</span>
             <span>Expediente</span>

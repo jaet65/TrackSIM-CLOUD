@@ -7,6 +7,7 @@ import { getEvaluationIncidentCounts } from '../services/incidentMetrics';
 import { ReportDetailModal } from './ReportDetailModal';
 import { CompanyOverviewCard } from './company/CompanyOverviewCard';
 import { CompanySinglePageReportModal } from './company/CompanySinglePageReportModal';
+import { CompanyReportModal } from './company/CompanyReportModal';
 import { CompanyRankingChartCard } from './company/CompanyRankingChartCard';
 import { CompanyDriversTable, CompanySortKey } from './company/CompanyDriversTable';
 import { Bar, Line } from 'react-chartjs-2';
@@ -58,6 +59,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [viewReport, setViewReport] = useState<any | null>(null);
   const [isSinglePageReportOpen, setIsSinglePageReportOpen] = useState(false);
+  const [isCompanyReportOpen, setIsCompanyReportOpen] = useState(false);
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -763,6 +765,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         availableYears={availableYears}
         operadoresConHistorialPrevio={operadoresConHistorialPrevio}
         onOpenSinglePageReport={() => setIsSinglePageReportOpen(true)}
+        onOpenCompanyReport={() => setIsCompanyReportOpen(true)}
       />
 
       {/* Rendimiento Promedio en Ejercicios (Solo ejercicios realizados por la empresa) */}
@@ -933,6 +936,13 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         exerciseStats={exerciseStats}
         topConductores={rankingList}
         allEvaluations={evaluationsByYear}
+      />
+      <CompanyReportModal
+        isOpen={isCompanyReportOpen}
+        onClose={() => setIsCompanyReportOpen(false)}
+        comp={comp}
+        selectedYear={selectedYear}
+        periodText={periodText}
       />
     </div>
   );

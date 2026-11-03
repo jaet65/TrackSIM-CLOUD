@@ -2,6 +2,7 @@ import React from 'react';
 import { Radar } from 'react-chartjs-2';
 import { DriverSummary } from '../../types';
 import { MistakeDimension, MISTAKE_DIMENSIONS } from '../../services/mistakeCatalog';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 export type RadarDimension = MistakeDimension & {
   descripcion?: string;
@@ -41,6 +42,8 @@ export const DriverRadarModal: React.FC<DriverRadarModalProps> = ({
   selectedRadarAxisId,
   onSelectRadarAxisId
 }) => {
+  useEscapeKey(isOpen, onClose);
+
   if (!isOpen) return null;
 
   return (
