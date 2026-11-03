@@ -8,6 +8,7 @@ import { ThemeProvider } from '../../context/ThemeContext';
 
 describe('Navbar component', () => {
   const mockOnTabChange = vi.fn();
+  const mockSetSelectedCompany = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -22,13 +23,13 @@ describe('Navbar component', () => {
       loading: false,
       evaluations: [],
       filteredEvaluations: [],
-      companies: [],
+      companies: ['Transportes Demo'],
       companiesSummaries: [],
       driverSummaries: [],
       selectedCompanySummary: null,
       selectedDriverName: '',
       setSelectedDriverName: vi.fn(),
-      setSelectedCompany: vi.fn(),
+      setSelectedCompany: mockSetSelectedCompany,
       searchFilter: '',
       setSearchFilter: vi.fn(),
       roleAllowedEvaluations: [],
@@ -101,6 +102,11 @@ describe('Navbar component', () => {
     expect(screen.getByText('Ingesta PDF')).toBeInTheDocument();
     expect(screen.getByText('Usuarios')).toBeInTheDocument();
     expect(screen.getByText('Admin')).toBeInTheDocument();
+
+    const companyFilter = screen.getByRole('combobox', { name: 'Filtrar por empresa' });
+    expect(companyFilter).toHaveValue('Transportes Demo');
+    fireEvent.change(companyFilter, { target: { value: 'all' } });
+    expect(mockSetSelectedCompany).toHaveBeenCalledWith('all');
   });
 
   it('debe disparar onTabChange al hacer clic en una pestaña', () => {

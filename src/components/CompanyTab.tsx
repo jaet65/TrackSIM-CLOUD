@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { createCompanySummaryFromEvaluations } from '../services/analytics';
+import { getEvaluationIncidentCounts } from '../services/incidentMetrics';
 import { ReportDetailModal } from './ReportDetailModal';
 import { CompanyOverviewCard } from './company/CompanyOverviewCard';
 import { CompanySinglePageReportModal } from './company/CompanySinglePageReportModal';
@@ -43,9 +44,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
   const { userRole } = useAuth();
   const { theme } = useTheme();
   const {
-    companies,
     selectedCompany,
-    setSelectedCompany,
     selectedCompanySummary,
     setSelectedDriverName,
     filteredEvaluations
@@ -60,6 +59,11 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
   const [viewReport, setViewReport] = useState<any | null>(null);
   const [isSinglePageReportOpen, setIsSinglePageReportOpen] = useState(false);
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setRankingPage(1);
+    setDriversPage(1);
+  }, [selectedCompany]);
 
   const toggleExpandExercises = (driverKey: string) => {
     setExpandedExercises((prev) => {
@@ -102,6 +106,9 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
   // Resumen ejecutivo de la empresa/flota considerando el año seleccionado
   const comp = useMemo(() => {
     if (selectedYear === 'all') {
+      if (userRole !== 'admin' && selectedCompany === 'all') {
+        return createCompanySummaryFromEvaluations('Flotas asignadas', 'flotas-asignadas', filteredEvaluations);
+      }
       return selectedCompanySummary;
     }
     const companyDisplayName =
@@ -111,7 +118,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
       selectedCompanySummary?.slug || 'flota',
       evaluationsByYear
     );
-  }, [selectedYear, selectedCompanySummary, selectedCompany, evaluationsByYear]);
+  }, [selectedYear, selectedCompanySummary, selectedCompany, evaluationsByYear, userRole, filteredEvaluations]);
 
   // Cantidad y porcentaje de conductores que han participado más de 1 vez en el periodo visible
   const { conductoresRecurrentes, pctRecurrentes } = useMemo(() => {
@@ -597,9 +604,10 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
       const year = match ? match[1] : (dateStr ? dateStr.substring(0, 4) : '');
       if (!year) return;
 
-      const col = e.colisiones || e.totalColisiones || 0;
-      const fat = e.fatalidades || 0;
-      const off = e.vehiculoFueraVia || 0;
+      const incidents = getEvaluationIncidentCounts(e);
+      const col = incidents.colisiones;
+      const fat = incidents.fatalidades;
+      const off = incidents.vehiculoFueraVia;
       const op = (e.conductor || e.operador || 'Sin Asignar').trim();
 
       const current = yearDataMap.get(year) || { colisiones: 0, fatalidades: 0, fueraVia: 0, operators: new Set<string>() };
@@ -696,7 +704,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
 
   return (
     <div className="view-section active">
-      {/* Selector de Empresa / Flota y Filtro de Año */}
+      {/* Filtro de Año para la flota seleccionada globalmente */}
       <div
         className="glass-card no-print metrics-filter-bar"
         style={{
@@ -708,36 +716,6 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
           flexWrap: 'wrap'
         }}
       >
-        {(userRole === 'admin' || companies.length > 1) && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: '1 1 320px', maxWidth: '420px' }}>
-            <span style={{ fontSize: '1.3rem' }}>🏢</span>
-            <div style={{ width: '100%' }}>
-              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
-                Seleccionar Flota / Empresa
-              </label>
-              <select
-                className="filter-select"
-                value={selectedCompany}
-                onChange={(e) => {
-                  setSelectedCompany(e.target.value);
-                  setRankingPage(1);
-                  setDriversPage(1);
-                }}
-                style={{ width: '100%', padding: '0.55rem 0.85rem', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: 'var(--text-main)', colorScheme: theme, fontWeight: 600, fontSize: '0.9rem' }}
-              >
-                {userRole === 'admin' && (
-                  <option value="all">🌐 Todas las Empresas (Consolidado)</option>
-                )}
-                {companies.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        )}
-
         {/* Filtro de Año */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: '220px', maxWidth: '280px', flex: '1 1 200px' }}>
           <span style={{ fontSize: '1.3rem' }}>📅</span>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
+import { useTheme } from '../context/ThemeContext';
 import { BrandLogo } from './BrandLogo';
 import { ThemeToggleButton } from './ThemeToggleButton';
 import { TabType } from '../types';
@@ -12,7 +13,8 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
   const { user, userRole, allowedCompanies, profile, logout, isDemo } = useAuth();
-  const { selectedCompany } = useData();
+  const { companies, selectedCompany, setSelectedCompany } = useData();
+  const { theme } = useTheme();
 
   // Calcular el texto y estilo del badge de empresa/rol
   const renderStatusBadge = () => {
@@ -38,11 +40,28 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
         >
           <span>👑</span>
           <span>Admin</span>
-          {selectedCompany && selectedCompany !== 'all' && (
-            <span style={{ color: '#fff', fontWeight: 500, opacity: 0.9 }}>
-              • {selectedCompany}
-            </span>
-          )}
+          <select
+            aria-label="Filtrar por empresa"
+            value={selectedCompany}
+            onChange={(event) => setSelectedCompany(event.target.value)}
+            style={{
+              maxWidth: '190px',
+              minWidth: '130px',
+              padding: '0.25rem 1.5rem 0.25rem 0.5rem',
+              border: '1px solid rgba(245, 158, 11, 0.35)',
+              borderRadius: '9999px',
+              background: 'var(--bg-surface)',
+              color: 'var(--text-main)',
+              colorScheme: theme,
+              fontSize: '0.75rem',
+              fontWeight: 600
+            }}
+          >
+            <option value="all">Todas las empresas</option>
+            {companies.map((company) => (
+              <option key={company} value={company}>{company}</option>
+            ))}
+          </select>
         </div>
       );
     }

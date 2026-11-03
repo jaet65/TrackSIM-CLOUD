@@ -3,6 +3,7 @@ import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { normalizeExerciseName, findCatalogExercise } from '../services/exerciseCatalog';
+import { getEvaluationIncidentCounts } from '../services/incidentMetrics';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -27,7 +28,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
     filteredEvaluations,
     companies,
     selectedCompany,
-    setSelectedCompany,
     companiesSummaries,
     loading
   } = useData();
@@ -65,10 +65,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
 
     filteredEvaluations.forEach((e) => {
       const score = e.evaluacionFinalPuntos ?? e.calificacionExacta ?? e.promedioScore ?? 0;
+      const incidents = getEvaluationIncidentCounts(e);
       sumScore += score;
-      sumCol += e.colisiones || e.totalColisiones || 0;
-      sumFat += e.fatalidades || 0;
-      sumOff += e.vehiculoFueraVia || 0;
+      sumCol += incidents.colisiones;
+      sumFat += incidents.fatalidades;
+      sumOff += incidents.vehiculoFueraVia;
 
       const driverName = (e.conductor || e.operador || '').trim();
       if (driverName) uniqueDrivers.add(driverName);
@@ -363,50 +364,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
         )}
       </div>
 
-      {/* 2. Barra de Control y Filtros Rápida */}
-
-      {companies.length > 1 && (
-        <div
-          className="glass-card dashboard-filter-bar"
-          style={{
-            padding: '0.9rem 1.25rem',
-            marginBottom: '1.75rem',
-            display: 'flex',
-            gap: '1rem',
-            alignItems: 'center',
-            flexWrap: 'wrap'
-          }}
-        >
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>🏢 Flota:</span>
-            <select
-              value={selectedCompany}
-              onChange={(e) => setSelectedCompany(e.target.value)}
-              style={{
-                minWidth: '220px',
-                padding: '0.55rem 0.85rem',
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: '8px',
-                color: 'var(--primary)',
-                colorScheme: theme,
-                fontWeight: 600,
-                fontSize: '0.88rem'
-              }}
-            >
-              <option value="all">Todas las empresas ({companies.length})</option>
-              {companies.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      )}
-
-
       {/* 2.5. Tarjeta Resumen Ejecutivo de la Flota */}
       <div
         className="glass-card company-overview-card"
@@ -651,7 +608,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
                 ) : (
                   recentEvaluations.map((ev) => {
                     const score = ev.evaluacionFinalPuntos ?? ev.calificacionExacta ?? ev.promedioScore ?? 0;
-                    const incidentes = (ev.colisiones || ev.totalColisiones || 0) + (ev.fatalidades || 0) + (ev.vehiculoFueraVia || 0);
+                    const incidents = getEvaluationIncidentCounts(ev);
+                    const incidentes = incidents.colisiones + incidents.fatalidades + incidents.vehiculoFueraVia;
 
                     return (
                       <tr key={ev.id}>

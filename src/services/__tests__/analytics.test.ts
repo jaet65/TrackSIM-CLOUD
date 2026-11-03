@@ -153,5 +153,32 @@ describe('analytics service - Cálculos y Métricas de Flotas y Conductores', ()
       expect(condA?.estado).toBe('Sobresaliente');
       expect(condA?.sede).toBe('Puebla');
     });
+
+    it('calculates V2 fleet incident rates only from collision, off-road, and fatality errors', () => {
+      const v2Evaluation: Evaluation = {
+        id: 'v2_1',
+        conductor: 'Conductor V2',
+        empresa: 'Bimbo',
+        origen: 'TrackSIM-ZERO-V2',
+        accidentesCriticos: 9,
+        colisiones: 9,
+        totalColisiones: 9,
+        fatalidades: 0,
+        vehiculoFueraVia: 0,
+        erroresFrecuentes: [
+          { error: 'Colisión con un vehículo del tráfico', repeticiones: 2 },
+          { error: 'Atropello de un peatón', repeticiones: 3 },
+          { error: 'Salirse de la vía', repeticiones: 4, severidad: 'CRITICO' },
+          { error: 'Salirse de la vía', repeticiones: 1, severidad: 'GRAVE' },
+          { error: 'Superar la zona roja de las rpm', repeticiones: 25 }
+        ]
+      };
+
+      const summary = createCompanySummaryFromEvaluations('Bimbo', 'bimbo', [v2Evaluation]);
+
+      expect(summary.totalColisiones).toBe(2);
+      expect(summary.totalFatalidades).toBe(7);
+      expect(summary.totalFueraVia).toBe(1);
+    });
   });
 });

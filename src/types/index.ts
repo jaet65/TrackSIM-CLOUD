@@ -12,12 +12,14 @@ export interface ExerciseItem {
   comentarios?: string;
   fecha?: string;
   modulo?: string;
+  instructor?: string;
 }
 
 export interface FrequentMistakeItem {
   error: string;
   errorRaw?: string;
   repeticiones: number;
+  severidad?: string;
   ejeId?: number | null;
   ejeNombre?: string;
   ejeShortName?: string;
@@ -45,7 +47,12 @@ export interface Evaluation {
   habilidadesManejoPuntos?: number;
   practicaSimuladorPct?: number;
   practicaSimuladorPuntos?: number;
+  destrezaPuntos?: number;
+  destrezaMax?: number;
+  ecoDrivingPuntos?: number;
+  ecoDrivingMax?: number;
   colisiones?: number;
+  accidentesCriticos?: number;
   fatalidades?: number;
   vehiculoFueraVia?: number;
   totalColisiones?: number;

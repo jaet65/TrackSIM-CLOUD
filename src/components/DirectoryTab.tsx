@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { Evaluation, ExerciseItem } from '../types';
@@ -125,7 +125,7 @@ export const DirectoryTab: React.FC = () => {
   const { user, userRole, reauthenticateForMassDelete } = useAuth();
   const {
     evaluations,
-    companies,
+    selectedCompany,
     deleteEvaluation,
     deleteAllEvaluations,
     updateEvaluation,
@@ -156,7 +156,6 @@ export const DirectoryTab: React.FC = () => {
   }
 
   const [search, setSearch] = useState('');
-  const [selectedEmpresa, setSelectedEmpresa] = useState('all');
   const [selectedYear, setSelectedYear] = useState('all');
   const [selectedEstado, setSelectedEstado] = useState('all');
   const [selectedSede, setSelectedSede] = useState('all');
@@ -175,6 +174,12 @@ export const DirectoryTab: React.FC = () => {
   const [sortCol, setSortCol] = useState<SortColumn>('fecha');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
+  useEffect(() => {
+    setCurrentPage(1);
+    setSelectedSede('all');
+    setSelectedIds(new Set());
+  }, [selectedCompany]);
+
   const handleSort = (col: SortColumn) => {
     if (sortCol === col) {
       setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
@@ -190,10 +195,10 @@ export const DirectoryTab: React.FC = () => {
   const sedes = useMemo(() => {
     const set = new Set<string>();
     evaluations.forEach((e) => {
-      if (e.sede && (selectedEmpresa === 'all' || e.empresa === selectedEmpresa)) set.add(e.sede);
+      if (e.sede && (selectedCompany === 'all' || e.empresa === selectedCompany)) set.add(e.sede);
     });
     return Array.from(set).sort();
-  }, [evaluations, selectedEmpresa]);
+  }, [evaluations, selectedCompany]);
 
   const years = useMemo(() => {
     const availableYears = new Set<string>();
@@ -207,7 +212,7 @@ export const DirectoryTab: React.FC = () => {
   // Filtrado multi-criterio y ordenamiento interactivo
   const displayList = useMemo(() => {
     const filtered = evaluations.filter((item) => {
-      if (selectedEmpresa !== 'all' && item.empresa !== selectedEmpresa) return false;
+      if (selectedCompany !== 'all' && item.empresa !== selectedCompany) return false;
       if (selectedYear !== 'all' && getEvaluationYear(item) !== selectedYear) return false;
       if (selectedSede !== 'all' && item.sede !== selectedSede) return false;
       if (selectedEstado !== 'all' && item.estado !== selectedEstado) return false;
@@ -261,7 +266,7 @@ export const DirectoryTab: React.FC = () => {
       }
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [evaluations, selectedEmpresa, selectedYear, selectedSede, selectedEstado, search, sortCol, sortDir]);
+  }, [evaluations, selectedCompany, selectedYear, selectedSede, selectedEstado, search, sortCol, sortDir]);
 
   // Resumen métrico (KPIs) en tiempo real según filtros aplicados
   const stats = useMemo(() => {
@@ -290,13 +295,13 @@ export const DirectoryTab: React.FC = () => {
   const totalPages = Math.max(1, Math.ceil(displayList.length / PAGE_SIZE));
   const activePage = Math.min(Math.max(1, currentPage), totalPages);
   const pagedList = displayList.slice((activePage - 1) * PAGE_SIZE, activePage * PAGE_SIZE);
-  const hasActiveFilters = Boolean(
+  const hasLocalFilters = Boolean(
     search.trim() ||
-    selectedEmpresa !== 'all' ||
     selectedYear !== 'all' ||
     selectedEstado !== 'all' ||
     selectedSede !== 'all'
   );
+  const hasActiveFilters = hasLocalFilters || selectedCompany !== 'all';
 
   const toggleSelectAll = () => {
     if (selectedIds.size === pagedList.length && pagedList.length > 0) {
@@ -1111,25 +1116,6 @@ export const DirectoryTab: React.FC = () => {
             />
           </div>
 
-          {companies.length > 1 && (
-            <div>
-              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>🏢 Empresa</label>
-              <select
-                value={selectedEmpresa}
-                onChange={(e) => {
-                  setSelectedEmpresa(e.target.value);
-                  setCurrentPage(1);
-                }}
-                style={{ width: '100%', padding: '0.55rem 0.85rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: '#fff', fontSize: '0.88rem' }}
-              >
-                <option value="all">Todas las Empresas ({companies.length})</option>
-                {companies.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
           <div>
             <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', fontWeight: 600 }}>📅 Año</label>
             <select
@@ -1188,15 +1174,14 @@ export const DirectoryTab: React.FC = () => {
             className="btn btn-secondary btn-sm"
             onClick={() => {
               setSearch('');
-              setSelectedEmpresa('all');
               setSelectedYear('all');
               setSelectedSede('all');
               setSelectedEstado('all');
               setCurrentPage(1);
               setSelectedIds(new Set());
             }}
-            disabled={!hasActiveFilters}
-            title="Quitar todos los filtros y mostrar todas las evaluaciones"
+            disabled={!hasLocalFilters}
+            title="Quitar los filtros locales del directorio"
             style={{ fontSize: '0.75rem', padding: '0.35rem 0.65rem' }}
           >
             Limpiar filtros

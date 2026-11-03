@@ -81,4 +81,20 @@ describe('sessionRadar service', () => {
     expect(result.scores[1]).toBe(7.5); // 10 - (1 colision * 2.5) = 7.5
     expect(result.scores[2]).toBe(9.0); // practicaSimuladorPct / 10
   });
+
+  it('uses V2 Destreza and Eco Driving values for the fallback radar without changing V1 fields', () => {
+    const mockEval: Partial<Evaluation> = {
+      evaluacionFinalPuntos: 7,
+      origen: 'TrackSIM-ZERO-V2',
+      destrezaPuntos: 3.5,
+      destrezaMax: 7,
+      ecoDrivingPuntos: 1.5,
+      ecoDrivingMax: 3
+    };
+
+    const result = calculateSingleSessionRadar(mockEval as Evaluation);
+
+    expect(result.scores[0]).toBe(5.0);
+    expect(result.scores[2]).toBe(5.0);
+  });
 });

@@ -80,9 +80,15 @@ export function calculateSingleSessionRadar(evaluation: Evaluation | null | unde
       // Fallback si la evaluación no tiene errores extraídos
       const finalScore = evaluation.evaluacionFinalPuntos ?? evaluation.calificacionExacta ?? 7.0;
       const colFactor = Math.max(0, 10 - ((evaluation.colisiones || 0) * 2.5) - ((evaluation.fatalidades || 0) * 4));
-      if (dim.id === 1) return parseFloat(Math.min(10, Math.max(2, (evaluation.habilidadesManejoPct ? evaluation.habilidadesManejoPct / 10 : finalScore))).toFixed(1));
+      const destrezaPct = evaluation.destrezaPuntos !== undefined && evaluation.destrezaMax
+        ? evaluation.destrezaPuntos / evaluation.destrezaMax * 100
+        : evaluation.habilidadesManejoPct;
+      const ecoDrivingPct = evaluation.ecoDrivingPuntos !== undefined && evaluation.ecoDrivingMax
+        ? evaluation.ecoDrivingPuntos / evaluation.ecoDrivingMax * 100
+        : evaluation.practicaSimuladorPct;
+      if (dim.id === 1) return parseFloat(Math.min(10, Math.max(2, (destrezaPct ? destrezaPct / 10 : finalScore))).toFixed(1));
       if (dim.id === 2) return parseFloat(Math.min(10, Math.max(1, colFactor)).toFixed(1));
-      if (dim.id === 3) return parseFloat(Math.min(10, Math.max(2, (evaluation.practicaSimuladorPct ? evaluation.practicaSimuladorPct / 10 : finalScore))).toFixed(1));
+      if (dim.id === 3) return parseFloat(Math.min(10, Math.max(2, (ecoDrivingPct ? ecoDrivingPct / 10 : finalScore))).toFixed(1));
       if (dim.id === 4) return parseFloat(Math.min(10, Math.max(2, finalScore * 0.95)).toFixed(1));
       return parseFloat(Math.min(10, Math.max(2, finalScore)).toFixed(1));
     }
