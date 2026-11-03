@@ -167,6 +167,9 @@ export const IngestaTab: React.FC = () => {
       }
 
       await reloadEvaluations();
+      setStagingFiles([]);
+      setBatchEmpresa('');
+      setBatchSede('');
       void logAudit({
         categoria: 'reporte',
         accion: 'crear',
