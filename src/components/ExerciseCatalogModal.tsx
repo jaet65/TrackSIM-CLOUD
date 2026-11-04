@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { CatalogExercise, getActiveCatalog, persistCatalogLocally, EXERCISE_CATALOG } from '../services/exerciseCatalog';
+import React, { useState, useEffect, useRef } from 'react';
+import { CatalogExercise, getActiveCatalog, persistCatalogLocally, EXERCISE_CATALOG, parseCatalogCsv, serializeCatalogCsv } from '../services/exerciseCatalog';
 import { db, doc, getDoc, setDoc } from '../services/firebaseFirestore';
 import { logAudit } from '../services/auditLog';
 import { useEscapeKey } from '../hooks/useEscapeKey';
@@ -26,6 +26,7 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   useEscapeKey(isOpen, onClose);
 
@@ -182,6 +183,77 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
     } catch (err) {
       console.error('Error restableciendo:', err);
       setErrorMsg('Error restableciendo catálogo.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleExportCatalog = () => {
+    const blob = new Blob([serializeCatalogCsv(exercises)], {
+      type: 'text/csv;charset=utf-8'
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `catalogo_ejercicios_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    void logAudit({
+      categoria: 'datos',
+      accion: 'exportar',
+      cantidad: exercises.length,
+      detalle: 'Exportación CSV del catálogo de ejercicios'
+    });
+    setErrorMsg('');
+    setSuccessMsg(`Catálogo exportado correctamente (${exercises.length} ejercicios).`);
+  };
+
+  const handleImportCatalog = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    let importedCatalog: CatalogExercise[];
+    try {
+      importedCatalog = parseCatalogCsv(await file.text());
+    } catch (err) {
+      setSuccessMsg('');
+      setErrorMsg(err instanceof Error ? err.message : 'No se pudo leer el archivo seleccionado.');
+      return;
+    }
+
+    if (!window.confirm(`Se reemplazará todo el catálogo actual por ${importedCatalog.length} ejercicios. ¿Deseas continuar?`)) {
+      return;
+    }
+
+    setIsSaving(true);
+    setErrorMsg('');
+    setSuccessMsg('');
+    try {
+      await setDoc(
+        doc(db, 'configuracion', 'catalogo_ejercicios'),
+        { ejercicios: importedCatalog, updatedAt: new Date().toISOString() },
+        { merge: true }
+      );
+      void logAudit({
+        categoria: 'datos',
+        accion: 'modificar',
+        cantidad: importedCatalog.length,
+        detalle: 'Importación CSV del catálogo de ejercicios'
+      });
+      persistCatalogLocally(importedCatalog);
+      setExercises(importedCatalog);
+      if (onCatalogUpdated) onCatalogUpdated(importedCatalog);
+      resetForm();
+      setSuccessMsg(`Catálogo importado correctamente (${importedCatalog.length} ejercicios).`);
+    } catch (err) {
+      console.error('Error al importar catálogo:', err);
+      persistCatalogLocally(importedCatalog);
+      setExercises(importedCatalog);
+      if (onCatalogUpdated) onCatalogUpdated(importedCatalog);
+      setErrorMsg('No se pudo sincronizar con la nube. El catálogo importado quedó guardado localmente.');
     } finally {
       setIsSaving(false);
     }
@@ -394,6 +466,47 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
               </div>
 
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <input
+                  ref={importFileRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={handleImportCatalog}
+                  style={{ display: 'none' }}
+                />
+                <button
+                  type="button"
+                  onClick={handleExportCatalog}
+                  disabled={loading || isSaving}
+                  title="Descarga el catálogo actual como archivo CSV"
+                  style={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border-subtle)',
+                    color: 'var(--text-secondary)',
+                    padding: '0.35rem 0.65rem',
+                    borderRadius: '6px',
+                    fontSize: '0.78rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ↓ Exportar CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => importFileRef.current?.click()}
+                  disabled={loading || isSaving}
+                  title="Importa un archivo CSV y reemplaza el catálogo actual"
+                  style={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border-subtle)',
+                    color: 'var(--text-secondary)',
+                    padding: '0.35rem 0.65rem',
+                    borderRadius: '6px',
+                    fontSize: '0.78rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ↑ Importar CSV
+                </button>
                 <input
                   type="text"
                   placeholder="Buscar ejercicio..."

@@ -61,10 +61,100 @@ export function normalizeExerciseName(str?: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .trim()
-    .replace(/[.:]+$/g, '')
-    .replace(/\s+/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
+}
+
+export function serializeCatalogCsv(exercises: CatalogExercise[]): string {
+  const escapeCell = (value: string) => `"${value.replace(/"/g, '""')}"`;
+  const rows = [
+    ['nombre', 'descripcion'],
+    ...exercises.map(({ nombre, descripcion }) => [nombre, descripcion])
+  ];
+  return `\uFEFF${rows.map((row) => row.map(escapeCell).join(',')).join('\r\n')}`;
+}
+
+export function parseCatalogCsv(content: string): CatalogExercise[] {
+  const csvContent = content.replace(/^\uFEFF/, '');
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  let quoteClosed = false;
+
+  for (let i = 0; i < csvContent.length; i++) {
+    const character = csvContent[i];
+    if (inQuotes) {
+      if (character === '"' && csvContent[i + 1] === '"') {
+        field += '"';
+        i++;
+      } else if (character === '"') {
+        inQuotes = false;
+        quoteClosed = true;
+      } else {
+        field += character;
+      }
+    } else if (quoteClosed && character !== ',' && character !== '\r' && character !== '\n') {
+      throw new Error('El archivo CSV contiene comillas con formato inválido.');
+    } else if (character === '"' && field.length === 0 && !quoteClosed) {
+      inQuotes = true;
+    } else if (character === ',') {
+      row.push(field);
+      field = '';
+      quoteClosed = false;
+    } else if (character === '\r' || character === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+      quoteClosed = false;
+      if (character === '\r' && csvContent[i + 1] === '\n') i++;
+    } else if (character === '"') {
+      throw new Error('El archivo CSV contiene comillas con formato inválido.');
+    } else {
+      field += character;
+    }
+  }
+
+  if (inQuotes) {
+    throw new Error('El archivo CSV contiene comillas sin cerrar.');
+  }
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+
+  const nonEmptyRows = rows.filter((csvRow) => csvRow.some((cell) => cell.trim() !== ''));
+  if (nonEmptyRows.length < 2) {
+    throw new Error('El CSV debe incluir encabezados y al menos un ejercicio.');
+  }
+
+  const headers = nonEmptyRows[0].map((header) => header.replace(/^\uFEFF/, '').trim().toLowerCase());
+  const nameColumn = headers.indexOf('nombre');
+  const descriptionColumn = headers.indexOf('descripcion');
+  if (headers.length !== 2 || nameColumn < 0 || descriptionColumn < 0) {
+    throw new Error('El CSV debe incluir las columnas "nombre" y "descripcion".');
+  }
+
+  const names = new Set<string>();
+  return nonEmptyRows.slice(1).map((csvRow, index) => {
+    if (csvRow.length !== headers.length) {
+      throw new Error(`La fila ${index + 2} debe contener nombre y descripción.`);
+    }
+
+    const nombre = csvRow[nameColumn].trim();
+    const descripcion = csvRow[descriptionColumn].trim();
+    if (!nombre) {
+      throw new Error(`El ejercicio de la fila ${index + 2} debe incluir un nombre.`);
+    }
+
+    const normalizedName = normalizeExerciseName(nombre);
+    if (names.has(normalizedName)) {
+      throw new Error(`El catálogo contiene nombres duplicados: "${nombre}".`);
+    }
+    names.add(normalizedName);
+    return { nombre, descripcion };
+  });
 }
 
 const LOCAL_STORAGE_KEY_EXERCISES = 'tracksim_custom_exercises';
