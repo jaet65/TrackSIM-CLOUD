@@ -172,6 +172,8 @@ export const IngestaTab: React.FC = () => {
           : 'Ocurrió un error desconocido al procesar el lote de PDFs.',
         type: 'error'
       });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -247,6 +249,9 @@ export const IngestaTab: React.FC = () => {
         detalle: stagingFiles.slice(0, 5).map((f) => f.conductor || f.operador || f.folio || f.id).filter(Boolean).join(', ')
       });
       setFeedback({ message: `¡Se han guardado ${stagingFiles.length} evaluaciones en Firestore exitosamente!`, type: 'success' });
+      setStagingFiles([]);
+      setBatchEmpresa('');
+      setBatchSede('');
     } catch (e: any) {
       console.error('Error guardando evaluaciones:', e);
       setFeedback({ message: 'Ocurrió un error al guardar en Firestore. Intenta de nuevo.', type: 'error' });
@@ -259,6 +264,25 @@ export const IngestaTab: React.FC = () => {
   const selectedZeroImportStatus = selectedZeroExport
     ? getZeroGroupImportStatus(selectedZeroExport, evaluations, stagingFiles)
     : null;
+
+  const progressBar = (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.85rem' }}>
+        <span>{progress.text}</span>
+        <span>{progress.total > 0 ? `${Math.round((progress.current / progress.total) * 100)}%` : ''}</span>
+      </div>
+      <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
+        <div
+          style={{
+            width: progress.total > 0 ? `${(progress.current / progress.total) * 100}%` : '0%',
+            height: '100%',
+            background: 'linear-gradient(90deg, #38bdf8, #818cf8)',
+            transition: 'width 0.2s ease'
+          }}
+        />
+      </div>
+    </>
+  );
 
   return (
     <div className="view-section active">
@@ -470,7 +494,7 @@ export const IngestaTab: React.FC = () => {
         </div>
       )}
 
-      {feedback && (
+      {feedback && stagingFiles.length === 0 && (
         <div
           style={{
             padding: '0.85rem 1.25rem',
@@ -511,28 +535,24 @@ export const IngestaTab: React.FC = () => {
       )}
 
       {/* Barra de Progreso */}
-      {(isProcessing || isSaving) && (
+      {(isProcessing || isSaving) && stagingFiles.length === 0 && (
         <div className="card" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.85rem' }}>
-            <span>{progress.text}</span>
-            <span>{progress.total > 0 ? `${Math.round((progress.current / progress.total) * 100)}%` : ''}</span>
-          </div>
-          <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
-            <div
-              style={{
-                width: progress.total > 0 ? `${(progress.current / progress.total) * 100}%` : '0%',
-                height: '100%',
-                background: 'linear-gradient(90deg, #38bdf8, #818cf8)',
-                transition: 'width 0.2s ease'
-              }}
-            />
-          </div>
+          {progressBar}
         </div>
       )}
 
-      {/* Bandeja de Previsualización (Staging) */}
+      {/* Modal de Previsualización (Staging) */}
       {stagingFiles.length > 0 && (
-        <div className="card">
+        <div
+          className="modal-overlay active"
+          style={{ zIndex: 1100, backgroundColor: 'var(--modal-backdrop)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}
+        >
+        <div
+          className="modal-dialog"
+          role="dialog"
+          aria-modal="true"
+          style={{ width: '95%', maxWidth: '1200px', maxHeight: '90vh', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '16px', boxShadow: 'var(--shadow-card)', display: 'flex', flexDirection: 'column', overflow: 'auto' }}
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem', borderBottom: '1px solid var(--border-subtle)', flexWrap: 'wrap', gap: '1rem' }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>
@@ -547,6 +567,7 @@ export const IngestaTab: React.FC = () => {
                 type="button"
                 className="btn btn-secondary btn-sm"
                 onClick={() => setStagingFiles([])}
+                disabled={isSaving}
               >
                 Descartar Lote
               </button>
@@ -560,6 +581,34 @@ export const IngestaTab: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {isSaving && (
+            <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--border-subtle)' }}>
+              {progressBar}
+            </div>
+          )}
+
+          {feedback && (
+            <div
+              style={{
+                padding: '0.75rem 1.25rem',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                borderBottom: '1px solid var(--border-subtle)',
+                color: feedback.type === 'error' ? '#f87171' : feedback.type === 'warning' ? '#fbbf24' : feedback.type === 'success' ? '#4ade80' : '#38bdf8',
+                background: feedback.type === 'error' ? 'rgba(239, 68, 68, 0.12)' : feedback.type === 'warning' ? 'rgba(245, 158, 11, 0.12)' : feedback.type === 'success' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(56, 189, 248, 0.12)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '1rem'
+              }}
+            >
+              <span>{feedback.message}</span>
+              <button type="button" onClick={() => setFeedback(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: '1.1rem' }}>
+                ✕
+              </button>
+            </div>
+          )}
 
           {/* Asignación en Lote */}
           <div style={{ padding: '1rem 1.25rem', background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
@@ -645,6 +694,7 @@ export const IngestaTab: React.FC = () => {
               </tbody>
             </table>
           </div>
+        </div>
         </div>
       )}
 
