@@ -92,8 +92,8 @@ describe('Navbar component', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Expandir navegación' }));
 
     expect(sidebar).toHaveClass('is-expanded');
-    expect(sidebar?.querySelector('.brand-text')).toHaveTextContent('TrackSIM Cloud');
-    expect(sidebar?.querySelector('.brand-text span')).not.toBeInTheDocument();
+    expect(sidebar?.querySelector('.brand-text h1')).toHaveTextContent('TrackSIM');
+    expect(sidebar?.querySelector('.brand-text span')).toHaveTextContent('Cloud Analytics');
     expect(document.querySelector('.app-topbar .brand-text')).not.toBeInTheDocument();
   });
 
