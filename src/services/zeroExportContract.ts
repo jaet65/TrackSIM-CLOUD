@@ -22,10 +22,15 @@ export interface ZeroGroupImportStatus {
   isStaged: boolean;
 }
 
-type ImportIdentity = Pick<Evaluation, 'id' | 'origen' | 'zeroGroupId' | 'folioGrupo'>;
+type ImportIdentity = Pick<Evaluation, 'id' | 'origen' | 'zeroGroupId' | 'folioGrupo'> & { folio?: string };
 
-function belongsToZeroGroup(evaluation: ImportIdentity, group: ZeroCloudExportGroup): boolean {
+function belongsToZeroGroup(
+  evaluation: ImportIdentity,
+  group: ZeroCloudExportGroup,
+  groupEvaluationFolios?: ReadonlySet<string>
+): boolean {
   return evaluation.zeroGroupId === group.id ||
+    Boolean(evaluation.folio && groupEvaluationFolios?.has(evaluation.folio)) ||
     (evaluation.origen === 'TrackSIM-ZERO-V2' &&
       Boolean(group.groupFolio) &&
       evaluation.folioGrupo === group.groupFolio);
@@ -34,14 +39,17 @@ function belongsToZeroGroup(evaluation: ImportIdentity, group: ZeroCloudExportGr
 export function getZeroGroupImportStatus(
   group: ZeroCloudExportGroup,
   importedEvaluations: readonly ImportIdentity[],
-  stagedEvaluations: readonly ImportIdentity[] = []
+  stagedEvaluations: readonly ImportIdentity[] = [],
+  groupEvaluationFolios?: ReadonlySet<string>
 ): ZeroGroupImportStatus {
   const importedIds = new Set(
-    importedEvaluations.filter((evaluation) => belongsToZeroGroup(evaluation, group)).map((evaluation) => evaluation.id)
+    importedEvaluations
+      .filter((evaluation) => belongsToZeroGroup(evaluation, group, groupEvaluationFolios))
+      .map((evaluation) => evaluation.id)
   );
   const stagedIds = new Set(
     stagedEvaluations
-      .filter((evaluation) => belongsToZeroGroup(evaluation, group) && !importedIds.has(evaluation.id))
+      .filter((evaluation) => belongsToZeroGroup(evaluation, group, groupEvaluationFolios) && !importedIds.has(evaluation.id))
       .map((evaluation) => evaluation.id)
   );
   const availableCount = Math.min(group.expectedCount, importedIds.size + stagedIds.size);

@@ -42,6 +42,21 @@ export const IngestaTab: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [zeroGroupFolios, setZeroGroupFolios] = useState<Record<string, ReadonlySet<string>>>({});
+
+  const loadGroupFolios = async (groups: ZeroCloudExportGroup[], expectedAdmin: NonNullable<typeof user>) => {
+    const { loadZeroExportEvaluations } = await import('../services/zeroFirestore');
+    for (const entry of groups) {
+      try {
+        const { evaluations: groupEvaluations } = await loadZeroExportEvaluations(entry.id, expectedAdmin);
+        const folios = new Set(groupEvaluations.map((item) => item.folio).filter((folio): folio is string => Boolean(folio)));
+        setZeroGroupFolios((previous) => ({ ...previous, [entry.id]: folios }));
+      } catch (error) {
+        console.warn(`No se pudieron precargar los folios del grupo ${entry.id}:`, error);
+      }
+    }
+  };
+
   const handleConnectToZero = async () => {
     if (!user?.email) {
       setFeedback({ message: 'No se encontró el correo de la sesión actual.', type: 'error' });
@@ -54,6 +69,7 @@ export const IngestaTab: React.FC = () => {
       const { connectToZeroAndListExports } = await import('../services/zeroFirestore');
       const exports = await connectToZeroAndListExports(user);
       setZeroExports(exports);
+      void loadGroupFolios(exports, user);
       setSelectedZeroExportId((current) =>
         exports.some((entry) => entry.id === current) ? current : exports[0]?.id || ''
       );
@@ -262,7 +278,7 @@ export const IngestaTab: React.FC = () => {
 
   const selectedZeroExport = zeroExports.find((entry) => entry.id === selectedZeroExportId);
   const selectedZeroImportStatus = selectedZeroExport
-    ? getZeroGroupImportStatus(selectedZeroExport, evaluations, stagingFiles)
+    ? getZeroGroupImportStatus(selectedZeroExport, evaluations, stagingFiles, zeroGroupFolios[selectedZeroExport.id])
     : null;
 
   const progressBar = (
@@ -365,7 +381,7 @@ export const IngestaTab: React.FC = () => {
                 >
                   {zeroExports.map((entry) => (
                     (() => {
-                      const status = getZeroGroupImportStatus(entry, evaluations, stagingFiles);
+                      const status = getZeroGroupImportStatus(entry, evaluations, stagingFiles, zeroGroupFolios[entry.id]);
                       const statusLabel = status.isImported
                         ? ' · Ya importado'
                         : status.remainingCount === 0
