@@ -120,10 +120,44 @@ describe('Navbar component', () => {
     expect(screen.getByText('Evolución')).toBeInTheDocument();
     expect(screen.getByText('Métricas')).toBeInTheDocument();
 
+    const navigationIcons = Array.from(document.querySelectorAll('.navbar .nav-item-icon svg'));
+    expect(navigationIcons).toHaveLength(4);
+    navigationIcons.forEach((icon) => {
+      expect(icon).toHaveAttribute('width', '18');
+      expect(icon).toHaveAttribute('height', '18');
+      expect(icon).toHaveAttribute('stroke-width', '1.8');
+    });
+
     // Pestañas exclusivas de administrador no deben estar
     expect(screen.queryByText('Ingesta PDF')).toBeNull();
     expect(screen.queryByText('Usuarios')).toBeNull();
     expect(screen.queryByText('Directorio')).toBeNull();
+  });
+
+  it('debe mostrar el enlace a TrackSIM PRO en el sidebar', () => {
+    vi.spyOn(AuthContext, 'useAuth').mockReturnValue({
+      user: { displayName: 'Operador Test', email: 'op@demo.com' } as any,
+      userRole: 'viewer',
+      allowedCompanies: ['Transportes Demo'],
+      isDemo: false,
+      profile: null,
+      loading: false,
+      loginWithGoogle: vi.fn(),
+      loginWithEmail: vi.fn(),
+      registerWithEmail: vi.fn(),
+      resetPassword: vi.fn(),
+      reauthenticateForMassDelete: vi.fn(),
+      logout: vi.fn()
+    });
+
+    renderNavbar('dashboard');
+
+    expect(screen.getByRole('link', { name: 'TrackSIM PRO' })).toHaveAttribute(
+      'href',
+      'https://tracksim-zero.web.app/'
+    );
+    expect(screen.getByRole('link', { name: 'TrackSIM PRO' })).toHaveAttribute('target', '_blank');
+    expect(screen.getByRole('link', { name: 'TrackSIM PRO' })).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('debe mostrar las pestañas de administración si el usuario es admin', () => {

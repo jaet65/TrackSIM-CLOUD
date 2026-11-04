@@ -332,6 +332,25 @@ textarea {
   width: 100%;
 }
 
+.nav-links-separator {
+  margin-top: 0.35rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.navbar.is-collapsed .nav-links-separator {
+  padding-top: 0.4rem;
+  border-top: 0;
+}
+
+.navbar.is-collapsed .nav-links-separator::before {
+  display: block;
+  width: 28px;
+  margin: 0 auto 0.4rem;
+  border-top: 1px solid var(--border-subtle);
+  content: '';
+}
+
 .nav-item {
   width: 100%;
   min-height: 44px;
@@ -362,8 +381,9 @@ textarea {
 .nav-item-icon {
   width: 24px;
   flex: 0 0 24px;
-  text-align: center;
-  font-size: 1.05rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .navbar.is-collapsed .nav-label {

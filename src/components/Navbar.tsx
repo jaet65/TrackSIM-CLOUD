@@ -1,5 +1,16 @@
 import React from 'react';
-import { Menu, PanelLeftClose } from 'lucide-react';
+import {
+  Building2,
+  ClipboardList,
+  FileText,
+  FileUp,
+  LayoutDashboard,
+  Menu,
+  PanelLeftClose,
+  TrendingUp,
+  UsersRound,
+  type LucideIcon
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { BrandLogo } from './BrandLogo';
@@ -13,18 +24,24 @@ interface NavbarProps {
   onCollapsedChange: (isCollapsed: boolean) => void;
 }
 
-const getNavigationItems = (userRole: string | null, isDemo: boolean): { id: TabType; icon: string; label: string }[] => {
-  const items: { id: TabType; icon: string; label: string }[] = [
-    { id: 'dashboard', icon: '📊', label: 'Dashboard' },
-    { id: 'evolucion', icon: '📈', label: 'Evolución' },
-    { id: 'empresas', icon: '📐', label: 'Métricas' }
+interface NavigationItem {
+  id: TabType;
+  icon: LucideIcon;
+  label: string;
+}
+
+const getNavigationItems = (userRole: string | null, isDemo: boolean): NavigationItem[] => {
+  const items: NavigationItem[] = [
+    { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { id: 'evolucion', icon: TrendingUp, label: 'Evolución' },
+    { id: 'empresas', icon: Building2, label: 'Métricas' }
   ];
 
   if (userRole === 'admin' && !isDemo) {
     items.push(
-      { id: 'directorio', icon: '📋', label: 'Directorio' },
-      { id: 'ingesta', icon: '📥', label: 'Ingesta PDF' },
-      { id: 'usuarios', icon: '👥', label: 'Usuarios' }
+      { id: 'directorio', icon: ClipboardList, label: 'Directorio' },
+      { id: 'ingesta', icon: FileUp, label: 'Ingesta PDF' },
+      { id: 'usuarios', icon: UsersRound, label: 'Usuarios' }
     );
   }
 
@@ -68,11 +85,28 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange, isColla
                 title={isCollapsed ? item.label : undefined}
                 aria-current={currentTab === item.id ? 'page' : undefined}
               >
-                <span className="nav-item-icon" aria-hidden="true">{item.icon}</span>
+                <span className="nav-item-icon" aria-hidden="true">
+                  <item.icon size={18} strokeWidth={1.8} />
+                </span>
                 <span className="nav-label">{item.label}</span>
               </button>
             </li>
           ))}
+          <li className="nav-links-separator">
+            <a
+              className="nav-item"
+              href="https://tracksim-zero.web.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="TrackSIM PRO"
+              title={isCollapsed ? 'TrackSIM PRO' : undefined}
+            >
+              <span className="nav-item-icon" aria-hidden="true">
+                <FileText size={18} strokeWidth={1.8} />
+              </span>
+              <span className="nav-label">TrackSIM PRO</span>
+            </a>
+          </li>
         </ul>
       </nav>
 
