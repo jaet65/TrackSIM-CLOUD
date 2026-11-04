@@ -6,7 +6,7 @@ export const BrandLogo: React.FC = () => {
 
   return (
     <img
-      src={theme === 'light' ? '/Logo%20NN.png' : '/Logo.png'}
+      src={theme === 'light' ? '/Logo%20NN.svg' : '/Logo.png'}
       alt="TrackSIM Logo"
       className="brand-logo-img"
     />

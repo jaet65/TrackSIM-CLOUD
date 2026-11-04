@@ -216,7 +216,6 @@ textarea {
   background: var(--bg-surface);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -230,6 +229,24 @@ textarea {
   flex-basis: var(--sidebar-collapsed-width);
   width: var(--sidebar-collapsed-width);
   padding-inline: 0.65rem;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.65rem;
+  min-height: 42px;
+  margin-bottom: 0.5rem;
+  overflow: hidden;
+}
+
+.navbar.is-collapsed .sidebar-brand {
+  justify-content: center;
+}
+
+.sidebar-brand .brand-text {
+  white-space: nowrap;
 }
 
 .sidebar-toggle {
@@ -256,9 +273,9 @@ textarea {
   border-color: var(--border-glow);
 }
 
-.brand-icon {
-  width: 42px !important;
-  height: 42px !important;
+.navbar .brand-icon {
+  width: 52px !important;
+  height: 52px !important;
   border-radius: var(--radius-sm);
   background: transparent;
   display: flex;
@@ -295,6 +312,11 @@ textarea {
   font-weight: 600;
   display: block;
   margin-top: -1px;
+}
+
+.app-topbar .brand-badge {
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .nav-links {
@@ -636,8 +658,12 @@ textarea {
     gap: 0.5rem;
   }
 
-  .app-topbar .brand-text {
-    display: none;
+  .app-topbar .brand-text h1 {
+    font-size: 0.95rem;
+  }
+
+  .app-topbar .brand-text span {
+    font-size: 0.55rem;
   }
 
   .topbar-actions {

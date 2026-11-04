@@ -333,7 +333,7 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   <img
-                    src="/Logo%20NN.png"
+                    src="/Logo%20NN.svg"
                     alt="TrackSIM Logo"
                     style={{
                       height: '38px',

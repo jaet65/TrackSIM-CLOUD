@@ -48,24 +48,54 @@ describe('Navbar component', () => {
     const NavbarHarness: React.FC = () => {
       const [isCollapsed, setIsCollapsed] = React.useState(true);
       return (
-        <Navbar
-          currentTab={currentTab}
-          onTabChange={mockOnTabChange}
-          isCollapsed={isCollapsed}
-          onCollapsedChange={setIsCollapsed}
-        />
+        <>
+          <Navbar
+            currentTab={currentTab}
+            onTabChange={mockOnTabChange}
+            isCollapsed={isCollapsed}
+            onCollapsedChange={setIsCollapsed}
+          />
+          <AppHeader isCollapsed={isCollapsed} />
+        </>
       );
     };
 
     return render(
       <ThemeProvider>
-        <>
-          <NavbarHarness />
-          <AppHeader />
-        </>
+        <NavbarHarness />
       </ThemeProvider>
     );
   };
+
+  it('debe mover el nombre de marca al sidebar cuando la navegación se despliega', () => {
+    vi.spyOn(AuthContext, 'useAuth').mockReturnValue({
+      user: { displayName: 'Operador Test', email: 'op@demo.com' } as any,
+      userRole: 'viewer',
+      allowedCompanies: ['Transportes Demo'],
+      isDemo: false,
+      profile: null,
+      loading: false,
+      loginWithGoogle: vi.fn(),
+      loginWithEmail: vi.fn(),
+      registerWithEmail: vi.fn(),
+      resetPassword: vi.fn(),
+      reauthenticateForMassDelete: vi.fn(),
+      logout: vi.fn()
+    });
+
+    renderNavbar('dashboard');
+
+    const sidebar = document.querySelector('.navbar');
+    expect(sidebar?.querySelector('.brand-logo-img')).toBeInTheDocument();
+    expect(document.querySelector('.app-topbar .brand-text')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expandir navegación' }));
+
+    expect(sidebar).toHaveClass('is-expanded');
+    expect(sidebar?.querySelector('.brand-text')).toHaveTextContent('TrackSIM Cloud');
+    expect(sidebar?.querySelector('.brand-text span')).not.toBeInTheDocument();
+    expect(document.querySelector('.app-topbar .brand-text')).not.toBeInTheDocument();
+  });
 
   it('debe renderizar pestañas básicas para rol lector y ocultar pestañas de admin', () => {
     vi.spyOn(AuthContext, 'useAuth').mockReturnValue({
@@ -173,7 +203,7 @@ describe('Navbar component', () => {
     renderNavbar('dashboard');
     expect(document.documentElement).toHaveAttribute('data-theme', 'light');
     expect(window.localStorage.getItem('tracksim-theme')).toBe('light');
-    expect(screen.getByAltText('TrackSIM Logo')).toHaveAttribute('src', '/Logo%20NN.png');
+    expect(screen.getByAltText('TrackSIM Logo')).toHaveAttribute('src', '/Logo%20NN.svg');
     fireEvent.click(screen.getByRole('button', { name: 'Cambiar a tema oscuro' }));
 
     expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
@@ -182,7 +212,7 @@ describe('Navbar component', () => {
 
     expect(document.documentElement).toHaveAttribute('data-theme', 'light');
     expect(window.localStorage.getItem('tracksim-theme')).toBe('light');
-    expect(screen.getByAltText('TrackSIM Logo')).toHaveAttribute('src', '/Logo%20NN.png');
+    expect(screen.getByAltText('TrackSIM Logo')).toHaveAttribute('src', '/Logo%20NN.svg');
     expect(screen.getByRole('button', { name: 'Cambiar a tema oscuro' })).toHaveAttribute('aria-pressed', 'true');
   });
 

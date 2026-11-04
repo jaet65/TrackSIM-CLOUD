@@ -44,6 +44,18 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange, isColla
 
   return (
     <aside className={`navbar no-print ${isCollapsed ? 'is-collapsed' : 'is-expanded'}`}>
+      <div className="sidebar-brand">
+        <div className="brand-icon">
+          <BrandLogo />
+        </div>
+        {!isCollapsed && (
+          <div className="brand-text">
+            <h1>TrackSIM</h1>
+            <span>Cloud Analytics</span>
+          </div>
+        )}
+      </div>
+
       <nav aria-label="Navegación principal">
         <ul className="nav-links">
           {navigationItems.map((item) => (
@@ -78,7 +90,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange, isColla
   );
 };
 
-export const AppHeader: React.FC = () => {
+export const AppHeader: React.FC<{ isCollapsed: boolean }> = ({ isCollapsed }) => {
   const { user, userRole, allowedCompanies, profile, logout, isDemo } = useAuth();
   const { companies, selectedCompany, setSelectedCompany } = useData();
   const limitedCompany =
@@ -88,15 +100,14 @@ export const AppHeader: React.FC = () => {
 
   return (
     <header className="app-topbar no-print">
-      <div className="brand-badge">
-        <div className="brand-icon">
-          <BrandLogo />
+      {isCollapsed && (
+        <div className="brand-badge">
+          <div className="brand-text">
+            <h1>TrackSIM</h1>
+            <span>Cloud Analytics</span>
+          </div>
         </div>
-        <div className="brand-text">
-          <h1>TrackSIM</h1>
-          <span>Cloud Analytics</span>
-        </div>
-      </div>
+      )}
 
       <div className="topbar-actions">
         {!isDemo && (userRole === 'admin' ? (

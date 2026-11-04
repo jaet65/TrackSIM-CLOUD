@@ -123,7 +123,7 @@ const MainLayout: React.FC = () => {
         onCollapsedChange={setIsSidebarCollapsed}
       />
       <div className="app-content">
-        <AppHeader />
+        <AppHeader isCollapsed={isSidebarCollapsed} />
         <main
           className="main-content"
           style={currentTab === 'directorio' || currentTab === 'usuarios' || currentTab === 'ingesta' ? { maxWidth: '100%', padding: '1.5rem 2rem' } : undefined}
