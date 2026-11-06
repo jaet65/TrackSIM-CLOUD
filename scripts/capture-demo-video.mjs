@@ -158,9 +158,6 @@ try {
     await delay(1_500);
 
     await page.getByRole('button', { name: /Flota \/ Empresa/ }).click();
-    await delay(1_500);
-    const fleetSelector = page.locator('select').first();
-    await selectOptionMatching(fleetSelector, 'Transportes Horizonte');
     await delay(2_000);
     await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
     await delay(5_000);
@@ -168,12 +165,31 @@ try {
     await delay(3_500);
 
     await clickNavigation(page, 'Métricas');
-    const companySelector = page.locator('.metrics-filter-bar select').first();
-    await selectOptionMatching(companySelector, 'Transportes Horizonte');
     await delay(2_000);
-    await delay(4_000);
+    await delay(3_000);
+
+    // Modal de Reporte Ejecutivo Single-Page (1 Página)
+    const singlePageBtn = page.locator('.company-single-page-btn');
+    if (await singlePageBtn.count() > 0) {
+      await singlePageBtn.click();
+      const singlePageDialog = page.locator('.single-page-modal-dialog');
+      await singlePageDialog.waitFor({ state: 'visible' });
+      await delay(3_000);
+      const singlePageScroll = singlePageDialog.locator('.single-page-scroll-wrapper');
+      if (await singlePageScroll.count() > 0) {
+        await smoothScrollElement(singlePageScroll, 480, 2_000);
+        await delay(2_500);
+        await smoothScrollElement(singlePageScroll, -480, 1_500);
+        await delay(1_500);
+      }
+      await singlePageDialog.getByRole('button', { name: 'Cerrar' }).click();
+      await delay(1_500);
+    }
+
     await smoothScrollPage(page, 780, 3_500);
     await delay(3_000);
+
+    // Desplazamiento y visualización de Rendimiento en Ejercicios
     await smoothScrollPage(page, 620, 3_000);
     await delay(2_500);
 
