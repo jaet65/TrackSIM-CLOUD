@@ -732,9 +732,12 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
               className="filter-select"
               value={selectedYear}
               onChange={(e) => {
-                setSelectedYear(e.target.value);
-                setRankingPage(1);
-                setDriversPage(1);
+                const nextYear = e.target.value;
+                React.startTransition(() => {
+                  setSelectedYear(nextYear);
+                  setRankingPage(1);
+                  setDriversPage(1);
+                });
               }}
               style={{
                 width: '100%',
@@ -935,38 +938,44 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         onClose={() => setViewReport(null)}
       />
       {/* Modal Reporte Single-Page PDF Ejecutivo */}
-      <CompanySinglePageReportModal
-        isOpen={isSinglePageReportOpen}
-        onClose={() => setIsSinglePageReportOpen(false)}
-        comp={comp}
-        selectedYear={selectedYear}
-        periodText={periodText}
-        conductoresRecurrentes={conductoresRecurrentes}
-        pctRecurrentes={pctRecurrentes}
-        operadoresConHistorialPrevio={operadoresConHistorialPrevio}
-        exerciseStats={exerciseStats}
-        topConductores={rankingList}
-        allEvaluations={evaluationsByYear}
-      />
-      <CompanyReportModal
-        isOpen={isCompanyReportOpen}
-        onClose={() => setIsCompanyReportOpen(false)}
-        comp={comp}
-        selectedYear={selectedYear}
-        periodText={periodText}
-      />
+      {isSinglePageReportOpen && (
+        <CompanySinglePageReportModal
+          isOpen={isSinglePageReportOpen}
+          onClose={() => setIsSinglePageReportOpen(false)}
+          comp={comp}
+          selectedYear={selectedYear}
+          periodText={periodText}
+          conductoresRecurrentes={conductoresRecurrentes}
+          pctRecurrentes={pctRecurrentes}
+          operadoresConHistorialPrevio={operadoresConHistorialPrevio}
+          exerciseStats={exerciseStats}
+          topConductores={rankingList}
+          allEvaluations={evaluationsByYear}
+        />
+      )}
+      {isCompanyReportOpen && (
+        <CompanyReportModal
+          isOpen={isCompanyReportOpen}
+          onClose={() => setIsCompanyReportOpen(false)}
+          comp={comp}
+          selectedYear={selectedYear}
+          periodText={periodText}
+        />
+      )}
       {/* Modal Generador de Diplomas Oficiales */}
-      <CompanyDiplomasModal
-        isOpen={isDiplomasOpen}
-        onClose={() => {
-          setIsDiplomasOpen(false);
-          setSelectedDiplomaDriver(undefined);
-        }}
-        comp={comp}
-        selectedYear={selectedYear}
-        periodText={periodText}
-        initialDriverName={selectedDiplomaDriver}
-      />
+      {isDiplomasOpen && (
+        <CompanyDiplomasModal
+          isOpen={isDiplomasOpen}
+          onClose={() => {
+            setIsDiplomasOpen(false);
+            setSelectedDiplomaDriver(undefined);
+          }}
+          comp={comp}
+          selectedYear={selectedYear}
+          periodText={periodText}
+          initialDriverName={selectedDiplomaDriver}
+        />
+      )}
     </div>
   );
 };

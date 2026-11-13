@@ -82,6 +82,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [selectedCompany, setSelectedCompany] = useState<string>('all');
   const [selectedDriverName, setSelectedDriverName] = useState<string>('');
   const [searchFilter, setSearchFilter] = useState<string>('');
+  const isFetchingRef = useRef(false);
 
   // Descarga restringida: los no-admin consultan solo sus empresas (las reglas de Firestore lo exigen)
   const isUnrestricted = userRole === 'admin' || allowedCompanies.includes('all');
@@ -106,6 +107,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setInitialLoaded(true);
       return;
     }
+
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     
     // Esperar la lectura del caché en IndexedDB y validar que corresponde al alcance actual (uid + empresas)
     await ensureCache();
@@ -157,6 +161,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         console.log(`[Firestore Sync] ${snapUpdates.docs.length} documentos nuevos/modificados y ${snapDeletions.docs.length} eliminaciones recibidas.`);
 
+        // Optimización clave: Si no hubo documentos nuevos, modificados ni eliminados,
+        // no re-ordenar miles de elementos ni disparar re-renderizados en cadena ni reescribir IndexedDB.
+        if (snapUpdates.docs.length === 0 && snapDeletions.docs.length === 0) {
+          const nowIso = new Date().toISOString();
+          setLastSyncTime(nowIso);
+          if (cacheRef.current) {
+            cacheRef.current.syncTime = nowIso;
+            void saveEvalCache(cacheRef.current);
+          }
+          return;
+        }
+
         if (snapUpdates.docs.length > 0) {
           snapUpdates.docs.forEach((d: any) => {
             itemsMap.set(d.id, { id: d.id, ...d.data() } as Evaluation);
@@ -207,6 +223,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error sincronizando evaluaciones de Firestore:', err);
       // Mantener los datos locales existentes
     } finally {
+      isFetchingRef.current = false;
       setLoading(false);
       setIsSyncing(false);
       setInitialLoaded(true);
