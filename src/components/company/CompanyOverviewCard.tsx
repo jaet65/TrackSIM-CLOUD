@@ -10,6 +10,7 @@ interface CompanyOverviewCardProps {
   operadoresConHistorialPrevio?: { count: number; pct: string };
   onOpenSinglePageReport?: () => void;
   onOpenCompanyReport?: () => void;
+  onOpenDiplomas?: () => void;
 }
 
 export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
@@ -20,7 +21,8 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
   availableYears = [],
   operadoresConHistorialPrevio,
   onOpenSinglePageReport,
-  onOpenCompanyReport
+  onOpenCompanyReport,
+  onOpenDiplomas
 }) => {
   // Texto descriptivo del periodo / años contemplados
   const periodText = React.useMemo(() => {
@@ -117,6 +119,32 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
 
         {/* Acciones Ejecutivas: Imprimir / Generar PDF */}
         <div className="no-print" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {onOpenDiplomas && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm company-diplomas-btn"
+              onClick={onOpenDiplomas}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                padding: '0.5rem 0.95rem',
+                borderRadius: '8px',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                border: '1px solid rgba(249, 115, 22, 0.4)',
+                background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.18), rgba(234, 88, 12, 0.28))',
+                color: '#fb923c',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                boxShadow: 'var(--shadow-card)'
+              }}
+              title="Generar diplomas oficiales para los operadores de la empresa y año seleccionados"
+            >
+              <span>🎓</span>
+              <span>Diplomas</span>
+            </button>
+          )}
           {onOpenSinglePageReport && (
             <button
               type="button"

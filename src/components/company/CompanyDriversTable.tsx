@@ -25,6 +25,7 @@ interface CompanyDriversTableProps {
   selectedYear?: string;
   onSelectDriverName: (name: string) => void;
   onNavigate?: (tab: 'dashboard' | 'evolucion' | 'empresas' | 'directorio' | 'ingesta' | 'usuarios') => void;
+  onOpenDriverDiploma?: (driverName: string) => void;
 }
 
 export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
@@ -46,7 +47,8 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
   comp,
   selectedYear,
   onSelectDriverName,
-  onNavigate
+  onNavigate,
+  onOpenDriverDiploma
 }) => {
   const [statusFilter, setStatusFilter] = useState<StatusFilterOption>('all');
 
@@ -691,6 +693,32 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
                           <span>📄</span>
                           <span>Reporte</span>
                         </button>
+
+                        {onOpenDriverDiploma && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenDriverDiploma(c.nombre)}
+                            className="btn btn-secondary btn-sm"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '0.35rem',
+                              padding: '0.32rem 0.6rem',
+                              borderRadius: '7px',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              background: 'rgba(249, 115, 22, 0.12)',
+                              borderColor: 'rgba(249, 115, 22, 0.35)',
+                              color: '#fb923c',
+                              width: '100%'
+                            }}
+                            title={`Generar diploma oficial para ${c.nombre}`}
+                          >
+                            <span>🎓</span>
+                            <span>Diploma</span>
+                          </button>
+                        )}
 
                         {c.totalEvaluaciones > 1 && (
                           <button

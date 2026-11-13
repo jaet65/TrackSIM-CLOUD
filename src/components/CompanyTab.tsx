@@ -8,6 +8,7 @@ import { ReportDetailModal } from './ReportDetailModal';
 import { CompanyOverviewCard } from './company/CompanyOverviewCard';
 import { CompanySinglePageReportModal } from './company/CompanySinglePageReportModal';
 import { CompanyReportModal } from './company/CompanyReportModal';
+import { CompanyDiplomasModal } from './company/CompanyDiplomasModal';
 import { CompanyRankingChartCard } from './company/CompanyRankingChartCard';
 import { CompanyDriversTable, CompanySortKey } from './company/CompanyDriversTable';
 import { Bar, Line } from 'react-chartjs-2';
@@ -60,6 +61,8 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
   const [viewReport, setViewReport] = useState<any | null>(null);
   const [isSinglePageReportOpen, setIsSinglePageReportOpen] = useState(false);
   const [isCompanyReportOpen, setIsCompanyReportOpen] = useState(false);
+  const [isDiplomasOpen, setIsDiplomasOpen] = useState(false);
+  const [selectedDiplomaDriver, setSelectedDiplomaDriver] = useState<string | undefined>(undefined);
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -766,6 +769,10 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         operadoresConHistorialPrevio={operadoresConHistorialPrevio}
         onOpenSinglePageReport={() => setIsSinglePageReportOpen(true)}
         onOpenCompanyReport={() => setIsCompanyReportOpen(true)}
+        onOpenDiplomas={() => {
+          setSelectedDiplomaDriver(undefined);
+          setIsDiplomasOpen(true);
+        }}
       />
 
       {/* Rendimiento Promedio en Ejercicios (Solo ejercicios realizados por la empresa) */}
@@ -916,6 +923,10 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         selectedYear={selectedYear}
         onSelectDriverName={setSelectedDriverName}
         onNavigate={onNavigate}
+        onOpenDriverDiploma={(driverName) => {
+          setSelectedDiplomaDriver(driverName);
+          setIsDiplomasOpen(true);
+        }}
       />
 
       {/* Modal de Detalle de Reporte Unificado */}
@@ -943,6 +954,18 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         comp={comp}
         selectedYear={selectedYear}
         periodText={periodText}
+      />
+      {/* Modal Generador de Diplomas Oficiales */}
+      <CompanyDiplomasModal
+        isOpen={isDiplomasOpen}
+        onClose={() => {
+          setIsDiplomasOpen(false);
+          setSelectedDiplomaDriver(undefined);
+        }}
+        comp={comp}
+        selectedYear={selectedYear}
+        periodText={periodText}
+        initialDriverName={selectedDiplomaDriver}
       />
     </div>
   );
