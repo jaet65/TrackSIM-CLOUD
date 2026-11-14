@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  filterZeroCloudExportGroups,
   getZeroGroupImportStatus,
   mapZeroExportEvaluation,
   parseZeroCloudExportGroup
@@ -42,6 +43,23 @@ const evaluationRecord = {
 };
 
 describe('ZERO export contract', () => {
+  it('filters groups by name, folio, or ID without depending on accents or letter case', () => {
+    const groups = [
+      parseZeroCloudExportGroup('group-2026-01', groupRecord),
+      parseZeroCloudExportGroup('group-2026-02', {
+        ...groupRecord,
+        groupId: 'group-2026-02',
+        groupName: 'Capacitación de diciembre',
+        groupFolio: 'GRP-2026-12'
+      })
+    ];
+
+    expect(filterZeroCloudExportGroups(groups, 'CAPACITACION')).toEqual([groups[1]]);
+    expect(filterZeroCloudExportGroups(groups, 'grp-2026-11')).toEqual([groups[0]]);
+    expect(filterZeroCloudExportGroups(groups, '2026-02')).toEqual([groups[1]]);
+    expect(filterZeroCloudExportGroups(groups, '  ')).toEqual(groups);
+  });
+
   it('detects fully imported, partially imported, and staged groups', () => {
     const group = parseZeroCloudExportGroup('group-2026-01', {
       ...groupRecord,

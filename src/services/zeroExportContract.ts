@@ -22,6 +22,21 @@ export interface ZeroGroupImportStatus {
   isStaged: boolean;
 }
 
+export function filterZeroCloudExportGroups(
+  groups: readonly ZeroCloudExportGroup[],
+  search: string
+): ZeroCloudExportGroup[] {
+  const normalize = (value: string) =>
+    value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
+  const query = normalize(search.trim());
+  if (!query) return [...groups];
+
+  return groups.filter((group) =>
+    [group.groupName, group.groupFolio, group.id]
+      .some((value) => value && normalize(value).includes(query))
+  );
+}
+
 type ImportIdentity = Pick<Evaluation, 'id' | 'origen' | 'zeroGroupId' | 'folioGrupo'> & { folio?: string };
 
 function belongsToZeroGroup(

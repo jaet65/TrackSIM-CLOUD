@@ -7,7 +7,22 @@ import { logAudit } from '../services/auditLog';
 import { shortInstructorName } from '../services/instructorName';
 import { filterDuplicateEvaluationsByFolio, prepareZeroGroupRefresh } from '../services/evaluationDedupe';
 import type { StagedEvaluation } from '../types';
-import { getZeroGroupImportStatus, type ZeroCloudExportGroup } from '../services/zeroExportContract';
+import {
+  filterZeroCloudExportGroups,
+  getZeroGroupImportStatus,
+  type ZeroCloudExportGroup
+} from '../services/zeroExportContract';
+
+type ZeroGroupListFilter = 'all' | 'pending' | 'review' | 'imported';
+
+const ZERO_GROUP_PAGE_SIZE = 20;
+
+function formatZeroGroupDate(value?: string): string {
+  if (!value) return 'Sin fecha';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return 'Sin fecha';
+  return new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+}
 
 export const IngestaTab: React.FC = () => {
   const { userRole, profile, user } = useAuth();
@@ -33,6 +48,9 @@ export const IngestaTab: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [zeroExports, setZeroExports] = useState<ZeroCloudExportGroup[]>([]);
   const [selectedZeroExportId, setSelectedZeroExportId] = useState('');
+  const [zeroGroupSearch, setZeroGroupSearch] = useState('');
+  const [zeroGroupListFilter, setZeroGroupListFilter] = useState<ZeroGroupListFilter>('all');
+  const [zeroGroupPage, setZeroGroupPage] = useState(1);
   const [zeroConnectedEmail, setZeroConnectedEmail] = useState('');
   const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
   const [batchEmpresa, setBatchEmpresa] = useState('');
@@ -69,6 +87,9 @@ export const IngestaTab: React.FC = () => {
       const { connectToZeroAndListExports } = await import('../services/zeroFirestore');
       const exports = await connectToZeroAndListExports(user);
       setZeroExports(exports);
+      setZeroGroupSearch('');
+      setZeroGroupListFilter('all');
+      setZeroGroupPage(1);
       void loadGroupFolios(exports, user);
       setSelectedZeroExportId((current) =>
         exports.some((entry) => entry.id === current) ? current : exports[0]?.id || ''
@@ -381,6 +402,29 @@ export const IngestaTab: React.FC = () => {
   };
 
   const selectedZeroExport = zeroExports.find((entry) => entry.id === selectedZeroExportId);
+  const filteredZeroExports = filterZeroCloudExportGroups(zeroExports, zeroGroupSearch);
+  const zeroExportRows = filteredZeroExports.map((group) => ({
+    group,
+    status: getZeroGroupImportStatus(group, evaluations, stagingFiles, zeroGroupFolios[group.id])
+  }));
+  const zeroGroupFilterCounts = {
+    all: zeroExportRows.length,
+    pending: zeroExportRows.filter(({ status }) => status.remainingCount > 0).length,
+    review: zeroExportRows.filter(({ status }) => status.isStaged).length,
+    imported: zeroExportRows.filter(({ status }) => status.isImported).length
+  };
+  const visibleZeroExportRows = zeroExportRows.filter(({ status }) => {
+    if (zeroGroupListFilter === 'pending') return status.remainingCount > 0;
+    if (zeroGroupListFilter === 'review') return status.isStaged;
+    if (zeroGroupListFilter === 'imported') return status.isImported;
+    return true;
+  });
+  const zeroGroupPageCount = Math.max(1, Math.ceil(visibleZeroExportRows.length / ZERO_GROUP_PAGE_SIZE));
+  const currentZeroGroupPage = Math.min(zeroGroupPage, zeroGroupPageCount);
+  const paginatedZeroExportRows = visibleZeroExportRows.slice(
+    (currentZeroGroupPage - 1) * ZERO_GROUP_PAGE_SIZE,
+    currentZeroGroupPage * ZERO_GROUP_PAGE_SIZE
+  );
   const selectedZeroImportStatus = selectedZeroExport
     ? getZeroGroupImportStatus(selectedZeroExport, evaluations, stagingFiles, zeroGroupFolios[selectedZeroExport.id])
     : null;
@@ -475,72 +519,212 @@ export const IngestaTab: React.FC = () => {
             >
               {zeroConnectedEmail ? '↻ Actualizar grupos' : '🔐 Conectar con ZERO'}
             </button>
-            {zeroExports.length > 0 && (
-              <>
-                <select
-                  aria-label="Grupo congelado exportado desde ZERO"
-                  value={selectedZeroExportId}
-                  onChange={(event) => setSelectedZeroExportId(event.currentTarget.value)}
-                  disabled={isProcessing || isSaving}
-                  style={{ maxWidth: '360px', padding: '0.55rem 0.7rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: 'var(--text-main)' }}
-                >
-                  {zeroExports.map((entry) => (
-                    (() => {
-                      const status = getZeroGroupImportStatus(entry, evaluations, stagingFiles, zeroGroupFolios[entry.id]);
-                      const statusLabel = status.isImported
-                        ? ' · Ya importado'
-                        : status.remainingCount === 0
-                          ? ' · En revisión'
-                          : status.importedCount > 0
-                            ? ` · ${status.importedCount}/${entry.expectedCount} importados`
-                            : '';
-                      return (
-                        <option key={entry.id} value={entry.id}>
-                          {entry.groupFolio ? `${entry.groupFolio} · ` : ''}{entry.groupName} ({entry.expectedCount}){statusLabel}
-                        </option>
-                      );
-                    })()
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleImportZeroExport}
-                  disabled={isProcessing || isSaving || !selectedZeroExportId || Boolean(selectedZeroImportStatus?.isImported || selectedZeroImportStatus?.isStaged)}
-                >
-                  {selectedZeroImportStatus?.isImported
-                    ? 'Ya importado'
-                    : selectedZeroImportStatus?.isStaged
-                      ? 'En bandeja de revisión'
-                      : selectedZeroImportStatus?.importedCount
-                        ? `Importar pendientes (${selectedZeroImportStatus.remainingCount})`
-                        : 'Importar expedientes'}
-                </button>
-                {selectedZeroImportStatus?.isImported && (
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={handleRefreshZeroImport}
-                    disabled={isProcessing || isSaving || stagingFiles.length > 0}
-                    title="Actualizar las notas y datos desde ZERO conservando empresa, sede y anotaciones locales"
-                  >
-                    ↻ Actualizar desde ZERO
-                  </button>
-                )}
-              </>
-            )}
           </div>
         </div>
-        {selectedZeroExport && selectedZeroImportStatus && (
-          <p style={{ margin: '0.85rem 0 0', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-            {selectedZeroImportStatus.isImported
-              ? `Este grupo ya tiene ${selectedZeroImportStatus.importedCount} de ${selectedZeroExport.expectedCount} expedientes guardados en CLOUD.`
-              : selectedZeroImportStatus.remainingCount === 0
-                ? `Todos los expedientes ya están en revisión: ${selectedZeroImportStatus.importedCount} guardados y ${selectedZeroImportStatus.stagedCount} pendientes de guardar.`
-                : selectedZeroImportStatus.importedCount > 0 || selectedZeroImportStatus.stagedCount > 0
-                  ? `Detectados ${selectedZeroImportStatus.importedCount} ya guardados y ${selectedZeroImportStatus.stagedCount} en revisión; faltan ${selectedZeroImportStatus.remainingCount} de ${selectedZeroExport.expectedCount}.`
-                  : `Los ${selectedZeroExport.expectedCount} expedientes todavía no aparecen importados en CLOUD.`}
-          </p>
+        {zeroExports.length > 0 && (
+          <div style={{ marginTop: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.75rem' }}>
+              <input
+                type="search"
+                aria-label="Buscar grupos de ZERO"
+                placeholder="Buscar por nombre, folio o ID..."
+                value={zeroGroupSearch}
+                onChange={(event) => {
+                  setZeroGroupSearch(event.currentTarget.value);
+                  setSelectedZeroExportId('');
+                  setZeroGroupPage(1);
+                }}
+                disabled={isProcessing || isSaving}
+                style={{ width: '320px', maxWidth: '100%', padding: '0.6rem 0.75rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: 'var(--text-main)' }}
+              />
+              <span aria-live="polite" style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                {visibleZeroExportRows.length} de {zeroExportRows.length} resultados · {zeroExports.length} grupos
+              </span>
+            </div>
+
+            <div role="group" aria-label="Filtrar grupos por estado" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              {([
+                ['all', 'Todos'],
+                ['pending', 'Pendientes'],
+                ['review', 'En revisión'],
+                ['imported', 'Importados']
+              ] as const).map(([filter, label]) => (
+                <button
+                  key={filter}
+                  type="button"
+                  className={`btn btn-sm ${zeroGroupListFilter === filter ? 'btn-primary' : 'btn-secondary'}`}
+                  aria-pressed={zeroGroupListFilter === filter}
+                  onClick={() => {
+                    setZeroGroupListFilter(filter);
+                    setSelectedZeroExportId('');
+                    setZeroGroupPage(1);
+                  }}
+                  disabled={isProcessing || isSaving}
+                >
+                  {label} ({zeroGroupFilterCounts[filter]})
+                </button>
+              ))}
+            </div>
+
+            {visibleZeroExportRows.length > 0 ? (
+              <>
+                <div style={{ overflowX: 'auto', border: '1px solid var(--border-subtle)', borderRadius: '8px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '620px', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ color: 'var(--text-muted)', fontSize: '0.78rem', borderBottom: '1px solid var(--border-subtle)' }}>
+                        <th scope="col" style={{ padding: '0.7rem', fontWeight: 600 }}>Grupo</th>
+                        <th scope="col" aria-sort="descending" style={{ padding: '0.7rem', fontWeight: 600 }}>Fecha</th>
+                        <th scope="col" style={{ padding: '0.7rem', fontWeight: 600 }}>Expedientes</th>
+                        <th scope="col" style={{ padding: '0.7rem', fontWeight: 600 }}>Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedZeroExportRows.map(({ group, status }) => {
+                        const isSelected = selectedZeroExportId === group.id;
+                        const stateLabel = status.isImported
+                          ? 'Importado'
+                          : status.isStaged
+                            ? 'En revisión'
+                            : status.importedCount > 0 || status.stagedCount > 0
+                              ? 'Parcial'
+                              : 'Pendiente';
+                        const stateColor = status.isImported
+                          ? 'var(--success)'
+                          : status.isStaged
+                            ? 'var(--primary)'
+                            : status.importedCount > 0 || status.stagedCount > 0
+                              ? 'var(--warning)'
+                              : 'var(--text-muted)';
+                        const stateBackground = status.isImported
+                          ? 'var(--success-bg)'
+                          : status.isStaged
+                            ? 'var(--primary-glow)'
+                            : status.importedCount > 0 || status.stagedCount > 0
+                              ? 'var(--warning-bg)'
+                              : 'transparent';
+                        const date = group.completedAt || group.closedAt;
+
+                        return (
+                          <tr
+                            key={group.id}
+                            style={{
+                              background: isSelected ? 'var(--bg-card-hover)' : 'transparent',
+                              borderBottom: '1px solid var(--border-subtle)'
+                            }}
+                          >
+                            <td style={{ padding: '0.65rem 0.7rem' }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', cursor: 'pointer' }}>
+                                <input
+                                  type="radio"
+                                  name="selected-zero-group"
+                                  aria-label={`Seleccionar grupo ${group.groupName}`}
+                                  checked={isSelected}
+                                  onChange={() => setSelectedZeroExportId(group.id)}
+                                  disabled={isProcessing || isSaving}
+                                />
+                                <span>
+                                  <strong style={{ display: 'block', fontSize: '0.88rem' }}>{group.groupName}</strong>
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '0.76rem' }}>
+                                    {group.groupFolio || group.id}
+                                  </span>
+                                </span>
+                              </label>
+                            </td>
+                            <td style={{ padding: '0.65rem 0.7rem', whiteSpace: 'nowrap', fontSize: '0.82rem' }}>
+                              {formatZeroGroupDate(date)}
+                            </td>
+                            <td style={{ padding: '0.65rem 0.7rem', whiteSpace: 'nowrap', fontSize: '0.82rem' }}>
+                              {status.importedCount + status.stagedCount}/{group.expectedCount}
+                            </td>
+                            <td style={{ padding: '0.65rem 0.7rem', whiteSpace: 'nowrap', fontSize: '0.82rem' }}>
+                              <span style={{ display: 'inline-block', padding: '0.2rem 0.5rem', borderRadius: '999px', color: stateColor, background: stateBackground, fontSize: '0.75rem', fontWeight: 600 }}>
+                                {stateLabel}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {zeroGroupPageCount > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', marginTop: '0.75rem' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setZeroGroupPage((page) => Math.max(1, page - 1))}
+                      disabled={currentZeroGroupPage === 1}
+                    >
+                      Anterior
+                    </button>
+                    <span aria-live="polite" style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                      Página {currentZeroGroupPage} de {zeroGroupPageCount}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setZeroGroupPage((page) => Math.min(zeroGroupPageCount, page + 1))}
+                      disabled={currentZeroGroupPage === zeroGroupPageCount}
+                    >
+                      Siguiente
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p role="status" style={{ padding: '1.25rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                {filteredZeroExports.length === 0
+                  ? 'No hay grupos que coincidan con la búsqueda.'
+                  : 'No hay grupos con este estado.'}
+              </p>
+            )}
+
+            {selectedZeroExport && selectedZeroImportStatus ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginTop: '1rem', paddingTop: '0.85rem', borderTop: '1px solid var(--border-subtle)' }}>
+                <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                  <strong>{selectedZeroExport.groupName}:</strong>{' '}
+                  {selectedZeroImportStatus.isImported
+                    ? `${selectedZeroImportStatus.importedCount} de ${selectedZeroExport.expectedCount} expedientes guardados en CLOUD.`
+                    : selectedZeroImportStatus.remainingCount === 0
+                      ? `${selectedZeroImportStatus.importedCount} guardados y ${selectedZeroImportStatus.stagedCount} en revisión.`
+                      : selectedZeroImportStatus.importedCount > 0 || selectedZeroImportStatus.stagedCount > 0
+                        ? `${selectedZeroImportStatus.importedCount} guardados y ${selectedZeroImportStatus.stagedCount} en revisión; faltan ${selectedZeroImportStatus.remainingCount} de ${selectedZeroExport.expectedCount}.`
+                        : `Los ${selectedZeroExport.expectedCount} expedientes aún no aparecen importados en CLOUD.`}
+                </p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleImportZeroExport}
+                    disabled={isProcessing || isSaving || Boolean(selectedZeroImportStatus.isImported || selectedZeroImportStatus.isStaged)}
+                  >
+                    {selectedZeroImportStatus.isImported
+                      ? 'Ya importado'
+                      : selectedZeroImportStatus.isStaged
+                        ? 'En bandeja de revisión'
+                        : selectedZeroImportStatus.importedCount
+                          ? `Importar pendientes (${selectedZeroImportStatus.remainingCount})`
+                          : 'Importar expedientes'}
+                  </button>
+                  {selectedZeroImportStatus.isImported && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={handleRefreshZeroImport}
+                      disabled={isProcessing || isSaving || stagingFiles.length > 0}
+                      title="Actualizar las notas y datos desde ZERO conservando empresa, sede y anotaciones locales"
+                    >
+                      ↻ Actualizar desde ZERO
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p style={{ margin: '0.85rem 0 0', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                Selecciona un grupo de la lista para ver sus acciones.
+              </p>
+            )}
+          </div>
         )}
       </div>
       ) : (
