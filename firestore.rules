@@ -63,9 +63,9 @@ service cloud.firestore {
              ));
     }
 
-    // Evaluaciones: lectura solo de la(s) empresa(s) permitida(s), escritura solo admin
+    // Evaluaciones: lectura permitida para visualización y CRM Hub, escritura solo admin
     match /evaluaciones/{evalId} {
-      allow read: if canReadEmpresa(resource.data.empresa);
+      allow read: if true;
       allow write: if isAdmin();
     }
 
