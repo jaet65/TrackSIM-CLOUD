@@ -5,7 +5,7 @@ import { ExerciseCatalogModal } from './ExerciseCatalogModal';
 import { loadPdfJs } from '../services/pdfJsLoader';
 import { logAudit } from '../services/auditLog';
 import { shortInstructorName } from '../services/instructorName';
-import { filterDuplicateEvaluationsByFolio } from '../services/evaluationDedupe';
+import { filterDuplicateEvaluationsByFolio, prepareZeroGroupRefresh } from '../services/evaluationDedupe';
 import type { StagedEvaluation } from '../types';
 import { getZeroGroupImportStatus, type ZeroCloudExportGroup } from '../services/zeroExportContract';
 
@@ -130,6 +130,110 @@ export const IngestaTab: React.FC = () => {
       console.error('Error importando exportación de ZERO:', error);
       setFeedback({
         message: error instanceof Error ? error.message : 'No se pudo importar la exportación de ZERO.',
+        type: 'error'
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleRefreshZeroImport = async () => {
+    if (!selectedZeroExportId || !user?.email) return;
+    if (stagingFiles.length > 0) {
+      setFeedback({
+        message: 'Guarda o descarta primero el lote que está en revisión antes de actualizar un grupo importado.',
+        type: 'warning'
+      });
+      return;
+    }
+
+    const selectedGroup = zeroExports.find((entry) => entry.id === selectedZeroExportId);
+    if (!selectedGroup) {
+      setFeedback({ message: 'Selecciona un grupo exportado desde ZERO.', type: 'warning' });
+      return;
+    }
+
+    const status = getZeroGroupImportStatus(
+      selectedGroup,
+      evaluations,
+      stagingFiles,
+      zeroGroupFolios[selectedGroup.id]
+    );
+    if (!status.isImported) {
+      setFeedback({
+        message: 'El grupo debe estar completamente importado antes de actualizarlo.',
+        type: 'warning'
+      });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Se actualizarán ${status.importedCount} expedientes con la exportación más reciente de «${selectedGroup.groupName}» en ZERO. ` +
+      'Se conservarán la empresa, la sede y las anotaciones locales de CLOUD. ¿Deseas continuar?'
+    );
+    if (!confirmed) return;
+
+    setIsProcessing(true);
+    setProgress({
+      current: 0,
+      total: selectedGroup.expectedCount,
+      text: `Leyendo la exportación actualizada de ${selectedGroup.groupName} desde ZERO...`
+    });
+
+    let completed = 0;
+    try {
+      const { loadZeroExportEvaluations } = await import('../services/zeroFirestore');
+      const { group, evaluations: incoming } = await loadZeroExportEvaluations(selectedGroup.id, user);
+      const { updates, missingIds, obsoleteIds } = prepareZeroGroupRefresh(incoming, evaluations, group);
+      if (missingIds.length > 0 || obsoleteIds.length > 0) {
+        throw new Error(
+          `No se actualizó ningún expediente: la lista de CLOUD y ZERO no coincide ` +
+          `(faltantes en CLOUD: ${missingIds.length}; registros adicionales en CLOUD: ${obsoleteIds.length}).`
+        );
+      }
+
+      const { db, doc, writeBatch } = await import('../services/firebaseFirestore');
+      const chunkSize = 400;
+      for (let offset = 0; offset < updates.length; offset += chunkSize) {
+        const chunk = updates.slice(offset, offset + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach((item, index) => {
+          setProgress({
+            current: offset + index + 1,
+            total: updates.length,
+            text: `Actualizando (${offset + index + 1}/${updates.length}): ${item.conductor || item.operador}`
+          });
+          const cleanPayload = JSON.parse(JSON.stringify({
+            ...item,
+            id: item.id,
+            updatedAt: new Date().toISOString()
+          }));
+          batch.set(doc(db, 'evaluaciones', item.id), cleanPayload);
+        });
+        await batch.commit();
+        completed += chunk.length;
+      }
+
+      await reloadEvaluations();
+      setZeroExports((previous) => previous.map((entry) => entry.id === group.id ? group : entry));
+      void logAudit({
+        categoria: 'reporte',
+        accion: 'modificar',
+        cantidad: updates.length,
+        empresas: updates.map((item) => item.empresa),
+        detalle: `Actualización desde ZERO del grupo ${group.groupName}; se conservaron empresa y sede de CLOUD.`
+      });
+      setFeedback({
+        message: `Se actualizaron ${updates.length} expedientes de «${group.groupName}» con las notas vigentes de ZERO. Se conservaron empresa y sede.`,
+        type: 'success'
+      });
+    } catch (error: unknown) {
+      console.error('Error actualizando expedientes importados desde ZERO:', error);
+      const detail = error instanceof Error ? error.message : 'Error desconocido';
+      setFeedback({
+        message: completed > 0
+          ? `La actualización se detuvo después de guardar ${completed} expedientes: ${detail}`
+          : detail,
         type: 'error'
       });
     } finally {
@@ -354,6 +458,7 @@ export const IngestaTab: React.FC = () => {
             <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Importar grupo congelado desde ZERO</h3>
             <p style={{ margin: '0.25rem 0 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
               Solo lee exportaciones completas. Conecta con la misma cuenta Google corporativa verificada y asigna empresa/sede antes de guardar.
+              Para un grupo ya importado, actualiza primero la lista y luego usa «Actualizar desde ZERO»; no necesitas eliminarlo.
             </p>
             {zeroConnectedEmail && (
               <p style={{ margin: '0.35rem 0 0', color: 'var(--success)', fontSize: '0.78rem' }}>
@@ -411,6 +516,17 @@ export const IngestaTab: React.FC = () => {
                         ? `Importar pendientes (${selectedZeroImportStatus.remainingCount})`
                         : 'Importar expedientes'}
                 </button>
+                {selectedZeroImportStatus?.isImported && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={handleRefreshZeroImport}
+                    disabled={isProcessing || isSaving || stagingFiles.length > 0}
+                    title="Actualizar las notas y datos desde ZERO conservando empresa, sede y anotaciones locales"
+                  >
+                    ↻ Actualizar desde ZERO
+                  </button>
+                )}
               </>
             )}
           </div>
