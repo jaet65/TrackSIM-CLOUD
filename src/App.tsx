@@ -1,6 +1,7 @@
 import React, { lazy, Suspense } from 'react';
 import { useAuth } from './context/AuthContext';
 import { LoginScreen } from './components/LoginScreen';
+import { SystemDialogProvider } from './context/SystemDialogContext';
 
 const AuthenticatedApp = lazy(() =>
   import('./AuthenticatedApp').then((module) => ({ default: module.AuthenticatedApp }))
@@ -43,8 +44,10 @@ export const App: React.FC = () => {
   }
 
   return (
-    <Suspense fallback={<AppLoadingFallback />}>
-      <AuthenticatedApp />
-    </Suspense>
+    <SystemDialogProvider>
+      <Suspense fallback={<AppLoadingFallback />}>
+        <AuthenticatedApp />
+      </Suspense>
+    </SystemDialogProvider>
   );
 };

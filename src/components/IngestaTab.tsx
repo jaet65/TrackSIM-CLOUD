@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { ExerciseCatalogModal } from './ExerciseCatalogModal';
@@ -9,13 +9,16 @@ import { filterDuplicateEvaluationsByFolio, prepareZeroGroupRefresh } from '../s
 import type { StagedEvaluation } from '../types';
 import {
   filterZeroCloudExportGroups,
+  getZeroGroupListCategory,
   getZeroGroupImportStatus,
   type ZeroCloudExportGroup
 } from '../services/zeroExportContract';
+import { useSystemDialogs } from '../context/SystemDialogContext';
 
-type ZeroGroupListFilter = 'all' | 'pending' | 'review' | 'imported';
+type ZeroGroupListFilter = 'all' | 'pending' | 'review' | 'partial' | 'imported';
 
 const ZERO_GROUP_PAGE_SIZE = 20;
+const SUCCESS_TOAST_DURATION_MS = 3000;
 
 function formatZeroGroupDate(value?: string): string {
   if (!value) return 'Sin fecha';
@@ -25,6 +28,7 @@ function formatZeroGroupDate(value?: string): string {
 }
 
 export const IngestaTab: React.FC = () => {
+  const { showConfirm } = useSystemDialogs();
   const { userRole, profile, user } = useAuth();
   const { reloadEvaluations, evaluations } = useData();
 
@@ -57,23 +61,20 @@ export const IngestaTab: React.FC = () => {
   const [batchSede, setBatchSede] = useState('');
   const [progress, setProgress] = useState({ current: 0, total: 0, text: '' });
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'warning' | 'info' | 'error' } | null>(null);
+  const [successToastInstance, setSuccessToastInstance] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [zeroGroupFolios, setZeroGroupFolios] = useState<Record<string, ReadonlySet<string>>>({});
 
-  const loadGroupFolios = async (groups: ZeroCloudExportGroup[], expectedAdmin: NonNullable<typeof user>) => {
-    const { loadZeroExportEvaluations } = await import('../services/zeroFirestore');
-    for (const entry of groups) {
-      try {
-        const { evaluations: groupEvaluations } = await loadZeroExportEvaluations(entry.id, expectedAdmin);
-        const folios = new Set(groupEvaluations.map((item) => item.folio).filter((folio): folio is string => Boolean(folio)));
-        setZeroGroupFolios((previous) => ({ ...previous, [entry.id]: folios }));
-      } catch (error) {
-        console.warn(`No se pudieron precargar los folios del grupo ${entry.id}:`, error);
-      }
-    }
-  };
+  useEffect(() => {
+    if (feedback?.type !== 'success') return;
+    setSuccessToastInstance((instance) => instance + 1);
+    const timeoutId = window.setTimeout(() => {
+      setFeedback((current) => current === feedback ? null : current);
+    }, SUCCESS_TOAST_DURATION_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [feedback]);
 
   const handleConnectToZero = async () => {
     if (!user?.email) {
@@ -90,7 +91,6 @@ export const IngestaTab: React.FC = () => {
       setZeroGroupSearch('');
       setZeroGroupListFilter('all');
       setZeroGroupPage(1);
-      void loadGroupFolios(exports, user);
       setSelectedZeroExportId((current) =>
         exports.some((entry) => entry.id === current) ? current : exports[0]?.id || ''
       );
@@ -135,16 +135,31 @@ export const IngestaTab: React.FC = () => {
     setIsProcessing(true);
     setProgress({
       current: 0,
-      total: selectedGroup.expectedCount,
+      total: 0,
       text: `Leyendo expedientes del grupo ${selectedGroup.groupName} desde ZERO...`
     });
     try {
       const { loadZeroExportEvaluations } = await import('../services/zeroFirestore');
       const { group, evaluations: imported } = await loadZeroExportEvaluations(selectedGroup.id, user);
+      const groupFolios = new Set(imported.map((item) => item.folio).filter((folio): folio is string => Boolean(folio)));
+      setZeroGroupFolios((previous) => ({ ...previous, [group.id]: groupFolios }));
       const { fresh, duplicates } = filterDuplicateEvaluationsByFolio(imported, [...evaluations, ...stagingFiles]);
+      if (fresh.length === 0) {
+        const latestStatus = getZeroGroupImportStatus(group, evaluations, stagingFiles, groupFolios);
+        setFeedback({
+          message: latestStatus.isImported
+            ? `Todos los expedientes de ${group.groupName} ya estaban guardados en CLOUD.`
+            : latestStatus.isStaged
+              ? `Todos los expedientes de ${group.groupName} ya estaban en la bandeja temporal de esta sesión.`
+              : `No se agregaron expedientes nuevos de ${group.groupName}; ${duplicates.length} duplicado(s) ya estaban cargados o en la bandeja temporal.`,
+          type: 'info'
+        });
+        return;
+      }
+
       setStagingFiles((previous) => [...previous, ...fresh]);
       setFeedback({
-        message: `Se importaron ${fresh.length} de ${imported.length} expedientes del grupo ${group.groupName} desde ZERO.${duplicates.length > 0 ? ` ${duplicates.length} duplicado(s) omitido(s) por folio o ID.` : ''} Asigna empresa y sede antes de guardar.`,
+        message: `Se prepararon ${fresh.length} de ${imported.length} expedientes del grupo ${group.groupName} desde ZERO.${duplicates.length > 0 ? ` ${duplicates.length} duplicado(s) omitido(s) por folio o ID.` : ''} Asigna empresa y sede y confirma el guardado en CLOUD.`,
         type: duplicates.length > 0 ? 'warning' : fresh.length > 0 ? 'success' : 'info'
       });
     } catch (error: unknown) {
@@ -188,16 +203,20 @@ export const IngestaTab: React.FC = () => {
       return;
     }
 
-    const confirmed = window.confirm(
+    const confirmed = await showConfirm(
       `Se actualizarán ${status.importedCount} expedientes con la exportación más reciente de «${selectedGroup.groupName}» en ZERO. ` +
-      'Se conservarán la empresa, la sede y las anotaciones locales de CLOUD. ¿Deseas continuar?'
+      'Se conservarán la empresa, la sede y las anotaciones locales de CLOUD. ¿Deseas continuar?',
+      {
+        title: `Actualizar ${selectedGroup.groupName}`,
+        confirmLabel: 'Actualizar'
+      }
     );
     if (!confirmed) return;
 
     setIsProcessing(true);
     setProgress({
       current: 0,
-      total: selectedGroup.expectedCount,
+      total: 0,
       text: `Leyendo la exportación actualizada de ${selectedGroup.groupName} desde ZERO...`
     });
 
@@ -403,22 +422,20 @@ export const IngestaTab: React.FC = () => {
 
   const selectedZeroExport = zeroExports.find((entry) => entry.id === selectedZeroExportId);
   const filteredZeroExports = filterZeroCloudExportGroups(zeroExports, zeroGroupSearch);
-  const zeroExportRows = filteredZeroExports.map((group) => ({
-    group,
-    status: getZeroGroupImportStatus(group, evaluations, stagingFiles, zeroGroupFolios[group.id])
-  }));
+  const zeroExportRows = filteredZeroExports.map((group) => {
+    const status = getZeroGroupImportStatus(group, evaluations, stagingFiles, zeroGroupFolios[group.id]);
+    return { group, status, category: getZeroGroupListCategory(status) };
+  });
   const zeroGroupFilterCounts = {
     all: zeroExportRows.length,
-    pending: zeroExportRows.filter(({ status }) => status.remainingCount > 0).length,
-    review: zeroExportRows.filter(({ status }) => status.isStaged).length,
-    imported: zeroExportRows.filter(({ status }) => status.isImported).length
+    pending: zeroExportRows.filter(({ category }) => category === 'pending').length,
+    review: zeroExportRows.filter(({ category }) => category === 'review').length,
+    partial: zeroExportRows.filter(({ category }) => category === 'partial').length,
+    imported: zeroExportRows.filter(({ category }) => category === 'imported').length
   };
-  const visibleZeroExportRows = zeroExportRows.filter(({ status }) => {
-    if (zeroGroupListFilter === 'pending') return status.remainingCount > 0;
-    if (zeroGroupListFilter === 'review') return status.isStaged;
-    if (zeroGroupListFilter === 'imported') return status.isImported;
-    return true;
-  });
+  const visibleZeroExportRows = zeroExportRows.filter(({ category }) =>
+    zeroGroupListFilter === 'all' || category === zeroGroupListFilter
+  );
   const zeroGroupPageCount = Math.max(1, Math.ceil(visibleZeroExportRows.length / ZERO_GROUP_PAGE_SIZE));
   const currentZeroGroupPage = Math.min(zeroGroupPage, zeroGroupPageCount);
   const paginatedZeroExportRows = visibleZeroExportRows.slice(
@@ -438,15 +455,17 @@ export const IngestaTab: React.FC = () => {
       <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
         <div
           style={{
-            width: progress.total > 0 ? `${(progress.current / progress.total) * 100}%` : '0%',
+            width: progress.total > 0 ? `${(progress.current / progress.total) * 100}%` : '35%',
             height: '100%',
             background: 'linear-gradient(90deg, #38bdf8, #818cf8)',
-            transition: 'width 0.2s ease'
+            transition: 'width 0.2s ease',
+            animation: progress.total === 0 ? 'progress-indeterminate 1.4s ease-in-out infinite' : undefined
           }}
         />
       </div>
     </>
   );
+  const isSuccessToast = feedback?.type === 'success';
 
   return (
     <div className="view-section active">
@@ -502,7 +521,7 @@ export const IngestaTab: React.FC = () => {
             <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>Importar grupo congelado desde ZERO</h3>
             <p style={{ margin: '0.25rem 0 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
               Solo lee exportaciones completas. Conecta con la misma cuenta Google corporativa verificada y asigna empresa/sede antes de guardar.
-              Para un grupo ya importado, actualiza primero la lista y luego usa «Actualizar desde ZERO»; no necesitas eliminarlo.
+              Preparar un grupo no lo guarda en CLOUD: primero revisa el lote y confirma el guardado. Para un grupo ya importado, actualiza la lista y usa «Actualizar desde ZERO»; no necesitas eliminarlo.
             </p>
             {zeroConnectedEmail && (
               <p style={{ margin: '0.35rem 0 0', color: 'var(--success)', fontSize: '0.78rem' }}>
@@ -545,8 +564,9 @@ export const IngestaTab: React.FC = () => {
             <div role="group" aria-label="Filtrar grupos por estado" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
               {([
                 ['all', 'Todos'],
-                ['pending', 'Pendientes'],
-                ['review', 'En revisión'],
+                ['pending', 'Sin importar'],
+                ['review', 'Pendiente de guardar'],
+                ['partial', 'Parciales'],
                 ['imported', 'Importados']
               ] as const).map(([filter, label]) => (
                 <button
@@ -579,27 +599,27 @@ export const IngestaTab: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {paginatedZeroExportRows.map(({ group, status }) => {
+                      {paginatedZeroExportRows.map(({ group, status, category }) => {
                         const isSelected = selectedZeroExportId === group.id;
-                        const stateLabel = status.isImported
+                        const stateLabel = category === 'imported'
                           ? 'Importado'
-                          : status.isStaged
-                            ? 'En revisión'
-                            : status.importedCount > 0 || status.stagedCount > 0
+                          : category === 'review'
+                            ? 'Pendiente de guardar'
+                            : category === 'partial'
                               ? 'Parcial'
-                              : 'Pendiente';
-                        const stateColor = status.isImported
+                              : 'Sin importar';
+                        const stateColor = category === 'imported'
                           ? 'var(--success)'
-                          : status.isStaged
+                          : category === 'review'
                             ? 'var(--primary)'
-                            : status.importedCount > 0 || status.stagedCount > 0
+                            : category === 'partial'
                               ? 'var(--warning)'
                               : 'var(--text-muted)';
-                        const stateBackground = status.isImported
+                        const stateBackground = category === 'imported'
                           ? 'var(--success-bg)'
-                          : status.isStaged
+                          : category === 'review'
                             ? 'var(--primary-glow)'
-                            : status.importedCount > 0 || status.stagedCount > 0
+                            : category === 'partial'
                               ? 'var(--warning-bg)'
                               : 'transparent';
                         const date = group.completedAt || group.closedAt;
@@ -686,9 +706,9 @@ export const IngestaTab: React.FC = () => {
                   {selectedZeroImportStatus.isImported
                     ? `${selectedZeroImportStatus.importedCount} de ${selectedZeroExport.expectedCount} expedientes guardados en CLOUD.`
                     : selectedZeroImportStatus.remainingCount === 0
-                      ? `${selectedZeroImportStatus.importedCount} guardados y ${selectedZeroImportStatus.stagedCount} en revisión.`
+                      ? `${selectedZeroImportStatus.importedCount} guardados en CLOUD y ${selectedZeroImportStatus.stagedCount} pendientes de guardar.`
                       : selectedZeroImportStatus.importedCount > 0 || selectedZeroImportStatus.stagedCount > 0
-                        ? `${selectedZeroImportStatus.importedCount} guardados y ${selectedZeroImportStatus.stagedCount} en revisión; faltan ${selectedZeroImportStatus.remainingCount} de ${selectedZeroExport.expectedCount}.`
+                        ? `${selectedZeroImportStatus.importedCount} guardados en CLOUD y ${selectedZeroImportStatus.stagedCount} pendientes de guardar; faltan ${selectedZeroImportStatus.remainingCount} de ${selectedZeroExport.expectedCount}.`
                         : `Los ${selectedZeroExport.expectedCount} expedientes aún no aparecen importados en CLOUD.`}
                 </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -701,10 +721,10 @@ export const IngestaTab: React.FC = () => {
                     {selectedZeroImportStatus.isImported
                       ? 'Ya importado'
                       : selectedZeroImportStatus.isStaged
-                        ? 'En bandeja de revisión'
+                        ? 'Pendiente de guardar'
                         : selectedZeroImportStatus.importedCount
-                          ? `Importar pendientes (${selectedZeroImportStatus.remainingCount})`
-                          : 'Importar expedientes'}
+                          ? `Preparar pendientes (${selectedZeroImportStatus.remainingCount})`
+                          : 'Preparar importación'}
                   </button>
                   {selectedZeroImportStatus.isImported && (
                     <button
@@ -810,28 +830,44 @@ export const IngestaTab: React.FC = () => {
         </div>
       )}
 
-      {feedback && stagingFiles.length === 0 && (
+      {feedback && stagingFiles.length === 0 && !(feedback.type === 'success' && (isProcessing || isSaving)) && (
         <div
+          key={isSuccessToast ? successToastInstance : 'persistent-feedback'}
+          className={isSuccessToast ? 'ingesta-success-toast' : undefined}
+          role={feedback.type === 'warning' || feedback.type === 'error' ? 'alert' : 'status'}
+          aria-live={feedback.type === 'warning' || feedback.type === 'error' ? 'assertive' : 'polite'}
           style={{
             padding: '0.85rem 1.25rem',
             borderRadius: '8px',
-            marginBottom: '1.25rem',
+            marginBottom: isSuccessToast ? 0 : '1.25rem',
+            ...(isSuccessToast
+              ? {
+                  position: 'fixed' as const,
+                  bottom: '1rem',
+                  right: '1rem',
+                  width: 'calc(100vw - 2rem)',
+                  maxWidth: '28rem',
+                  zIndex: 1200,
+                  boxShadow: 'var(--shadow-card)',
+                  overflow: 'hidden'
+                }
+              : {}),
             background:
               feedback.type === 'success'
-                ? 'rgba(34, 197, 94, 0.15)'
+                ? 'rgba(83, 208, 129, 0.9)'
                 : feedback.type === 'warning'
-                ? 'rgba(245, 158, 11, 0.15)'
+                ? 'rgb(245, 159, 11)'
                 : feedback.type === 'error'
-                ? 'rgba(239, 68, 68, 0.15)'
-                : 'rgba(56, 189, 248, 0.15)',
+                ? 'rgb(239, 68, 68)'
+                : 'rgb(56, 191, 248)',
             border: `1px solid ${
               feedback.type === 'success'
-                ? 'rgba(34, 197, 94, 0.3)'
+                ? 'rgb(34, 197, 94)'
                 : feedback.type === 'warning'
-                ? 'rgba(245, 158, 11, 0.3)'
+                ? 'rgb(245, 159, 11)'
                 : feedback.type === 'error'
-                ? 'rgba(239, 68, 68, 0.3)'
-                : 'rgba(56, 189, 248, 0.3)'
+                ? 'rgb(239, 68, 68)'
+                : 'rgb(56, 191, 248)'
             }`,
             color: '#fff',
             display: 'flex',
@@ -839,7 +875,7 @@ export const IngestaTab: React.FC = () => {
             alignItems: 'center'
           }}
         >
-          <span>{feedback.message}</span>
+          <span style={{ color: isSuccessToast ? '#fff' : undefined }}>{feedback.message}</span>
           <button
             type="button"
             onClick={() => setFeedback(null)}
@@ -847,12 +883,42 @@ export const IngestaTab: React.FC = () => {
           >
             ✕
           </button>
+          {isSuccessToast && (
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                width: '100%',
+                height: '3px',
+                background: '#fff',
+                transformOrigin: 'left',
+                animation: `toast-lifetime ${SUCCESS_TOAST_DURATION_MS}ms linear forwards`
+              }}
+            />
+          )}
         </div>
       )}
 
-      {/* Barra de Progreso */}
-      {(isProcessing || isSaving) && stagingFiles.length === 0 && (
-        <div className="card" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
+      {(isProcessing || isSaving) && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            bottom: '1rem',
+            right: '1rem',
+            width: 'calc(100vw - 2rem)',
+            maxWidth: '28rem',
+            zIndex: 1200,
+            padding: '1rem 1.25rem',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: '8px',
+            background: 'var(--bg-surface)',
+            boxShadow: 'var(--shadow-card)'
+          }}
+        >
           {progressBar}
         </div>
       )}
@@ -897,12 +963,6 @@ export const IngestaTab: React.FC = () => {
               </button>
             </div>
           </div>
-
-          {isSaving && (
-            <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--border-subtle)' }}>
-              {progressBar}
-            </div>
-          )}
 
           {feedback && (
             <div

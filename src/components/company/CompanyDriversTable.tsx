@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Evaluation } from '../../types';
 import { logAudit } from '../../services/auditLog';
+import { useSystemDialogs } from '../../context/SystemDialogContext';
 
 export type CompanySortKey = 'promedioScore' | 'nombre' | 'totalEvaluaciones' | 'ultimaFecha' | 'incidentes' | 'estado';
 export type StatusFilterOption = 'all' | 'sobresaliente' | 'aprobado' | 'reforzar' | 'incidentes';
@@ -50,6 +51,7 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
   onNavigate,
   onOpenDriverDiploma
 }) => {
+  const { showAlert } = useSystemDialogs();
   const [statusFilter, setStatusFilter] = useState<StatusFilterOption>('all');
 
   // Filtrado local adicional por estado si se selecciona un chip
@@ -88,9 +90,9 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
     : displayedConductores.slice((effectiveDriversPage - 1) * pageSize, effectiveDriversPage * pageSize);
 
   // Exportar roster de operadores a CSV
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     if (displayedConductores.length === 0) {
-      alert('No hay operadores disponibles para exportar con los filtros actuales.');
+      await showAlert('No hay operadores disponibles para exportar con los filtros actuales.');
       return;
     }
 

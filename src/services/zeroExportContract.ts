@@ -22,6 +22,15 @@ export interface ZeroGroupImportStatus {
   isStaged: boolean;
 }
 
+export type ZeroGroupListCategory = 'pending' | 'review' | 'partial' | 'imported';
+
+export function getZeroGroupListCategory(status: ZeroGroupImportStatus): ZeroGroupListCategory {
+  if (status.isImported) return 'imported';
+  if (status.isStaged) return 'review';
+  if (status.importedCount > 0 || status.stagedCount > 0) return 'partial';
+  return 'pending';
+}
+
 export function filterZeroCloudExportGroups(
   groups: readonly ZeroCloudExportGroup[],
   search: string

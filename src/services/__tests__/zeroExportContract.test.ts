@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   filterZeroCloudExportGroups,
+  getZeroGroupListCategory,
   getZeroGroupImportStatus,
   mapZeroExportEvaluation,
   parseZeroCloudExportGroup
@@ -106,6 +107,35 @@ describe('ZERO export contract', () => {
       isImported: false,
       isStaged: true
     });
+  });
+
+  it('categorizes untouched, staged, partial, and fully imported groups distinctly', () => {
+    const group = parseZeroCloudExportGroup('group-2026-01', {
+      ...groupRecord,
+      expectedCount: 3,
+      exportedCount: 3
+    });
+
+    expect(getZeroGroupListCategory(getZeroGroupImportStatus(group, []))).toBe('pending');
+    expect(getZeroGroupListCategory(getZeroGroupImportStatus(
+      group,
+      [],
+      [
+        { id: 'one', zeroGroupId: group.id },
+        { id: 'two', zeroGroupId: group.id },
+        { id: 'three', zeroGroupId: group.id }
+      ]
+    ))).toBe('review');
+    expect(getZeroGroupListCategory(getZeroGroupImportStatus(
+      group,
+      [{ id: 'one', zeroGroupId: group.id }],
+      [{ id: 'two', zeroGroupId: group.id }]
+    ))).toBe('partial');
+    expect(getZeroGroupListCategory(getZeroGroupImportStatus(group, [
+      { id: 'one', zeroGroupId: group.id },
+      { id: 'two', zeroGroupId: group.id },
+      { id: 'three', zeroGroupId: group.id }
+    ]))).toBe('imported');
   });
 
   it('recognizes previously imported ZERO PDF V2 records by group folio', () => {

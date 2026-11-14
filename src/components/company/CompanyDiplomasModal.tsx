@@ -3,6 +3,7 @@ import JSZip from 'jszip';
 import { CompanySummary, DriverConductor } from '../../types';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { logAudit } from '../../services/auditLog';
+import { useSystemDialogs } from '../../context/SystemDialogContext';
 import {
   loadDiplomaTemplateImage,
   drawDiplomaOnCanvas,
@@ -29,6 +30,7 @@ export const CompanyDiplomasModal: React.FC<CompanyDiplomasModalProps> = ({
   periodText,
   initialDriverName
 }) => {
+  const { showAlert } = useSystemDialogs();
   useEscapeKey(isOpen, onClose);
 
   // Lista de operadores del periodo filtrado
@@ -194,7 +196,7 @@ export const CompanyDiplomasModal: React.FC<CompanyDiplomasModalProps> = ({
   const handleDownloadAllSelected = async () => {
     const selectedList = allDrivers.filter((d) => selectedDriverNames.has(d.nombre));
     if (selectedList.length === 0) {
-      alert('Por favor selecciona al menos un operador para descargar.');
+      await showAlert('Por favor selecciona al menos un operador para descargar.');
       return;
     }
 
@@ -280,7 +282,7 @@ export const CompanyDiplomasModal: React.FC<CompanyDiplomasModalProps> = ({
       });
     } catch (err) {
       console.error('Error durante la generación del ZIP de diplomas PDF:', err);
-      alert('Ocurrió un error al compilar el archivo ZIP.');
+      await showAlert('Ocurrió un error al compilar el archivo ZIP.');
     } finally {
       setIsDownloadingAll(false);
       setBatchProgress(null);
@@ -292,14 +294,14 @@ export const CompanyDiplomasModal: React.FC<CompanyDiplomasModalProps> = ({
   const handlePrintBatch = async () => {
     const selectedList = allDrivers.filter((d) => selectedDriverNames.has(d.nombre));
     if (selectedList.length === 0) {
-      alert('Por favor selecciona al menos un operador para imprimir.');
+      await showAlert('Por favor selecciona al menos un operador para imprimir.');
       return;
     }
 
     const frameDoc = printIframeRef.current?.contentDocument;
     const frameWin = printIframeRef.current?.contentWindow;
     if (!frameDoc || !frameWin) {
-      alert('El servicio de impresión no está listo.');
+      await showAlert('El servicio de impresión no está listo.');
       return;
     }
 
@@ -428,7 +430,7 @@ export const CompanyDiplomasModal: React.FC<CompanyDiplomasModalProps> = ({
       }, 600);
     } catch (err) {
       console.error('Error al preparar la impresión:', err);
-      alert('Ocurrió un error al generar la vista previa de impresión.');
+      await showAlert('Ocurrió un error al generar la vista previa de impresión.');
       setBatchProgress(null);
     }
   };

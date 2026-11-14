@@ -3,6 +3,7 @@ import { CatalogExercise, getActiveCatalog, persistCatalogLocally, EXERCISE_CATA
 import { db, doc, getDoc, setDoc } from '../services/firebaseFirestore';
 import { logAudit } from '../services/auditLog';
 import { useEscapeKey } from '../hooks/useEscapeKey';
+import { useSystemDialogs } from '../context/SystemDialogContext';
 
 interface ExerciseCatalogModalProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
   onClose,
   onCatalogUpdated
 }) => {
+  const { showConfirm } = useSystemDialogs();
   const [exercises, setExercises] = useState<CatalogExercise[]>([]);
   const [loading, setLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -135,7 +137,11 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
 
   const handleDeleteExercise = async (idx: number) => {
     const target = exercises[idx];
-    if (!window.confirm(`¿Estás seguro de eliminar el ejercicio "${target.nombre}" del catálogo?`)) {
+    if (!await showConfirm(`¿Estás seguro de eliminar el ejercicio "${target.nombre}" del catálogo?`, {
+      title: 'Eliminar ejercicio',
+      confirmLabel: 'Eliminar',
+      destructive: true
+    })) {
       return;
     }
 
@@ -163,7 +169,11 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
   };
 
   const handleRestoreDefaults = async () => {
-    if (!window.confirm('¿Restablecer el catálogo a los ejercicios oficiales de fábrica?')) {
+    if (!await showConfirm('¿Restablecer el catálogo a los ejercicios oficiales de fábrica?', {
+      title: 'Restablecer catálogo',
+      confirmLabel: 'Restablecer',
+      destructive: true
+    })) {
       return;
     }
 
@@ -224,7 +234,11 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
       return;
     }
 
-    if (!window.confirm(`Se reemplazará todo el catálogo actual por ${importedCatalog.length} ejercicios. ¿Deseas continuar?`)) {
+    if (!await showConfirm(`Se reemplazará todo el catálogo actual por ${importedCatalog.length} ejercicios. ¿Deseas continuar?`, {
+      title: 'Importar catálogo',
+      confirmLabel: 'Reemplazar',
+      destructive: true
+    })) {
       return;
     }
 

@@ -1125,6 +1125,26 @@ textarea {
   transition: width 0.3s ease;
 }
 
+@keyframes progress-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(300%);
+  }
+}
+
+@keyframes toast-lifetime {
+  from {
+    transform: scaleX(1);
+  }
+
+  to {
+    transform: scaleX(0);
+  }
+}
+
 /* Staging / Extracted Preview Table */
 .extracted-review-box {
   margin-top: 2rem;
@@ -2979,4 +2999,9 @@ body.role-viewer div.viewer-only {
 
 [data-theme='light'] ::-webkit-scrollbar-thumb:hover {
   background: rgba(15, 23, 42, 0.28);
+}
+
+[data-theme='light'] .ingesta-success-toast,
+[data-theme='light'] .ingesta-success-toast * {
+  color: #fff !important;
 }

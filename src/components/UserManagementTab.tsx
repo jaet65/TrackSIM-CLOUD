@@ -6,6 +6,7 @@ import { AuditHistoryPanel } from './AuditHistoryPanel';
 import { logAudit, diffSnapshots, snapshotText } from '../services/auditLog';
 import { db, collection, getDocs, doc, setDoc, deleteDoc } from '../services/firebaseFirestore';
 import { useEscapeKey } from '../hooks/useEscapeKey';
+import { useSystemDialogs } from '../context/SystemDialogContext';
 
 interface DomainRecord {
   dominio: string;
@@ -15,6 +16,7 @@ interface DomainRecord {
 }
 
 export const UserManagementTab: React.FC = () => {
+  const { showConfirm } = useSystemDialogs();
   const { userRole } = useAuth();
   const { companies } = useData();
 
@@ -161,7 +163,11 @@ export const UserManagementTab: React.FC = () => {
   };
 
   const handleDeleteDomain = async (domain: string) => {
-    if (!window.confirm(`¿Eliminar la vinculación del dominio @${domain}?`)) return;
+    if (!await showConfirm(`¿Eliminar la vinculación del dominio @${domain}?`, {
+      title: 'Eliminar vinculación de dominio',
+      confirmLabel: 'Eliminar',
+      destructive: true
+    })) return;
     try {
       const removedDomain = domains.find((d) => d.dominio === domain);
       await deleteDoc(doc(db, 'dominios_empresas', domain));
@@ -180,7 +186,11 @@ export const UserManagementTab: React.FC = () => {
   };
 
   const handleDeleteUser = async (u: UserProfile) => {
-    if (!window.confirm(`¿Eliminar al usuario ${u.email}?`)) return;
+    if (!await showConfirm(`¿Eliminar al usuario ${u.email}?`, {
+      title: 'Eliminar usuario',
+      confirmLabel: 'Eliminar',
+      destructive: true
+    })) return;
     try {
       await deleteDoc(doc(db, 'usuarios', u.uid));
       void logAudit({

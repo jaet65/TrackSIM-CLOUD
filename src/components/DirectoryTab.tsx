@@ -8,6 +8,7 @@ import { getMassDeleteReauthMethod } from '../services/authorization';
 import { logAudit } from '../services/auditLog';
 import { isEvaluationBackup, parseEvaluationBackup, serializeEvaluationBackup } from '../services/evaluationBackup';
 import { useEscapeKey } from '../hooks/useEscapeKey';
+import { useSystemDialogs } from '../context/SystemDialogContext';
 
 /** Escapa un valor para CSV (comillas dobles, comas y saltos de línea) */
 function csvCell(v: any): string {
@@ -124,6 +125,7 @@ type DirectoryActionStatus = {
 
 export const DirectoryTab: React.FC = () => {
   const { user, userRole, reauthenticateForMassDelete } = useAuth();
+  const { showAlert, showConfirm, showPrompt } = useSystemDialogs();
   const {
     evaluations,
     selectedCompany,
@@ -325,7 +327,10 @@ export const DirectoryTab: React.FC = () => {
 
   const handleBatchDelete = async () => {
     if (selectedIds.size === 0) return;
-    if (!window.confirm(`¿Estás seguro de eliminar ${selectedIds.size} evaluaciones seleccionadas?`)) return;
+    if (!await showConfirm(
+      `¿Estás seguro de eliminar ${selectedIds.size} evaluaciones seleccionadas?`,
+      { title: 'Eliminar evaluaciones', confirmLabel: 'Eliminar', destructive: true }
+    )) return;
 
     for (const id of Array.from(selectedIds)) {
       await deleteEvaluation(id);
@@ -383,7 +388,7 @@ export const DirectoryTab: React.FC = () => {
         completed: deletedCount,
         total: deletedCount
       });
-      alert(`Se eliminaron exitosamente ${deletedCount} evaluaciones en Firestore.`);
+      await showAlert(`Se eliminaron exitosamente ${deletedCount} evaluaciones en Firestore.`);
     } catch (err: unknown) {
       console.error('Error confirmando o eliminando evaluaciones:', err);
       const message = err instanceof Error ? err.message : 'Error desconocido';
@@ -396,7 +401,7 @@ export const DirectoryTab: React.FC = () => {
         completed: completedDeletions,
         total: target.length
       });
-      alert(`No se completó la eliminación:\n\n${message}`);
+      await showAlert(`No se completó la eliminación:\n\n${message}`, { title: 'Eliminación incompleta' });
       void logAudit({
         categoria: 'seguridad',
         accion: 'rechazar',
@@ -412,7 +417,7 @@ export const DirectoryTab: React.FC = () => {
   const handleDeleteAllEvaluations = async () => {
     const total = displayList.length;
     if (total === 0) {
-      alert('No hay evaluaciones para eliminar.');
+      await showAlert('No hay evaluaciones para eliminar.');
       return;
     }
 
@@ -421,12 +426,25 @@ export const DirectoryTab: React.FC = () => {
       ? `⚠️ ATENCIÓN: Tienes filtros activos.\n\n¿Deseas eliminar definitivamente las ${total} evaluaciones actualmente filtradas?\n\nEsta acción borrará los registros de Firestore y no se puede deshacer.`
       : `⚠️ PELIGRO: ESTA ACCIÓN NO SE PUEDE DESHACER.\n\n¿Estás completamente seguro de eliminar TODAS las evaluaciones de la base de datos (${total} registros)?\n\nSe eliminarán de Firestore y de la nube.`;
 
-    if (!window.confirm(confirmMessage)) return;
+    if (!await showConfirm(confirmMessage, {
+      title: 'Confirmar eliminación masiva',
+      confirmLabel: 'Continuar',
+      destructive: true
+    })) return;
 
     // Doble confirmación de seguridad para evitar eliminaciones accidentales
-    const userInput = window.prompt(`Para confirmar la eliminación de ${total} evaluaciones, escribe la palabra "ELIMINAR":`);
+    const userInput = await showPrompt(
+      `Para confirmar la eliminación de ${total} evaluaciones, escribe la palabra "ELIMINAR":`,
+      {
+        title: 'Doble confirmación',
+        inputLabel: 'Escribe ELIMINAR para continuar',
+        placeholder: 'ELIMINAR',
+        confirmLabel: 'Confirmar borrado',
+        destructive: true
+      }
+    );
     if (userInput?.trim().toUpperCase() !== 'ELIMINAR') {
-      alert('Operación cancelada. El texto ingresado no coincide.');
+      await showAlert('Operación cancelada. El texto ingresado no coincide.');
       return;
     }
 
@@ -439,7 +457,7 @@ export const DirectoryTab: React.FC = () => {
     if (method === 'google') {
       await completeDeleteAll(target, isFiltered);
     } else {
-      alert('Solo magraz@corporativomaf.com puede confirmar el borrado masivo mediante Google.');
+      await showAlert('Solo magraz@corporativomaf.com puede confirmar el borrado masivo mediante Google.');
     }
   };
 
@@ -454,11 +472,14 @@ export const DirectoryTab: React.FC = () => {
     if (batchInstructor !== '__KEEP__' && batchInstructor.trim()) updates.instructor = batchInstructor.trim();
 
     if (Object.keys(updates).length === 0) {
-      alert('Por favor selecciona o introduce al menos un campo para actualizar.');
+      await showAlert('Por favor selecciona o introduce al menos un campo para actualizar.');
       return;
     }
 
-    if (!window.confirm(`Se actualizarán ${ids.length} evaluaciones seleccionadas. ¿Continuar?`)) return;
+    if (!await showConfirm(`Se actualizarán ${ids.length} evaluaciones seleccionadas. ¿Continuar?`, {
+      title: 'Actualizar evaluaciones',
+      confirmLabel: 'Actualizar'
+    })) return;
 
     setIsSavingBatch(true);
     try {
@@ -470,10 +491,10 @@ export const DirectoryTab: React.FC = () => {
       setBatchEmpresa('');
       setBatchSede('__KEEP__');
       setBatchInstructor('__KEEP__');
-      alert(`¡${ids.length} evaluaciones actualizadas correctamente en Firestore!`);
+      await showAlert(`¡${ids.length} evaluaciones actualizadas correctamente en Firestore!`);
     } catch (err) {
       console.error('Error al actualizar en lote:', err);
-      alert('Ocurrió un error al actualizar los registros seleccionados.');
+      await showAlert('Ocurrió un error al actualizar los registros seleccionados.');
     } finally {
       setIsSavingBatch(false);
     }
@@ -523,7 +544,7 @@ export const DirectoryTab: React.FC = () => {
           completed: 0,
           total: 0
         });
-        alert(hasActiveFilters
+        await showAlert(hasActiveFilters
           ? 'No hay evaluaciones que coincidan con los filtros seleccionados.'
           : 'No hay evaluaciones en la base de datos para respaldar.');
         return;
@@ -614,7 +635,7 @@ export const DirectoryTab: React.FC = () => {
         completed: 0,
         total: null
       });
-      alert('No se pudo generar el respaldo completo desde Firestore. Intenta nuevamente cuando haya conexión.');
+      await showAlert('No se pudo generar el respaldo completo desde Firestore. Intenta nuevamente cuando haya conexión.');
     } finally {
       setIsExportingBackup(false);
     }
@@ -646,7 +667,7 @@ export const DirectoryTab: React.FC = () => {
           completed: 0,
           total: 0
         });
-        alert('El archivo CSV está vacío.');
+        await showAlert('El archivo CSV está vacío.');
         return;
       }
 
@@ -661,7 +682,7 @@ export const DirectoryTab: React.FC = () => {
           completed: 0,
           total: null
         });
-        alert('El CSV no tiene la columna "ID". Usa un archivo previamente exportado desde TrackSIM.');
+        await showAlert('El CSV no tiene la columna "ID". Usa un archivo previamente exportado desde TrackSIM.');
         return;
       }
 
@@ -707,11 +728,12 @@ export const DirectoryTab: React.FC = () => {
             completed: 0,
             total: backupEvaluations.length
           });
-          alert('El respaldo contiene IDs duplicados; no se realizaron cambios.');
+          await showAlert('El respaldo contiene IDs duplicados; no se realizaron cambios.');
           return;
         }
-        if (!window.confirm(
-          `Se restaurarán ${backupEvaluations.length} evaluaciones desde el respaldo. Los registros con el mismo ID serán reemplazados y los que falten se crearán.\n\n¿Deseas continuar?`
+        if (!await showConfirm(
+          `Se restaurarán ${backupEvaluations.length} evaluaciones desde el respaldo. Los registros con el mismo ID serán reemplazados y los que falten se crearán.\n\n¿Deseas continuar?`,
+          { title: 'Restaurar respaldo', confirmLabel: 'Restaurar', destructive: true }
         )) {
           setActionStatus({
             operation: 'Importación CSV',
@@ -750,7 +772,7 @@ export const DirectoryTab: React.FC = () => {
           completed: backupEvaluations.length,
           total: backupEvaluations.length
         });
-        alert(`Se restauraron correctamente ${backupEvaluations.length} evaluaciones desde el respaldo.`);
+        await showAlert(`Se restauraron correctamente ${backupEvaluations.length} evaluaciones desde el respaldo.`);
         return;
       }
 
@@ -837,11 +859,14 @@ export const DirectoryTab: React.FC = () => {
           completed: 0,
           total: 0
         });
-        alert('Ninguna fila del CSV coincide con evaluaciones existentes (revisa la columna ID).');
+        await showAlert('Ninguna fila del CSV coincide con evaluaciones existentes (revisa la columna ID).');
         return;
       }
 
-      if (!window.confirm(`Se actualizarán ${updates.length} evaluaciones en Firestore${skipped ? ` (${skipped} filas ignoradas por ID desconocido)` : ''}.\n\n¿Deseas continuar?`)) {
+      if (!await showConfirm(
+        `Se actualizarán ${updates.length} evaluaciones en Firestore${skipped ? ` (${skipped} filas ignoradas por ID desconocido)` : ''}.\n\n¿Deseas continuar?`,
+        { title: 'Actualizar evaluaciones', confirmLabel: 'Actualizar' }
+      )) {
         setActionStatus({
           operation: 'Importación CSV',
           message: 'Importación cancelada.',
@@ -881,7 +906,7 @@ export const DirectoryTab: React.FC = () => {
         completed: updates.length,
         total: updates.length
       });
-      alert(`¡${updates.length} evaluaciones actualizadas exitosamente desde el CSV!`);
+      await showAlert(`¡${updates.length} evaluaciones actualizadas exitosamente desde el CSV!`);
     } catch (err) {
       console.error('Error al importar CSV:', err);
       const message = err instanceof Error ? err.message : 'Error desconocido';
@@ -895,7 +920,7 @@ export const DirectoryTab: React.FC = () => {
         completed: completedImportItems,
         total: totalImportItems
       });
-      alert(`No se pudo procesar el archivo CSV:\n\n${message}`);
+      await showAlert(`No se pudo procesar el archivo CSV:\n\n${message}`);
     } finally {
       setIsImporting(false);
       setImportProgress('');
@@ -1456,7 +1481,10 @@ export const DirectoryTab: React.FC = () => {
                             type="button"
                             className="btn btn-danger btn-sm"
                             onClick={async () => {
-                              if (window.confirm(`¿Eliminar definitivamente la evaluación de ${opName}?`)) {
+                              if (await showConfirm(
+                                `¿Eliminar definitivamente la evaluación de ${opName}?`,
+                                { title: 'Eliminar evaluación', confirmLabel: 'Eliminar', destructive: true }
+                              )) {
                                 await deleteEvaluation(item.id);
                               }
                             }}
