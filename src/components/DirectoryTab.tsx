@@ -1400,12 +1400,15 @@ export const DirectoryTab: React.FC = () => {
                   return (
                     <tr
                       key={item.id}
+                      onClick={() => setViewingReport(item)}
                       style={{
                         background: isChecked ? 'rgba(56, 189, 248, 0.08)' : undefined,
-                        transition: 'background 0.2s ease'
+                        transition: 'background 0.2s ease',
+                        cursor: 'pointer'
                       }}
+                      title="Haz clic para ver el reporte digital completo"
                     >
-                      <td style={{ textAlign: 'center' }}>
+                      <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={isChecked}
@@ -1457,17 +1460,8 @@ export const DirectoryTab: React.FC = () => {
                           {badge.label}
                         </span>
                       </td>
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
                         <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => setViewingReport(item)}
-                            title="Ver reporte digital completo"
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.78rem', padding: '0.25rem 0.6rem' }}
-                          >
-                            📄 Ver
-                          </button>
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm"

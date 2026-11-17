@@ -1,6 +1,7 @@
 import React from 'react';
 import { CompanySummary, Evaluation } from '../../types';
 import { logAudit } from '../../services/auditLog';
+import { getCriticalMistakes, getEvaluationIncidentCounts } from '../../services/incidentMetrics';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 interface ExerciseStatItem {
@@ -88,6 +89,47 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
       .slice(0, 3);
   }, [isOpen, allEvaluations]);
 
+  // Desglose acumulado de incidencias críticas reales para evaluaciones Zero / Ingesta V2
+  const criticalBreakdown = React.useMemo(() => {
+    if (!isOpen || !allEvaluations || allEvaluations.length === 0) {
+      return { hasV2Data: false, items: [] as Array<{ error: string; repeticiones: number }>, total: 0 };
+    }
+
+    const hasV2Data = allEvaluations.some((ev) => ev.origen === 'TrackSIM-ZERO-V2');
+    if (!hasV2Data) {
+      return { hasV2Data: false, items: [] as Array<{ error: string; repeticiones: number }>, total: 0 };
+    }
+
+    const map = new Map<string, { error: string; repeticiones: number }>();
+    const addItem = (name: string, count: number) => {
+      if (count <= 0) return;
+      const key = name.toLowerCase();
+      const existing = map.get(key) || { error: name, repeticiones: 0 };
+      existing.repeticiones += count;
+      map.set(key, existing);
+    };
+
+    allEvaluations.forEach((ev) => {
+      if (ev.origen === 'TrackSIM-ZERO-V2') {
+        const criticos = getCriticalMistakes(ev.erroresFrecuentes || []);
+        if (criticos.length > 0) {
+          criticos.forEach((c) => addItem(c.error, c.repeticiones));
+        } else if ((ev.accidentesCriticos || 0) > 0) {
+          addItem('Incidencias Críticas', ev.accidentesCriticos || 0);
+        }
+      } else {
+        const inc = getEvaluationIncidentCounts(ev);
+        addItem('Colisiones', inc.colisiones);
+        addItem('Salidas de Vía', inc.vehiculoFueraVia);
+        addItem('Fatalidades', inc.fatalidades);
+      }
+    });
+
+    const items = Array.from(map.values()).sort((a, b) => b.repeticiones - a.repeticiones);
+    const total = items.reduce((sum, item) => sum + item.repeticiones, 0);
+    return { hasV2Data: true, items, total };
+  }, [isOpen, allEvaluations]);
+
   // Generación dinámica y contextual del Plan de Acción Recomendado
   const dynamicActionPlan = React.useMemo(() => {
     if (!isOpen) return '';
@@ -156,8 +198,9 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
     year: 'numeric'
   });
 
-  // Tasa de incidentes general
-  const totalIncidentes = (comp.totalColisiones || 0) + (comp.totalFatalidades || 0) + (comp.totalFueraVia || 0);
+  // Tasa de incidentes general (considerando críticos reales cuando proviene de Zero / V2)
+  const legacyTotalIncidentes = (comp.totalColisiones || 0) + (comp.totalFatalidades || 0) + (comp.totalFueraVia || 0);
+  const totalIncidentes = criticalBreakdown.hasV2Data ? criticalBreakdown.total : legacyTotalIncidentes;
   const incidentRate = comp.totalConductores > 0 ? (totalIncidentes / comp.totalConductores).toFixed(2) : '0.00';
 
   // Distribución de niveles de aptitud
@@ -495,8 +538,8 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
             {/* BARRA DE DESGLOSE DE SINIESTROS POR TIPO */}
             <div
               style={{
-                background: '#fff1f2',
-                border: '1px solid #fecdd3',
+                background: criticalBreakdown.hasV2Data && totalIncidentes === 0 ? '#ecfdf5' : '#fff1f2',
+                border: `1px solid ${criticalBreakdown.hasV2Data && totalIncidentes === 0 ? '#a7f3d0' : '#fecdd3'}`,
                 borderRadius: '8px',
                 padding: '0.45rem 0.8rem',
                 marginBottom: '0.75rem',
@@ -508,22 +551,46 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span style={{ fontSize: '0.95rem' }}>🚨</span>
-                <span style={{ fontWeight: 700, fontSize: '0.76rem', color: '#9f1239' }}>
-                  Desglose de Siniestros Acumulados ({totalIncidentes} eventos en total):
+                <span style={{ fontSize: '0.95rem' }}>
+                  {criticalBreakdown.hasV2Data && totalIncidentes === 0 ? '🛡️' : '🚨'}
+                </span>
+                <span
+                  style={{
+                    fontWeight: 700,
+                    fontSize: '0.76rem',
+                    color: criticalBreakdown.hasV2Data && totalIncidentes === 0 ? '#065f46' : '#9f1239'
+                  }}
+                >
+                  {criticalBreakdown.hasV2Data
+                    ? (totalIncidentes === 0
+                        ? 'Conducción Segura sin Incidentes Críticos (0 eventos)'
+                        : `Desglose de Siniestros Acumulados (${totalIncidentes} críticos en total):`)
+                    : `Desglose de Siniestros Acumulados (${totalIncidentes} eventos en total):`}
                 </span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1.35rem', fontSize: '0.76rem' }}>
-                <span style={{ color: '#be123c', fontWeight: 600 }}>
-                  💥 <strong>{comp.totalColisiones || 0}</strong> Colisiones
-                </span>
-                <span style={{ color: '#c2410c', fontWeight: 600 }}>
-                  ⚠️ <strong>{comp.totalFueraVia || 0}</strong> Salidas de Vía
-                </span>
-                <span style={{ color: '#881337', fontWeight: 700 }}>
-                  🛑 <strong>{comp.totalFatalidades || 0}</strong> Fatalidades
-                </span>
-              </div>
+              {criticalBreakdown.hasV2Data ? (
+                criticalBreakdown.items.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.85rem 1.25rem', fontSize: '0.76rem' }}>
+                    {criticalBreakdown.items.map((item, idx) => (
+                      <span key={idx} style={{ color: '#be123c', fontWeight: 600 }}>
+                        ⚠️ <strong>{item.repeticiones}</strong> {item.error}
+                      </span>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.35rem', fontSize: '0.76rem' }}>
+                  <span style={{ color: '#be123c', fontWeight: 600 }}>
+                    💥 <strong>{comp.totalColisiones || 0}</strong> Colisiones
+                  </span>
+                  <span style={{ color: '#c2410c', fontWeight: 600 }}>
+                    ⚠️ <strong>{comp.totalFueraVia || 0}</strong> Salidas de Vía
+                  </span>
+                  <span style={{ color: '#881337', fontWeight: 700 }}>
+                    🛑 <strong>{comp.totalFatalidades || 0}</strong> Fatalidades
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* DISTRIBUCIÓN DE APTITUD VISUAL (BARRA SEGMENTADA) */}

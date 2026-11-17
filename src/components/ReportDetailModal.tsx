@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Evaluation } from '../types';
 import { logAudit } from '../services/auditLog';
 import { findCatalogExercise } from '../services/exerciseCatalog';
+import { getCriticalMistakes, getEvaluationIncidentCounts } from '../services/incidentMetrics';
 import { SessionRadarWidget } from './SessionRadarWidget';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 
@@ -39,10 +40,20 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
   const secondMetric = isTrackSimZeroV2
     ? { label: 'ECO DRIVING', value: evaluation.ecoDrivingPuntos, max: evaluation.ecoDrivingMax ?? 3 }
     : { label: 'PRÁCTICA EN SIMULADOR', value: evaluation.practicaSimuladorPuntos, max: 7 };
-  const colisiones = evaluation.colisiones || (evaluation as any).totalColisiones || 0;
-  const fatalidades = evaluation.fatalidades || 0;
-  const fueraVia = evaluation.vehiculoFueraVia || 0;
+  const incidentCounts = getEvaluationIncidentCounts(evaluation);
+  const colisiones = incidentCounts.colisiones;
+  const fatalidades = incidentCounts.fatalidades;
+  const fueraVia = incidentCounts.vehiculoFueraVia;
   const totalIncidentes = colisiones + fatalidades + fueraVia;
+
+  // Errores críticos para evaluaciones provenientes de Zero o Ingesta V2
+  const criticalMistakes = isTrackSimZeroV2 ? getCriticalMistakes(evaluation.erroresFrecuentes || []) : [];
+  const totalCriticas = isTrackSimZeroV2
+    ? (evaluation.accidentesCriticos !== undefined
+        ? evaluation.accidentesCriticos
+        : criticalMistakes.reduce((sum, m) => sum + m.repeticiones, 0))
+    : totalIncidentes;
+  const hasZeroSafeDrive = isTrackSimZeroV2 && totalCriticas === 0;
 
   const isApproved = score >= 6.0;
   const estado = evaluation.estado || (isApproved ? 'Aprobado' : 'No Aprobado');
@@ -171,33 +182,107 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
         </div>
 
         {/* Bloque de Incidentes y Seguridad Vial */}
-        <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '10px', padding: '0.9rem', marginBottom: '1.25rem' }}>
-          <div style={{ fontSize: '0.75rem', color: '#f87171', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>🚨 Incidentes y Seguridad en Simulador</span>
-            <span style={{ fontSize: '0.72rem', color: totalIncidentes === 0 ? '#10b981' : '#f87171' }}>
-              {totalIncidentes === 0 ? '✓ Sin Incidentes Graves' : `${totalIncidentes} ${totalIncidentes === 1 ? 'incidencia registrada' : 'incidencias registradas'}`}
+        <div
+          style={{
+            background: hasZeroSafeDrive || (!isTrackSimZeroV2 && totalIncidentes === 0)
+              ? 'rgba(16, 185, 129, 0.08)'
+              : 'rgba(239, 68, 68, 0.08)',
+            border: `1px solid ${hasZeroSafeDrive || (!isTrackSimZeroV2 && totalIncidentes === 0) ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.2)'}`,
+            borderRadius: '10px',
+            padding: '0.9rem',
+            marginBottom: '1.25rem'
+          }}
+        >
+          <div
+            style={{
+              fontSize: '0.75rem',
+              color: hasZeroSafeDrive || (!isTrackSimZeroV2 && totalIncidentes === 0) ? '#10b981' : '#f87171',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              marginBottom: hasZeroSafeDrive ? 0 : '0.5rem',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '0.5rem'
+            }}
+          >
+            <span>
+              {isTrackSimZeroV2
+                ? (hasZeroSafeDrive
+                    ? '🛡️ Conducción Segura sin Incidentes Críticos'
+                    : '🚨 Incidentes y Seguridad en Simulador')
+                : (totalIncidentes === 0
+                    ? '🛡️ Conducción Segura sin Incidentes Críticos'
+                    : '🚨 Incidentes y Seguridad en Simulador')}
+            </span>
+            <span
+              style={{
+                fontSize: '0.72rem',
+                color: hasZeroSafeDrive || (!isTrackSimZeroV2 && totalIncidentes === 0) ? '#10b981' : '#f87171'
+              }}
+            >
+              {isTrackSimZeroV2
+                ? (hasZeroSafeDrive
+                    ? '✓ Sin Incidentes Críticos'
+                    : `${totalCriticas} ${totalCriticas === 1 ? 'incidencia crítica registrada' : 'incidencias críticas registradas'}`)
+                : (totalIncidentes === 0
+                    ? '✓ Sin Incidentes Graves'
+                    : `${totalIncidentes} ${totalIncidentes === 1 ? 'incidencia registrada' : 'incidencias registradas'}`)}
             </span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', textAlign: 'center' }}>
-            <div style={{ background: 'var(--bg-card-hover)', padding: '0.55rem', borderRadius: '8px' }}>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>💥 Colisiones</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: colisiones > 0 ? '#ef4444' : '#22c55e', marginTop: '0.15rem' }}>
-                {colisiones}
+
+          {isTrackSimZeroV2 ? (
+            !hasZeroSafeDrive && (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                  gap: '0.75rem',
+                  textAlign: 'center'
+                }}
+              >
+                {criticalMistakes.length > 0 ? (
+                  criticalMistakes.map((cm, idx) => (
+                    <div key={idx} style={{ background: 'var(--bg-card-hover)', padding: '0.55rem', borderRadius: '8px' }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>⚠️ {cm.error}</div>
+                      <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#ef4444', marginTop: '0.15rem' }}>
+                        {cm.repeticiones}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ background: 'var(--bg-card-hover)', padding: '0.55rem', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>⚠️ Incidencias Críticas</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#ef4444', marginTop: '0.15rem' }}>
+                      {totalCriticas}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', textAlign: 'center' }}>
+              <div style={{ background: 'var(--bg-card-hover)', padding: '0.55rem', borderRadius: '8px' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>💥 Colisiones</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: colisiones > 0 ? '#ef4444' : '#22c55e', marginTop: '0.15rem' }}>
+                  {colisiones}
+                </div>
+              </div>
+              <div style={{ background: 'var(--bg-card-hover)', padding: '0.55rem', borderRadius: '8px' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>💀 Fatalidades</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: fatalidades > 0 ? '#ef4444' : '#22c55e', marginTop: '0.15rem' }}>
+                  {fatalidades}
+                </div>
+              </div>
+              <div style={{ background: 'var(--bg-card-hover)', padding: '0.55rem', borderRadius: '8px' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>🛑 Fuera de Vía</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: fueraVia > 0 ? '#ef4444' : '#22c55e', marginTop: '0.15rem' }}>
+                  {fueraVia}
+                </div>
               </div>
             </div>
-            <div style={{ background: 'var(--bg-card-hover)', padding: '0.55rem', borderRadius: '8px' }}>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>💀 Fatalidades</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: fatalidades > 0 ? '#ef4444' : '#22c55e', marginTop: '0.15rem' }}>
-                {fatalidades}
-              </div>
-            </div>
-            <div style={{ background: 'var(--bg-card-hover)', padding: '0.55rem', borderRadius: '8px' }}>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>🛑 Fuera de Vía</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: fueraVia > 0 ? '#ef4444' : '#22c55e', marginTop: '0.15rem' }}>
-                {fueraVia}
-              </div>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Radar de Competencias de la Sesión Específica */}

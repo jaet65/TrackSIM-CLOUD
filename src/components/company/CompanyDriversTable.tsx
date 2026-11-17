@@ -781,9 +781,9 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
               const isPass = c.promedioScore >= 6.0;
               const scoreColor = isTop ? '#15803d' : isPass ? '#0369a1' : '#b91c1c';
 
-              const exNames = Array.isArray(c.ejercicios) && c.ejercicios.length > 0
-                ? c.ejercicios.map((e: any) => e.nombre || `Ej. ${e.numero || ''}`).join(', ')
-                : 'Rutina estándar';
+              const exercisesList = Array.isArray(c.ejercicios) && c.ejercicios.length > 0
+                ? c.ejercicios
+                : [];
 
               return (
                 <tr key={c.nombre + idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
@@ -795,8 +795,22 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
                   <td style={{ padding: '5px 6px', textAlign: 'center', fontWeight: 700, color: scoreColor }}>
                     {c.promedioScore.toFixed(2)} pts
                   </td>
-                  <td style={{ padding: '5px 6px', fontSize: '7.8pt', color: '#334155', maxWidth: '240px', wordBreak: 'break-word' }}>
-                    {exNames}
+                  <td style={{ padding: '5px 6px', fontSize: '7.5pt', color: '#334155', maxWidth: '240px', wordBreak: 'break-word', verticalAlign: 'top' }}>
+                    {exercisesList.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        {exercisesList.map((e: any, exIdx: number) => (
+                          <div key={exIdx} style={{ display: 'flex', alignItems: 'baseline', gap: '4px', lineHeight: 1.25 }}>
+                            <span style={{ color: '#0284c7', fontWeight: 700, flexShrink: 0 }}>▸</span>
+                            <span>{e.nombre || `Ej. ${e.numero || exIdx + 1}`}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', lineHeight: 1.25 }}>
+                        <span style={{ color: '#0284c7', fontWeight: 700, flexShrink: 0 }}>▸</span>
+                        <span>Rutina estándar</span>
+                      </div>
+                    )}
                   </td>
                   <td style={{ padding: '5px 6px', textAlign: 'center', color: totalIncidentes > 0 ? '#b91c1c' : '#15803d', fontWeight: 600 }}>
                     {totalIncidentes}

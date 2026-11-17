@@ -197,10 +197,10 @@ try {
     const finalDriverSelector = page.locator('select').first();
     await selectOptionMatching(finalDriverSelector, 'Lucía Martínez');
     await delay(1_500);
-    const reportButton = page.getByRole('button', { name: /Ver Reporte/ }).last();
-    await reportButton.scrollIntoViewIfNeeded();
+    const sessionRow = page.locator('.custom-table tbody tr').last();
+    await sessionRow.scrollIntoViewIfNeeded();
     await delay(1_500);
-    await reportButton.click();
+    await sessionRow.click();
     const reportModal = page.locator('.modal-overlay .modal-dialog');
     await reportModal.waitFor({ state: 'visible' });
     await delay(3_500);

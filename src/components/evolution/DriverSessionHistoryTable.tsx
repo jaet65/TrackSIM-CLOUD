@@ -33,7 +33,6 @@ export const DriverSessionHistoryTable: React.FC<DriverSessionHistoryTableProps>
               <th>Eco Driving / Práctica Simulador</th>
               <th>Incidentes</th>
               <th>Estado</th>
-              <th style={{ textAlign: 'right' }}>Acción</th>
             </tr>
           </thead>
           <tbody>
@@ -51,7 +50,12 @@ export const DriverSessionHistoryTable: React.FC<DriverSessionHistoryTableProps>
               const ecoDrivingMax = isTrackSimZeroV2 ? ev.ecoDrivingMax ?? 3 : 7;
 
               return (
-                <tr key={ev.id || idx}>
+                <tr
+                  key={ev.id || idx}
+                  onClick={() => onViewReport(ev)}
+                  style={{ cursor: 'pointer', transition: 'background 0.2s ease' }}
+                  title="Haz clic para abrir el reporte oficial de esta sesión"
+                >
                   <td>
                     <span
                       style={{
@@ -103,26 +107,6 @@ export const DriverSessionHistoryTable: React.FC<DriverSessionHistoryTableProps>
                     <span className={`badge badge-${score >= 8.0 ? 'success' : score >= 6.0 ? 'info' : score >= 5.0 ? 'warning' : 'danger'}`}>
                       {ev.estado || (score >= 6.0 ? 'Aprobado' : 'No Aprobado')}
                     </span>
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => onViewReport(ev)}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.35rem',
-                        padding: '0.35rem 0.75rem',
-                        fontSize: '0.8rem',
-                        fontWeight: 600,
-                        background: 'rgba(56, 189, 248, 0.12)',
-                        color: '#38bdf8',
-                        border: '1px solid rgba(56, 189, 248, 0.3)'
-                      }}
-                    >
-                      <span>📄</span> Ver Reporte
-                    </button>
                   </td>
                 </tr>
               );

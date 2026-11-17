@@ -7,6 +7,12 @@ export interface IncidentCounts {
   vehiculoFueraVia: number;
 }
 
+export interface CriticalMistakeDetail {
+  error: string;
+  repeticiones: number;
+  severidad?: string;
+}
+
 const COLLISION_MISTAKES = new Set([
   'Atropello de un perro',
   'Colisión con un objeto',
@@ -40,6 +46,42 @@ export function countV2Incidents(mistakes: FrequentMistakeItem[]): IncidentCount
   });
 
   return counts;
+}
+
+/**
+ * Obtiene la lista de errores críticos de una evaluación proveniente de Zero / Ingesta V2.
+ * Considera errores marcados explícitamente con severidad 'critico' o pertenecientes
+ * a siniestros viales críticos (fatalidades, vuelcos, atropellos, colisiones).
+ */
+export function getCriticalMistakes(mistakes: FrequentMistakeItem[] = []): CriticalMistakeDetail[] {
+  const criticalList: CriticalMistakeDetail[] = [];
+
+  mistakes.forEach((m) => {
+    const rawName = (m.error || m.errorRaw || '').trim();
+    if (!rawName) return;
+    const reps = Number.isSafeInteger(m.repeticiones) && m.repeticiones > 0 ? m.repeticiones : 1;
+    const sev = m.severidad?.toLowerCase();
+    const catalog = findCatalogMistake(rawName);
+    const catName = catalog ? catalog.nombre : rawName;
+
+    const isExplicitCritical = sev === 'critico';
+    const isCriticalAccident =
+      catName === 'Atropello de un peatón' ||
+      catName === 'Vuelco' ||
+      catName === 'Vuelco del remolque' ||
+      (catName === 'Salirse de la vía' && sev === 'critico') ||
+      COLLISION_MISTAKES.has(catName);
+
+    if (isExplicitCritical || isCriticalAccident) {
+      criticalList.push({
+        error: catName,
+        repeticiones: reps,
+        severidad: m.severidad || 'CRITICO'
+      });
+    }
+  });
+
+  return criticalList;
 }
 
 export function getEvaluationIncidentCounts(evaluation: Evaluation): IncidentCounts {
