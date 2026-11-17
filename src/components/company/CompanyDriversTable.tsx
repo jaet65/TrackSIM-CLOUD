@@ -477,11 +477,14 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
                 return (
                   <tr
                     key={c.nombre + idx}
+                    onClick={handleOpenReport}
                     style={{
                       borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
-                      transition: 'background 0.15s ease'
+                      transition: 'background 0.15s ease',
+                      cursor: 'pointer'
                     }}
                     className="driver-row"
+                    title="Haz clic para ver el reporte detallado de evaluación"
                   >
                     <td style={{ padding: '0.95rem 1.25rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
@@ -604,7 +607,10 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
                             {hasExcess && (
                               <button
                                 type="button"
-                                onClick={() => onToggleExpandExercises(driverIdKey)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onToggleExpandExercises(driverIdKey);
+                                }}
                                 style={{
                                   fontSize: '0.72rem',
                                   color: isExpanded ? '#94a3b8' : '#38bdf8',
@@ -670,32 +676,12 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
                       </span>
                     </td>
 
-                    <td className="no-print" style={{ padding: '0.75rem 1rem', textAlign: 'right', verticalAlign: 'middle', width: '130px' }}>
+                    <td
+                      className="no-print"
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ padding: '0.75rem 1rem', textAlign: 'right', verticalAlign: 'middle', width: '130px' }}
+                    >
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'stretch', justifyContent: 'center' }}>
-                        <button
-                          type="button"
-                          onClick={handleOpenReport}
-                          className="btn btn-secondary btn-sm"
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '0.35rem',
-                            padding: '0.32rem 0.6rem',
-                            borderRadius: '7px',
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
-                            background: 'rgba(56, 189, 248, 0.1)',
-                            borderColor: 'rgba(56, 189, 248, 0.3)',
-                            color: '#38bdf8',
-                            width: '100%'
-                          }}
-                          title="Ver reporte detallado de evaluación"
-                        >
-                          <span>📄</span>
-                          <span>Reporte</span>
-                        </button>
-
                         {onOpenDriverDiploma && (
                           <button
                             type="button"

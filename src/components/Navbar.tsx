@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Building2,
+  BarChart3,
   ClipboardList,
   FileText,
   FileUp,
@@ -34,7 +34,7 @@ const getNavigationItems = (userRole: string | null, isDemo: boolean): Navigatio
   const items: NavigationItem[] = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { id: 'evolucion', icon: TrendingUp, label: 'Evolución' },
-    { id: 'empresas', icon: Building2, label: 'Métricas' }
+    { id: 'empresas', icon: BarChart3, label: 'Métricas' }
   ];
 
   if (userRole === 'admin' && !isDemo) {
