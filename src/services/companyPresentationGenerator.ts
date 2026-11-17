@@ -121,10 +121,10 @@ const COLORS = {
 
 function sanitizeFileSegment(value: string): string {
   return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9_-]+/g, '_')
-    .replace(/^_+|_+$/g, '');
+    .replace(/[\\/:*?"<>|]/g, '')
+    .replace(/\s*[–—]\s*/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 const SLIDE_COVER_BG_PATH = '/template/Slides.jpg';
@@ -2044,7 +2044,7 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
 
   const safeCompany = sanitizeFileSegment(data.companyName) || 'Flota';
   const safePeriod = sanitizeFileSegment(data.periodText) || 'Historico';
-  const fileName = `Informe_Ejecutivo_${safeCompany}_${safePeriod}.pptx`;
+  const fileName = `Resultado TrackSIM - ${safeCompany} - ${safePeriod}.pptx`;
 
   await pres.writeFile({ fileName });
 

@@ -123,8 +123,8 @@ describe('companyPresentationGenerator', () => {
       allEvaluations: []
     });
 
-    expect(fileName).toBe('Informe_Ejecutivo_Transcooler_2024_2026.pptx');
-    expect(writeFileMock).toHaveBeenCalledWith({ fileName: 'Informe_Ejecutivo_Transcooler_2024_2026.pptx' });
+    expect(fileName).toBe('Resultado TrackSIM - Transcooler - 2024-2026.pptx');
+    expect(writeFileMock).toHaveBeenCalledWith({ fileName: 'Resultado TrackSIM - Transcooler - 2024-2026.pptx' });
   });
 
   it('calcula evolución histórica anual e impacto en operadores recurrentes cuando hay varios años', () => {
