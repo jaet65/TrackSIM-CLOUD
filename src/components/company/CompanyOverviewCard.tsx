@@ -11,6 +11,8 @@ interface CompanyOverviewCardProps {
   onOpenSinglePageReport?: () => void;
   onOpenCompanyReport?: () => void;
   onOpenDiplomas?: () => void;
+  onExportPptx?: () => void;
+  isExportingPptx?: boolean;
 }
 
 export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
@@ -22,7 +24,9 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
   operadoresConHistorialPrevio,
   onOpenSinglePageReport,
   onOpenCompanyReport,
-  onOpenDiplomas
+  onOpenDiplomas,
+  onExportPptx,
+  isExportingPptx = false
 }) => {
   // Texto descriptivo del periodo / años contemplados
   const periodText = React.useMemo(() => {
@@ -169,6 +173,34 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
             >
               <span>📄</span>
               <span>Single-Page</span>
+            </button>
+          )}
+          {onExportPptx && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm company-pptx-btn"
+              onClick={onExportPptx}
+              disabled={isExportingPptx}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                padding: '0.5rem 0.95rem',
+                borderRadius: '8px',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                border: '1px solid rgba(234, 88, 12, 0.4)',
+                background: 'linear-gradient(135deg, rgba(234, 88, 12, 0.16), rgba(194, 65, 12, 0.24))',
+                color: '#f97316',
+                cursor: isExportingPptx ? 'wait' : 'pointer',
+                opacity: isExportingPptx ? 0.75 : 1,
+                transition: 'all 0.2s ease',
+                boxShadow: 'var(--shadow-card)'
+              }}
+              title="Generar presentación PowerPoint (.pptx) ejecutiva con los resultados filtrados"
+            >
+              <span>📊</span>
+              <span>{isExportingPptx ? 'Generando...' : 'PowerPoint'}</span>
             </button>
           )}
           <button

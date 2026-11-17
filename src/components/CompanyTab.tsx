@@ -62,6 +62,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
   const [isSinglePageReportOpen, setIsSinglePageReportOpen] = useState(false);
   const [isCompanyReportOpen, setIsCompanyReportOpen] = useState(false);
   const [isDiplomasOpen, setIsDiplomasOpen] = useState(false);
+  const [isExportingPptx, setIsExportingPptx] = useState(false);
   const [selectedDiplomaDriver, setSelectedDiplomaDriver] = useState<string | undefined>(undefined);
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
 
@@ -708,6 +709,28 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
     );
   }
 
+  const handleExportPptx = async () => {
+    if (!comp || isExportingPptx) return;
+    setIsExportingPptx(true);
+    try {
+      const { generateCompanyPresentationPptx } = await import('../services/companyPresentationGenerator');
+      await generateCompanyPresentationPptx({
+        comp,
+        selectedYear,
+        periodText,
+        conductoresRecurrentes,
+        pctRecurrentes,
+        operadoresConHistorialPrevio,
+        exerciseStats,
+        allEvaluations: evaluationsByYear
+      });
+    } catch (error) {
+      console.error('Error al generar presentación PowerPoint:', error);
+    } finally {
+      setIsExportingPptx(false);
+    }
+  };
+
   return (
     <div className="view-section active">
       {/* Filtro de Año para la flota seleccionada globalmente */}
@@ -777,6 +800,8 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
           setSelectedDiplomaDriver(undefined);
           setIsDiplomasOpen(true);
         }}
+        onExportPptx={handleExportPptx}
+        isExportingPptx={isExportingPptx}
       />
 
       {/* Rendimiento Promedio en Ejercicios (Solo ejercicios realizados por la empresa) */}

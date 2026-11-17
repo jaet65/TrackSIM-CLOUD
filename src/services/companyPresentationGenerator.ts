@@ -1,0 +1,1225 @@
+import { CompanySummary, Evaluation } from '../types';
+import { logAudit } from './auditLog';
+import { findCatalogExercise } from './exerciseCatalog';
+import { getCriticalMistakes, getEvaluationIncidentCounts } from './incidentMetrics';
+
+export interface ExerciseStatSummary {
+  key: string;
+  nombre: string;
+  numero?: number;
+  promedio: number;
+  totalEvaluaciones: number;
+}
+
+export interface CompanyPresentationInput {
+  comp: CompanySummary & { esGlobal?: boolean };
+  selectedYear: string;
+  periodText: string;
+  conductoresRecurrentes: number;
+  pctRecurrentes: string;
+  operadoresConHistorialPrevio?: { count: number; pct: string };
+  exerciseStats: ExerciseStatSummary[];
+  allEvaluations: Evaluation[];
+}
+
+export interface DriverRowSummary {
+  rank: number;
+  nombre: string;
+  sede: string;
+  sesiones: number;
+  promedioScore: number;
+  incidentes: number;
+  estado: string;
+}
+
+export interface CompanyPresentationData {
+  companyName: string;
+  periodText: string;
+  sedesText: string;
+  fechaGeneracion: string;
+  totalConductores: number;
+  totalEvaluaciones: number;
+  promedioFinal: number;
+  tasaAprobacion: number;
+  recurrenceTitle: string;
+  recurrenceValue: string;
+  recurrenceSubtext: string;
+  aptitude: {
+    sobresalientes: number;
+    pctSobresalientes: number;
+    aprobados: number;
+    pctAprobados: number;
+    refuerzo: number;
+    pctRefuerzo: number;
+  };
+  exercises: Array<{
+    nombre: string;
+    descripcion: string;
+    totalEvaluaciones: number;
+    promedio: number;
+    nivel: string;
+  }>;
+  criticalSummary: {
+    hasV2Data: boolean;
+    totalIncidentes: number;
+    incidentRate: string;
+    items: Array<{ error: string; repeticiones: number }>;
+  };
+  topMistakes: Array<{ error: string; repeticiones: number }>;
+  top10Best: DriverRowSummary[];
+  top10Worst: DriverRowSummary[];
+  actionPlan: string;
+}
+
+const COLORS = {
+  navy: '0F172A',
+  slateDark: '1E293B',
+  slate: '334155',
+  muted: '64748B',
+  lightBg: 'F8FAFC',
+  border: 'CBD5E1',
+  white: 'FFFFFF',
+  sky: '0284C7',
+  skyLight: 'E0F2FE',
+  green: '16A34A',
+  greenLight: 'DCFCE7',
+  red: 'DC2626',
+  redLight: 'FEE2E2',
+  amber: 'D97706',
+  amberLight: 'FEF3C7',
+  purple: '7C3AED'
+};
+
+function sanitizeFileSegment(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+const SLIDE_COVER_BG_PATH = '/template/Slides.jpg';
+
+async function loadImageAsDataUrl(url: string): Promise<string | null> {
+  if (typeof fetch === 'undefined' || typeof FileReader === 'undefined') return null;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+function getDriverIncidents(c: any): number {
+  return (c.colisiones || 0) + (c.fatalidades || 0) + (c.totalFueraVia || 0);
+}
+
+function buildActionPlan(
+  topMistakes: Array<{ error: string; repeticiones: number }>,
+  totalIncidentes: number,
+  promedioFinal: number
+): string {
+  if (topMistakes.length > 0) {
+    const errText = topMistakes
+      .slice(0, 3)
+      .map((m) => m.error.toLowerCase())
+      .join(' ');
+    const actions: string[] = [];
+
+    if (/velocidad|aceleraci|l[ií]mite|r[aá]pido|frenad|distancia|freno/.test(errText)) {
+      actions.push('gestión de velocidad regulada y calibración de distancias de frenado');
+    }
+    if (/curva|derrap|peralte|giro|viraje/.test(errText)) {
+      actions.push('control de transferencia de masas y trazado seguro en curvas');
+    }
+    if (/carril|inva|l[ií]nea|orilla|salida|v[ií]a/.test(errText)) {
+      actions.push('mantenimiento de carril y prevención de salidas de vía');
+    }
+    if (/intersecci|sem[aá]foro|alto|pare|cruce|prioridad|ceda/.test(errText)) {
+      actions.push('respeto a señalización y lectura preventiva en intersecciones');
+    }
+    if (/impacto|choque|colisi|alcance|peat[oó]n|vuelco/.test(errText)) {
+      actions.push('frenado de emergencia y maniobras evasivas controladas');
+    }
+    if (/embrague|clutch|marcha|cambio|revoluci|motor|transmisi/.test(errText)) {
+      actions.push('optimización de transmisión y conducción técnica eficiente');
+    }
+
+    if (actions.length > 0) {
+      const unique = Array.from(new Set(actions));
+      return `Priorizar módulos de refuerzo en simulador enfocados en: ${unique.join(', ')}.`;
+    }
+
+    const names = topMistakes
+      .slice(0, 3)
+      .map((m) => m.error)
+      .join(', ');
+    return `Estructurar clínicas correctivas enfocadas en mitigar: ${names}.`;
+  }
+
+  if (totalIncidentes > 0) {
+    return 'Implementar talleres de conducción defensiva orientados a control de colisiones y prevención de incidentes críticos.';
+  }
+
+  if (promedioFinal < 7.0) {
+    return 'Programar seguimiento técnico focalizado para los operadores con menor desempeño (Red Flags).';
+  }
+
+  return 'Continuar con el programa preventivo anual incorporando escenarios de complejidad climática y maniobras de precisión.';
+}
+
+export function buildCompanyPresentationData(input: CompanyPresentationInput): CompanyPresentationData {
+  const {
+    comp,
+    selectedYear,
+    periodText,
+    conductoresRecurrentes,
+    pctRecurrentes,
+    operadoresConHistorialPrevio,
+    exerciseStats,
+    allEvaluations
+  } = input;
+
+  const conductores = comp.conductores || [];
+  const totalConductores = conductores.length;
+
+  const sobresalientes = conductores.filter((c) => c.promedioScore >= 8.0).length;
+  const aprobados = conductores.filter((c) => c.promedioScore >= 6.0 && c.promedioScore < 8.0).length;
+  const refuerzo = conductores.filter((c) => c.promedioScore < 6.0).length;
+
+  const pctSobresalientes = totalConductores > 0 ? Math.round((sobresalientes / totalConductores) * 100) : 0;
+  const pctAprobados = totalConductores > 0 ? Math.round((aprobados / totalConductores) * 100) : 0;
+  const pctRefuerzo = totalConductores > 0 ? Math.round((refuerzo / totalConductores) * 100) : 0;
+
+  // Incidentes críticos reales (Zero / V2) o acumulados (legacy)
+  const hasV2Data = allEvaluations.some((ev) => ev.origen === 'TrackSIM-ZERO-V2');
+  let criticalItems: Array<{ error: string; repeticiones: number }> = [];
+  let totalIncidentes = 0;
+
+  if (hasV2Data) {
+    const critMap = new Map<string, { error: string; repeticiones: number }>();
+    const addCrit = (name: string, count: number) => {
+      if (count <= 0) return;
+      const key = name.toLowerCase();
+      const current = critMap.get(key) || { error: name, repeticiones: 0 };
+      current.repeticiones += count;
+      critMap.set(key, current);
+    };
+
+    allEvaluations.forEach((ev) => {
+      if (ev.origen === 'TrackSIM-ZERO-V2') {
+        const criticos = getCriticalMistakes(ev.erroresFrecuentes || []);
+        if (criticos.length > 0) {
+          criticos.forEach((c) => addCrit(c.error, c.repeticiones));
+        } else if ((ev.accidentesCriticos || 0) > 0) {
+          addCrit('Incidencias Críticas', ev.accidentesCriticos || 0);
+        }
+      } else {
+        const inc = getEvaluationIncidentCounts(ev);
+        addCrit('Colisiones', inc.colisiones);
+        addCrit('Salidas de Vía', inc.vehiculoFueraVia);
+        addCrit('Fatalidades', inc.fatalidades);
+      }
+    });
+
+    criticalItems = Array.from(critMap.values()).sort((a, b) => b.repeticiones - a.repeticiones);
+    totalIncidentes = criticalItems.reduce((sum, item) => sum + item.repeticiones, 0);
+  } else {
+    const col = comp.totalColisiones || 0;
+    const out = comp.totalFueraVia || 0;
+    const fat = comp.totalFatalidades || 0;
+    totalIncidentes = col + out + fat;
+    if (col > 0) criticalItems.push({ error: 'Colisiones', repeticiones: col });
+    if (out > 0) criticalItems.push({ error: 'Salidas de Vía', repeticiones: out });
+    if (fat > 0) criticalItems.push({ error: 'Fatalidades', repeticiones: fat });
+  }
+
+  const incidentRate = totalConductores > 0 ? (totalIncidentes / totalConductores).toFixed(2) : '0.00';
+
+  // Top errores recurrentes (erroresFrecuentes)
+  const mistakesMap = new Map<string, { error: string; repeticiones: number }>();
+  allEvaluations.forEach((ev) => {
+    if (Array.isArray(ev.erroresFrecuentes)) {
+      ev.erroresFrecuentes.forEach((m) => {
+        const raw = (m.error || m.errorRaw || '').trim();
+        if (!raw) return;
+        const key = raw.toLowerCase();
+        const curr = mistakesMap.get(key) || { error: raw, repeticiones: 0 };
+        curr.repeticiones += m.repeticiones || 1;
+        mistakesMap.set(key, curr);
+      });
+    }
+  });
+  const topMistakes = Array.from(mistakesMap.values())
+    .sort((a, b) => b.repeticiones - a.repeticiones)
+    .slice(0, 8);
+
+  // Top 10 mejores conductores
+  const sortedBest = [...conductores].sort((a, b) => {
+    if (b.promedioScore !== a.promedioScore) return b.promedioScore - a.promedioScore;
+    return getDriverIncidents(a) - getDriverIncidents(b);
+  });
+  const top10Best: DriverRowSummary[] = sortedBest.slice(0, 10).map((c, idx) => ({
+    rank: idx + 1,
+    nombre: c.nombre,
+    sede: c.sede || 'Principal',
+    sesiones: c.totalEvaluaciones || 1,
+    promedioScore: c.promedioScore,
+    incidentes: getDriverIncidents(c),
+    estado: c.estado || (c.promedioScore >= 8 ? 'Sobresaliente' : c.promedioScore >= 6 ? 'Aprobado' : 'Reforzar')
+  }));
+
+  // Top 10 peores conductores (atención prioritaria)
+  const sortedWorst = [...conductores].sort((a, b) => {
+    if (a.promedioScore !== b.promedioScore) return a.promedioScore - b.promedioScore;
+    return getDriverIncidents(b) - getDriverIncidents(a);
+  });
+  const top10Worst: DriverRowSummary[] = sortedWorst.slice(0, 10).map((c, idx) => ({
+    rank: idx + 1,
+    nombre: c.nombre,
+    sede: c.sede || 'Principal',
+    sesiones: c.totalEvaluaciones || 1,
+    promedioScore: c.promedioScore,
+    incidentes: getDriverIncidents(c),
+    estado: c.estado || (c.promedioScore >= 8 ? 'Sobresaliente' : c.promedioScore >= 6 ? 'Aprobado' : 'Reforzar')
+  }));
+
+  const exercises = exerciseStats.map((ex) => {
+    const catalogItem = findCatalogExercise(ex.nombre);
+    return {
+      nombre: ex.nombre,
+      descripcion: catalogItem?.descripcion?.trim() || 'Escenario de evaluación práctica en simulador TrackSIM.',
+      totalEvaluaciones: ex.totalEvaluaciones,
+      promedio: ex.promedio,
+      nivel: ex.promedio >= 8.0 ? 'Sobresaliente' : ex.promedio >= 6.0 ? 'Aprobado' : 'Requiere Refuerzo'
+    };
+  });
+
+  const sedesText = comp.esGlobal
+    ? 'Todas las Sedes y Flotas'
+    : comp.sedes && comp.sedes.length > 0
+      ? comp.sedes.join(', ')
+      : 'Sede Principal';
+
+  const isYearFiltered = Boolean(selectedYear && selectedYear !== 'all' && operadoresConHistorialPrevio);
+  const recurrenceTitle = isYearFiltered ? 'CON HISTORIAL PREVIO' : 'RECURRENTES (> 1 EVAL)';
+  const recurrenceValue = isYearFiltered && operadoresConHistorialPrevio ? `${operadoresConHistorialPrevio.pct}%` : `${pctRecurrentes}%`;
+  const recurrenceSubtext =
+    isYearFiltered && operadoresConHistorialPrevio
+      ? `${operadoresConHistorialPrevio.count} operadores previos`
+      : `${conductoresRecurrentes} con >1 evaluación`;
+
+  const fechaGeneracion = new Date().toLocaleDateString('es-MX', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric'
+  });
+
+  return {
+    companyName: comp.nombre || 'Flota',
+    periodText,
+    sedesText,
+    fechaGeneracion,
+    totalConductores,
+    totalEvaluaciones: comp.totalEvaluaciones || allEvaluations.length,
+    promedioFinal: comp.promedioFinal || 0,
+    tasaAprobacion: comp.tasaAprobacion || 0,
+    recurrenceTitle,
+    recurrenceValue,
+    recurrenceSubtext,
+    aptitude: {
+      sobresalientes,
+      pctSobresalientes,
+      aprobados,
+      pctAprobados,
+      refuerzo,
+      pctRefuerzo
+    },
+    exercises,
+    criticalSummary: {
+      hasV2Data,
+      totalIncidentes,
+      incidentRate,
+      items: criticalItems
+    },
+    topMistakes,
+    top10Best,
+    top10Worst,
+    actionPlan: buildActionPlan(topMistakes, totalIncidentes, comp.promedioFinal || 0)
+  };
+}
+
+function addSlideHeader(slide: any, title: string, subtitle: string, pageNum: number, totalPages: number) {
+  slide.background = { color: COLORS.lightBg };
+
+  // Barra superior de marca
+  slide.addShape('rect', { x: 0, y: 0, w: 13.333, h: 0.1, fill: { color: COLORS.sky } });
+
+  slide.addText(title, {
+    x: 0.6,
+    y: 0.28,
+    w: 9.5,
+    h: 0.42,
+    fontSize: 21,
+    bold: true,
+    color: COLORS.navy,
+    fontFace: 'Segoe UI'
+  });
+
+  slide.addText(subtitle, {
+    x: 0.6,
+    y: 0.68,
+    w: 9.5,
+    h: 0.28,
+    fontSize: 10.5,
+    color: COLORS.muted,
+    fontFace: 'Segoe UI'
+  });
+
+  slide.addText('TRACKSIM CLOUD', {
+    x: 10.3,
+    y: 0.34,
+    w: 2.45,
+    h: 0.32,
+    align: 'right',
+    fontSize: 10,
+    bold: true,
+    color: COLORS.sky,
+    fontFace: 'Segoe UI'
+  });
+
+  slide.addShape('line', {
+    x: 0.6,
+    y: 1.03,
+    w: 12.133,
+    h: 0,
+    line: { color: COLORS.border, width: 1 }
+  });
+
+  // Pie de página
+  slide.addText(`TrackSIM Cloud Analytics  •  Informe Ejecutivo  •  Diapositiva ${pageNum} de ${totalPages}`, {
+    x: 0.6,
+    y: 7.12,
+    w: 12.133,
+    h: 0.25,
+    align: 'right',
+    fontSize: 8.5,
+    color: COLORS.muted,
+    fontFace: 'Segoe UI'
+  });
+}
+
+function buildDriverTableRows(rows: DriverRowSummary[], isWorst: boolean): any[][] {
+  const headerStyle = {
+    bold: true,
+    fontSize: 9.5,
+    color: COLORS.white,
+    fill: { color: isWorst ? '991B1B' : COLORS.navy },
+    align: 'center' as const,
+    valign: 'middle' as const
+  };
+
+  const tableRows: any[][] = [
+    [
+      { text: '#', options: headerStyle },
+      { text: 'Operador', options: { ...headerStyle, align: 'left' } },
+      { text: 'Sede', options: { ...headerStyle, align: 'left' } },
+      { text: 'Sesiones', options: headerStyle },
+      { text: 'Promedio', options: headerStyle },
+      { text: 'Incidentes', options: headerStyle },
+      { text: 'Estado', options: headerStyle }
+    ]
+  ];
+
+  rows.forEach((r, idx) => {
+    const bg = idx % 2 === 0 ? COLORS.white : 'F1F5F9';
+    const scoreColor = r.promedioScore >= 8.0 ? COLORS.green : r.promedioScore >= 6.0 ? COLORS.sky : COLORS.red;
+    const incColor = r.incidentes > 0 ? COLORS.red : COLORS.green;
+
+    tableRows.push([
+      { text: String(r.rank), options: { fill: { color: bg }, align: 'center', fontSize: 9, bold: true, color: COLORS.slate } },
+      { text: r.nombre, options: { fill: { color: bg }, align: 'left', fontSize: 9, bold: true, color: COLORS.navy } },
+      { text: r.sede, options: { fill: { color: bg }, align: 'left', fontSize: 8.5, color: COLORS.slate } },
+      { text: String(r.sesiones), options: { fill: { color: bg }, align: 'center', fontSize: 9, color: COLORS.slate } },
+      {
+        text: `${r.promedioScore.toFixed(2)} pts`,
+        options: { fill: { color: bg }, align: 'center', fontSize: 9, bold: true, color: scoreColor }
+      },
+      {
+        text: String(r.incidentes),
+        options: { fill: { color: bg }, align: 'center', fontSize: 9, bold: true, color: incColor }
+      },
+      { text: r.estado, options: { fill: { color: bg }, align: 'center', fontSize: 8.5, bold: true, color: scoreColor } }
+    ]);
+  });
+
+  return tableRows;
+}
+
+export async function generateCompanyPresentationPptx(input: CompanyPresentationInput): Promise<string> {
+  const data = buildCompanyPresentationData(input);
+  const { default: PptxGenJS } = await import('pptxgenjs');
+  const pres = new PptxGenJS();
+
+  pres.layout = 'LAYOUT_WIDE';
+  pres.author = 'TrackSIM Cloud Analytics';
+  pres.company = data.companyName;
+  pres.subject = `Informe Ejecutivo de Rendimiento - ${data.companyName} (${data.periodText})`;
+  pres.title = `Informe Ejecutivo - ${data.companyName}`;
+
+  const totalSlides = 7;
+  const coverBgDataUrl = await loadImageAsDataUrl(SLIDE_COVER_BG_PATH);
+
+  // =========================================================================
+  // SLIDE 1: PORTADA EJECUTIVA
+  // =========================================================================
+  const s1 = pres.addSlide();
+  if (coverBgDataUrl) {
+    s1.background = { data: coverBgDataUrl };
+  } else {
+    s1.background = { color: COLORS.navy };
+    s1.addShape('rect', { x: 0, y: 0, w: 0.25, h: 7.5, fill: { color: COLORS.sky } });
+  }
+
+  s1.addText('TrackSIM', {
+    x: 0.65,
+    y: 2.25,
+    w: 6.1,
+    h: 0.32,
+    fontSize: 11,
+    bold: true,
+    color: 'FB923C',
+    charSpacing: 2.5,
+    fontFace: 'Segoe UI'
+  });
+
+  s1.addText('INFORME EJECUTIVO DE\nRENDIMIENTO DE FLOTA', {
+    x: 0.65,
+    y: 2.6,
+    w: 6.1,
+    h: 1.15,
+    fontSize: 28,
+    bold: true,
+    color: COLORS.white,
+    fontFace: 'Segoe UI'
+  });
+
+  s1.addShape('rect', { x: 0.65, y: 3.85, w: 1.35, h: 0.06, fill: { color: 'F97316' } });
+
+  s1.addText(data.companyName, {
+    x: 0.65,
+    y: 4.02,
+    w: 6.1,
+    h: 0.55,
+    fontSize: 22,
+    bold: true,
+    color: '38BDF8',
+    fontFace: 'Segoe UI'
+  });
+
+  const metaCards = [
+    { label: 'PERIODO EVALUADO', value: data.periodText },
+    { label: 'COBERTURA / SEDES', value: data.sedesText },
+    { label: 'OPERADORES', value: `${data.totalConductores} (${data.totalEvaluaciones} sesiones)` },
+    { label: 'FECHA DE EMISIÓN', value: data.fechaGeneracion }
+  ];
+
+  metaCards.forEach((mc, idx) => {
+    const col = idx % 2;
+    const row = Math.floor(idx / 2);
+    const x = 0.65 + col * 3.05;
+    const y = 4.72 + row * 0.88;
+    s1.addShape('roundRect', {
+      x,
+      y,
+      w: 2.9,
+      h: 0.78,
+      fill: { color: '1E293B', transparency: 90 },
+      line: { color: '475569', width: 0.75 }
+    });
+    s1.addText(mc.label, {
+      x: x + 0.14,
+      y: y + 0.08,
+      w: 2.62,
+      h: 0.2,
+      fontSize: 7.5,
+      bold: true,
+      color: '94A3B8',
+      fontFace: 'Segoe UI'
+    });
+    s1.addText(mc.value, {
+      x: x + 0.14,
+      y: y + 0.3,
+      w: 2.62,
+      h: 0.4,
+      fontSize: 10,
+      bold: true,
+      color: COLORS.white,
+      fontFace: 'Segoe UI',
+      valign: 'top'
+    });
+  });
+
+  // =========================================================================
+  // SLIDE 2: CATÁLOGO DE EJERCICIOS REALIZADOS Y DESCRIPCIÓN
+  // =========================================================================
+  const sDesc = pres.addSlide();
+  addSlideHeader(
+    sDesc,
+    'Catálogo de Ejercicios Realizados',
+    `Escenarios evaluados y su descripción oficial en ${data.companyName} (${data.periodText})`,
+    2,
+    totalSlides
+  );
+
+  if (data.exercises.length > 0) {
+    const visibleExercises = data.exercises.slice(0, 12);
+    const exDescRows: any[][] = [
+      [
+        {
+          text: '#',
+          options: { bold: true, fontSize: 9.5, color: COLORS.white, fill: { color: COLORS.navy }, align: 'center' }
+        },
+        {
+          text: 'Ejercicio Realizado',
+          options: { bold: true, fontSize: 9.5, color: COLORS.white, fill: { color: COLORS.navy }, align: 'left' }
+        },
+        {
+          text: 'Descripción Oficial del Escenario',
+          options: { bold: true, fontSize: 9.5, color: COLORS.white, fill: { color: COLORS.navy }, align: 'left' }
+        },
+        {
+          text: 'Evs.',
+          options: { bold: true, fontSize: 9.5, color: COLORS.white, fill: { color: COLORS.navy }, align: 'center' }
+        }
+      ]
+    ];
+
+    visibleExercises.forEach((ex, idx) => {
+      const bg = idx % 2 === 0 ? COLORS.white : 'F1F5F9';
+      exDescRows.push([
+        { text: String(idx + 1), options: { fill: { color: bg }, fontSize: 9, bold: true, color: COLORS.slate, align: 'center' } },
+        { text: ex.nombre, options: { fill: { color: bg }, fontSize: 9.5, bold: true, color: COLORS.navy, align: 'left' } },
+        { text: ex.descripcion, options: { fill: { color: bg }, fontSize: 9, color: COLORS.slate, align: 'left' } },
+        { text: String(ex.totalEvaluaciones), options: { fill: { color: bg }, fontSize: 9, bold: true, color: COLORS.sky, align: 'center' } }
+      ]);
+    });
+
+    const rowHeight = visibleExercises.length <= 6 ? 0.72 : visibleExercises.length <= 9 ? 0.54 : 0.42;
+    sDesc.addTable(exDescRows, {
+      x: 0.6,
+      y: 1.25,
+      w: 12.133,
+      colW: [0.55, 3.25, 7.433, 0.9],
+      rowH: rowHeight,
+      border: { pt: 0.5, color: COLORS.border },
+      valign: 'middle'
+    });
+  } else {
+    sDesc.addText('No hay ejercicios registrados para los filtros seleccionados.', {
+      x: 0.6,
+      y: 3.5,
+      w: 12.1,
+      h: 0.5,
+      align: 'center',
+      fontSize: 13,
+      color: COLORS.muted
+    });
+  }
+
+  // =========================================================================
+  // SLIDE 3: RESUMEN DE KPIs Y DISTRIBUCIÓN DE APTITUD
+  // =========================================================================
+  const s2 = pres.addSlide();
+  addSlideHeader(
+    s2,
+    'Resumen Ejecutivo y Calificaciones',
+    `${data.companyName}  •  ${data.periodText}  •  ${data.sedesText}`,
+    3,
+    totalSlides
+  );
+
+  const kpis = [
+    {
+      label: 'OPERADORES',
+      value: String(data.totalConductores),
+      sub: `${data.totalEvaluaciones} evaluaciones`,
+      color: COLORS.sky
+    },
+    {
+      label: 'PROMEDIO GLOBAL',
+      value: data.promedioFinal.toFixed(2),
+      sub: 'Escala 0 - 10 pts',
+      color: data.promedioFinal >= 8 ? COLORS.green : data.promedioFinal >= 6 ? COLORS.sky : COLORS.red
+    },
+    {
+      label: 'TASA APROBACIÓN',
+      value: `${data.tasaAprobacion.toFixed(1)}%`,
+      sub: 'Calificación ≥ 6.0 pts',
+      color: data.tasaAprobacion >= 80 ? COLORS.green : data.tasaAprobacion >= 60 ? COLORS.amber : COLORS.red
+    },
+    {
+      label: data.recurrenceTitle,
+      value: data.recurrenceValue,
+      sub: data.recurrenceSubtext,
+      color: COLORS.purple
+    },
+    {
+      label: 'TASA DE ACCIDENTES',
+      value: data.criticalSummary.incidentRate,
+      sub: `${data.criticalSummary.totalIncidentes} eventos / op.`,
+      color: Number(data.criticalSummary.incidentRate) > 1 ? COLORS.red : Number(data.criticalSummary.incidentRate) > 0 ? COLORS.amber : COLORS.green
+    }
+  ];
+
+  kpis.forEach((k, idx) => {
+    const x = 0.6 + idx * 2.46;
+    s2.addShape('roundRect', {
+      x,
+      y: 1.3,
+      w: 2.3,
+      h: 1.55,
+      fill: { color: COLORS.white },
+      line: { color: COLORS.border, width: 1 }
+    });
+    s2.addShape('rect', { x, y: 1.3, w: 2.3, h: 0.07, fill: { color: k.color } });
+    s2.addText(k.label, {
+      x: x + 0.12,
+      y: 1.48,
+      w: 2.06,
+      h: 0.25,
+      align: 'center',
+      fontSize: 8.5,
+      bold: true,
+      color: COLORS.muted,
+      fontFace: 'Segoe UI'
+    });
+    s2.addText(k.value, {
+      x: x + 0.12,
+      y: 1.82,
+      w: 2.06,
+      h: 0.55,
+      align: 'center',
+      fontSize: 26,
+      bold: true,
+      color: k.color,
+      fontFace: 'Segoe UI'
+    });
+    s2.addText(k.sub, {
+      x: x + 0.12,
+      y: 2.45,
+      w: 2.06,
+      h: 0.28,
+      align: 'center',
+      fontSize: 8.5,
+      color: COLORS.muted,
+      fontFace: 'Segoe UI'
+    });
+  });
+
+  // Panel Distribución de Aptitud
+  s2.addShape('roundRect', {
+    x: 0.6,
+    y: 3.15,
+    w: 7.4,
+    h: 3.65,
+    fill: { color: COLORS.white },
+    line: { color: COLORS.border, width: 1 }
+  });
+  s2.addText('Distribución de Aptitud de la Flota', {
+    x: 0.85,
+    y: 3.3,
+    w: 6.8,
+    h: 0.35,
+    fontSize: 13,
+    bold: true,
+    color: COLORS.navy,
+    fontFace: 'Segoe UI'
+  });
+
+  if (data.totalConductores > 0) {
+    s2.addChart(
+      pres.ChartType.doughnut,
+      [
+        {
+          name: 'Aptitud',
+          labels: [
+            `Sobresaliente (≥8.0): ${data.aptitude.sobresalientes}`,
+            `Aprobado (6.0-7.9): ${data.aptitude.aprobados}`,
+            `Requiere Refuerzo (<6.0): ${data.aptitude.refuerzo}`
+          ],
+          values: [data.aptitude.sobresalientes, data.aptitude.aprobados, data.aptitude.refuerzo]
+        }
+      ],
+      {
+        x: 0.85,
+        y: 3.75,
+        w: 6.9,
+        h: 2.9,
+        chartColors: [COLORS.green, COLORS.sky, COLORS.red],
+        showLegend: true,
+        legendPos: 'r',
+        legendFontSize: 10,
+        showPercent: true,
+        dataLabelColor: COLORS.white,
+        dataLabelFontBold: true
+      }
+    );
+  } else {
+    s2.addText('Sin operadores calificados en el periodo seleccionado.', {
+      x: 0.85,
+      y: 4.6,
+      w: 6.8,
+      h: 0.4,
+      align: 'center',
+      fontSize: 11,
+      color: COLORS.muted
+    });
+  }
+
+  // Panel de desglose rápido a la derecha
+  s2.addShape('roundRect', {
+    x: 8.25,
+    y: 3.15,
+    w: 4.48,
+    h: 3.65,
+    fill: { color: COLORS.white },
+    line: { color: COLORS.border, width: 1 }
+  });
+  s2.addText('Indicadores por Nivel', {
+    x: 8.5,
+    y: 3.3,
+    w: 4.0,
+    h: 0.35,
+    fontSize: 13,
+    bold: true,
+    color: COLORS.navy,
+    fontFace: 'Segoe UI'
+  });
+
+  const levels = [
+    {
+      title: 'Sobresaliente (≥ 8.0)',
+      count: data.aptitude.sobresalientes,
+      pct: data.aptitude.pctSobresalientes,
+      bg: COLORS.greenLight,
+      fg: COLORS.green
+    },
+    {
+      title: 'Aprobado (6.0 - 7.9)',
+      count: data.aptitude.aprobados,
+      pct: data.aptitude.pctAprobados,
+      bg: COLORS.skyLight,
+      fg: COLORS.sky
+    },
+    {
+      title: 'Requiere Refuerzo (< 6.0)',
+      count: data.aptitude.refuerzo,
+      pct: data.aptitude.pctRefuerzo,
+      bg: COLORS.redLight,
+      fg: COLORS.red
+    }
+  ];
+
+  levels.forEach((lv, idx) => {
+    const y = 3.82 + idx * 0.95;
+    s2.addShape('roundRect', {
+      x: 8.5,
+      y,
+      w: 3.98,
+      h: 0.8,
+      fill: { color: lv.bg },
+      line: { color: lv.fg, width: 0.75 }
+    });
+    s2.addText(lv.title, {
+      x: 8.68,
+      y: y + 0.12,
+      w: 2.5,
+      h: 0.25,
+      fontSize: 10,
+      bold: true,
+      color: COLORS.navy,
+      fontFace: 'Segoe UI'
+    });
+    s2.addText(`${lv.count} operadores`, {
+      x: 8.68,
+      y: y + 0.4,
+      w: 2.5,
+      h: 0.25,
+      fontSize: 9,
+      color: COLORS.slate,
+      fontFace: 'Segoe UI'
+    });
+    s2.addText(`${lv.pct}%`, {
+      x: 11.2,
+      y: y + 0.18,
+      w: 1.15,
+      h: 0.45,
+      align: 'right',
+      fontSize: 18,
+      bold: true,
+      color: lv.fg,
+      fontFace: 'Segoe UI'
+    });
+  });
+
+  // =========================================================================
+  // SLIDE 4: RENDIMIENTO POR EJERCICIOS REALIZADOS
+  // =========================================================================
+  const s3 = pres.addSlide();
+  addSlideHeader(
+    s3,
+    'Rendimiento en Ejercicios Realizados',
+    `${data.exercises.length} ejercicios evaluados en ${data.companyName} (${data.periodText})`,
+    4,
+    totalSlides
+  );
+
+  if (data.exercises.length > 0) {
+    const chartExercises = data.exercises.slice(0, 12);
+    s3.addChart(
+      pres.ChartType.bar,
+      [
+        {
+          name: 'Promedio',
+          labels: chartExercises.map((e) => (e.nombre.length > 22 ? `${e.nombre.slice(0, 20)}...` : e.nombre)),
+          values: chartExercises.map((e) => e.promedio)
+        }
+      ],
+      {
+        x: 0.6,
+        y: 1.25,
+        w: 6.45,
+        h: 5.55,
+        barDir: 'bar',
+        chartColors: [COLORS.sky],
+        showLegend: false,
+        valAxisMinVal: 0,
+        valAxisMaxVal: 10,
+        showValue: true,
+        dataLabelFontSize: 9,
+        dataLabelColor: COLORS.navy,
+        catAxisLabelFontSize: 8.5
+      }
+    );
+
+    const exRows: any[][] = [
+      [
+        {
+          text: 'Ejercicio',
+          options: { bold: true, fontSize: 9, color: COLORS.white, fill: { color: COLORS.navy }, align: 'left' }
+        },
+        {
+          text: 'Evs.',
+          options: { bold: true, fontSize: 9, color: COLORS.white, fill: { color: COLORS.navy }, align: 'center' }
+        },
+        {
+          text: 'Promedio',
+          options: { bold: true, fontSize: 9, color: COLORS.white, fill: { color: COLORS.navy }, align: 'center' }
+        },
+        {
+          text: 'Nivel',
+          options: { bold: true, fontSize: 9, color: COLORS.white, fill: { color: COLORS.navy }, align: 'center' }
+        }
+      ]
+    ];
+
+    data.exercises.slice(0, 14).forEach((ex, idx) => {
+      const bg = idx % 2 === 0 ? COLORS.white : 'F1F5F9';
+      const color = ex.promedio >= 8 ? COLORS.green : ex.promedio >= 6 ? COLORS.sky : COLORS.red;
+      exRows.push([
+        { text: ex.nombre, options: { fill: { color: bg }, fontSize: 8.5, bold: true, color: COLORS.navy, align: 'left' } },
+        { text: String(ex.totalEvaluaciones), options: { fill: { color: bg }, fontSize: 8.5, color: COLORS.slate, align: 'center' } },
+        { text: `${ex.promedio.toFixed(2)}`, options: { fill: { color: bg }, fontSize: 8.5, bold: true, color, align: 'center' } },
+        { text: ex.nivel, options: { fill: { color: bg }, fontSize: 8, bold: true, color, align: 'center' } }
+      ]);
+    });
+
+    s3.addTable(exRows, {
+      x: 7.2,
+      y: 1.25,
+      w: 5.53,
+      colW: [2.73, 0.65, 0.85, 1.3],
+      rowH: 0.34,
+      border: { pt: 0.5, color: COLORS.border },
+      valign: 'middle'
+    });
+  } else {
+    s3.addText('No hay ejercicios registrados para los filtros seleccionados.', {
+      x: 0.6,
+      y: 3.5,
+      w: 12.1,
+      h: 0.5,
+      align: 'center',
+      fontSize: 13,
+      color: COLORS.muted
+    });
+  }
+
+  // =========================================================================
+  // SLIDE 5: SEGURIDAD VIAL, ERRORES CRÍTICOS Y PUNTOS DÉBILES
+  // =========================================================================
+  const s4 = pres.addSlide();
+  addSlideHeader(
+    s4,
+    'Seguridad Vial y Errores Críticos',
+    `Incidencias críticas y patrones frecuentes detectados en ${data.companyName}`,
+    5,
+    totalSlides
+  );
+
+  // Panel izquierdo: Incidencias Críticas
+  const hasCriticals = data.criticalSummary.totalIncidentes > 0;
+  s4.addShape('roundRect', {
+    x: 0.6,
+    y: 1.25,
+    w: 5.9,
+    h: 5.55,
+    fill: { color: COLORS.white },
+    line: { color: hasCriticals ? 'FCA5A5' : '86EFAC', width: 1.25 }
+  });
+
+  s4.addShape('rect', {
+    x: 0.6,
+    y: 1.25,
+    w: 5.9,
+    h: 0.52,
+    fill: { color: hasCriticals ? COLORS.redLight : COLORS.greenLight }
+  });
+  s4.addText(
+    hasCriticals
+      ? `Incidencias Críticas Acumuladas (${data.criticalSummary.totalIncidentes} en total)`
+      : 'Conducción Segura sin Incidentes Críticos',
+    {
+      x: 0.8,
+      y: 1.33,
+      w: 5.5,
+      h: 0.35,
+      fontSize: 12,
+      bold: true,
+      color: hasCriticals ? COLORS.red : COLORS.green,
+      fontFace: 'Segoe UI'
+    }
+  );
+
+  if (hasCriticals) {
+    const critRows: any[][] = [
+      [
+        {
+          text: 'Tipo de Incidencia Crítica',
+          options: { bold: true, fontSize: 9, color: COLORS.white, fill: { color: '991B1B' }, align: 'left' }
+        },
+        {
+          text: 'Conteo',
+          options: { bold: true, fontSize: 9, color: COLORS.white, fill: { color: '991B1B' }, align: 'center' }
+        }
+      ]
+    ];
+    data.criticalSummary.items.slice(0, 11).forEach((item, idx) => {
+      const bg = idx % 2 === 0 ? COLORS.white : 'FEF2F2';
+      critRows.push([
+        { text: item.error, options: { fill: { color: bg }, fontSize: 9.5, bold: true, color: COLORS.navy, align: 'left' } },
+        { text: String(item.repeticiones), options: { fill: { color: bg }, fontSize: 10, bold: true, color: COLORS.red, align: 'center' } }
+      ]);
+    });
+    s4.addTable(critRows, {
+      x: 0.8,
+      y: 1.95,
+      w: 5.5,
+      colW: [4.3, 1.2],
+      rowH: 0.38,
+      border: { pt: 0.5, color: 'FECACA' },
+      valign: 'middle'
+    });
+  } else {
+    s4.addText('La flota no registró incidencias críticas durante el periodo evaluado.', {
+      x: 0.9,
+      y: 3.4,
+      w: 5.3,
+      h: 0.8,
+      align: 'center',
+      fontSize: 12,
+      color: COLORS.green,
+      bold: true
+    });
+  }
+
+  // Panel derecho: Errores Frecuentes en Simulador
+  s4.addShape('roundRect', {
+    x: 6.8,
+    y: 1.25,
+    w: 5.93,
+    h: 5.55,
+    fill: { color: COLORS.white },
+    line: { color: COLORS.border, width: 1 }
+  });
+  s4.addShape('rect', {
+    x: 6.8,
+    y: 1.25,
+    w: 5.93,
+    h: 0.52,
+    fill: { color: COLORS.slateDark }
+  });
+  s4.addText('Top Errores Frecuentes en Telemetría', {
+    x: 7.0,
+    y: 1.33,
+    w: 5.5,
+    h: 0.35,
+    fontSize: 12,
+    bold: true,
+    color: COLORS.white,
+    fontFace: 'Segoe UI'
+  });
+
+  if (data.topMistakes.length > 0) {
+    const errRows: any[][] = [
+      [
+        {
+          text: 'Error Detectado',
+          options: { bold: true, fontSize: 9, color: COLORS.white, fill: { color: COLORS.sky }, align: 'left' }
+        },
+        {
+          text: 'Repeticiones',
+          options: { bold: true, fontSize: 9, color: COLORS.white, fill: { color: COLORS.sky }, align: 'center' }
+        }
+      ]
+    ];
+    data.topMistakes.forEach((m, idx) => {
+      const bg = idx % 2 === 0 ? COLORS.white : 'F1F5F9';
+      errRows.push([
+        { text: m.error, options: { fill: { color: bg }, fontSize: 9, color: COLORS.navy, align: 'left' } },
+        { text: `${m.repeticiones}×`, options: { fill: { color: bg }, fontSize: 9.5, bold: true, color: COLORS.sky, align: 'center' } }
+      ]);
+    });
+    s4.addTable(errRows, {
+      x: 7.0,
+      y: 1.95,
+      w: 5.53,
+      colW: [4.23, 1.3],
+      rowH: 0.42,
+      border: { pt: 0.5, color: COLORS.border },
+      valign: 'middle'
+    });
+  } else {
+    s4.addText('Sin desglose de errores frecuentes registrado en estas sesiones.', {
+      x: 7.1,
+      y: 3.4,
+      w: 5.3,
+      h: 0.8,
+      align: 'center',
+      fontSize: 11,
+      color: COLORS.muted
+    });
+  }
+
+  // =========================================================================
+  // SLIDE 6: CUADRO DE HONOR - TOP 10 MEJORES CONDUCTORES
+  // =========================================================================
+  const s5 = pres.addSlide();
+  addSlideHeader(
+    s5,
+    'Cuadro de Honor: Top 10 Mejores Conductores',
+    `Operadores con mejor desempeño promedio en ${data.companyName} (${data.periodText})`,
+    6,
+    totalSlides
+  );
+
+  if (data.top10Best.length > 0) {
+    s5.addTable(buildDriverTableRows(data.top10Best, false), {
+      x: 0.6,
+      y: 1.25,
+      w: 12.133,
+      colW: [0.55, 4.183, 2.2, 1.0, 1.35, 1.15, 1.7],
+      rowH: 0.48,
+      border: { pt: 0.5, color: COLORS.border },
+      valign: 'middle'
+    });
+  } else {
+    s5.addText('No hay conductores registrados.', {
+      x: 0.6,
+      y: 3.5,
+      w: 12.1,
+      h: 0.4,
+      align: 'center',
+      color: COLORS.muted
+    });
+  }
+
+  // =========================================================================
+  // SLIDE 7: ATENCIÓN PRIORITARIA - TOP 10 PEORES CONDUCTORES Y PLAN DE ACCIÓN
+  // =========================================================================
+  const s6 = pres.addSlide();
+  addSlideHeader(
+    s6,
+    'Atención Prioritaria: Top 10 Conductores con Menor Desempeño',
+    `Operadores prioritarios para refuerzo técnico y plan de acción en ${data.companyName}`,
+    7,
+    totalSlides
+  );
+
+  if (data.top10Worst.length > 0) {
+    s6.addTable(buildDriverTableRows(data.top10Worst, true), {
+      x: 0.6,
+      y: 1.22,
+      w: 12.133,
+      colW: [0.55, 4.183, 2.2, 1.0, 1.35, 1.15, 1.7],
+      rowH: 0.42,
+      border: { pt: 0.5, color: COLORS.border },
+      valign: 'middle'
+    });
+  }
+
+  // Plan de Acción Recomendado al pie de la diapositiva 6
+  s6.addShape('roundRect', {
+    x: 0.6,
+    y: 6.08,
+    w: 12.133,
+    h: 0.85,
+    fill: { color: COLORS.skyLight },
+    line: { color: COLORS.sky, width: 1 }
+  });
+  s6.addText('PLAN DE ACCIÓN RECOMENDADO:', {
+    x: 0.8,
+    y: 6.15,
+    w: 11.7,
+    h: 0.22,
+    fontSize: 9,
+    bold: true,
+    color: COLORS.sky,
+    fontFace: 'Segoe UI'
+  });
+  s6.addText(data.actionPlan, {
+    x: 0.8,
+    y: 6.38,
+    w: 11.7,
+    h: 0.48,
+    fontSize: 9.5,
+    color: COLORS.navy,
+    fontFace: 'Segoe UI',
+    valign: 'top'
+  });
+
+  const safeCompany = sanitizeFileSegment(data.companyName) || 'Flota';
+  const safePeriod = sanitizeFileSegment(data.periodText) || 'Historico';
+  const fileName = `Informe_Ejecutivo_${safeCompany}_${safePeriod}.pptx`;
+
+  await pres.writeFile({ fileName });
+
+  void logAudit({
+    categoria: 'datos',
+    accion: 'exportar',
+    cantidad: data.totalEvaluaciones,
+    empresas: [data.companyName],
+    metodo: 'PPTX',
+    detalle: `Presentación PowerPoint de ${data.companyName} (${data.periodText})`
+  });
+
+  return fileName;
+}
