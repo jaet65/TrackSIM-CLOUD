@@ -80,30 +80,33 @@ describe('Firestore Security Rules', () => {
     });
   });
 
-  it('denies evaluation reads to unauthenticated users', async () => {
+  it('allows evaluation reads for CRM Hub integration but denies writes to unauthenticated users', async () => {
     const firestore = testEnv.unauthenticatedContext().firestore();
 
-    await assertFails(getDoc(doc(firestore, 'evaluaciones/evaluation-a')));
+    await assertSucceeds(getDoc(doc(firestore, 'evaluaciones/evaluation-a')));
+    await assertFails(setDoc(doc(firestore, 'evaluaciones/evaluation-c'), { empresa: 'La Costeña' }));
   });
 
-  it('allows a domain-assigned viewer to read only their company evaluations', async () => {
+  it('allows a domain-assigned viewer to read evaluations but denies writes', async () => {
     const firestore = testEnv.authenticatedContext('domain-user', {
       email: 'viewer@lacostena.com.mx',
       email_verified: true
     }).firestore();
 
     await assertSucceeds(getDoc(doc(firestore, 'evaluaciones/evaluation-a')));
-    await assertFails(getDoc(doc(firestore, 'evaluaciones/evaluation-b')));
+    await assertSucceeds(getDoc(doc(firestore, 'evaluaciones/evaluation-b')));
+    await assertFails(setDoc(doc(firestore, 'evaluaciones/evaluation-c'), { empresa: 'La Costeña' }));
   });
 
-  it('allows a viewer to read companies assigned in their user profile', async () => {
+  it('allows a viewer with assigned companies in their user profile to read evaluations but denies writes', async () => {
     const firestore = testEnv.authenticatedContext('profile-user', {
       email: 'viewer@unassigned.example',
       email_verified: true
     }).firestore();
 
     await assertSucceeds(getDoc(doc(firestore, 'evaluaciones/evaluation-b')));
-    await assertFails(getDoc(doc(firestore, 'evaluaciones/evaluation-a')));
+    await assertSucceeds(getDoc(doc(firestore, 'evaluaciones/evaluation-a')));
+    await assertFails(setDoc(doc(firestore, 'evaluaciones/evaluation-c'), { empresa: 'Bimbo' }));
   });
 
   it('allows a domain mapped to all companies to read each company', async () => {

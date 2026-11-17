@@ -66,6 +66,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
 
   useEffect(() => {
+    void selectedCompany;
     setRankingPage(1);
     setDriversPage(1);
   }, [selectedCompany]);
@@ -243,16 +244,6 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
       setSortDir(key === 'nombre' ? 'asc' : 'desc');
     }
   };
-
-  if (!comp) {
-    return (
-      <div className="view-section active">
-        <div className="empty-state">
-          <p>No hay información disponible para la empresa seleccionada.</p>
-        </div>
-      </div>
-    );
-  }
 
   // Cálculo de Rendimiento Promedio por Ejercicio (solo ejercicios realizados por la empresa)
   const exerciseStats = useMemo(() => {
@@ -706,6 +697,16 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
       }
     };
   }, [theme]);
+
+  if (!comp) {
+    return (
+      <div className="view-section active">
+        <div className="empty-state">
+          <p>No hay información disponible para la empresa seleccionada.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="view-section active">

@@ -28,9 +28,7 @@ function formatZeroGroupDate(value?: string): string {
 }
 
 export const IngestaTab: React.FC = () => {
-  const { showConfirm } = useSystemDialogs();
-  const { userRole, profile, user } = useAuth();
-  const { reloadEvaluations, evaluations } = useData();
+  const { userRole } = useAuth();
 
   if (userRole !== 'admin') {
     return (
@@ -43,6 +41,14 @@ export const IngestaTab: React.FC = () => {
       </div>
     );
   }
+
+  return <IngestaTabContent />;
+};
+
+const IngestaTabContent: React.FC = () => {
+  const { showConfirm } = useSystemDialogs();
+  const { profile, user } = useAuth();
+  const { reloadEvaluations, evaluations } = useData();
 
   const [stagingFiles, setStagingFiles] = useState<StagedEvaluation[]>([]);
   const [ingestSource, setIngestSource] = useState<'zero' | 'pdf'>('zero');

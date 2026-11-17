@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Evaluation } from '../types';
 import { logAudit } from '../services/auditLog';
 import { findCatalogExercise } from '../services/exerciseCatalog';
@@ -15,10 +15,16 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
   const viewedId = evaluation?.id;
   const viewedCompany = evaluation?.empresa;
   const viewedLabel = evaluation ? (evaluation.conductor || evaluation.operador || evaluation.folio || evaluation.id) : '';
+  const lastLoggedIdRef = useRef<string | undefined>(undefined);
   useEscapeKey(Boolean(evaluation), onClose);
 
   useEffect(() => {
-    if (!viewedId) return;
+    if (!viewedId) {
+      lastLoggedIdRef.current = undefined;
+      return;
+    }
+    if (lastLoggedIdRef.current === viewedId) return;
+    lastLoggedIdRef.current = viewedId;
     void logAudit({
       categoria: 'datos',
       accion: 'ver',
@@ -26,9 +32,7 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
       empresas: viewedCompany ? [viewedCompany] : [],
       detalle: `Reporte de ${viewedLabel}`
     });
-    // Solo al abrir cada reporte
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewedId]);
+  }, [viewedId, viewedCompany, viewedLabel]);
 
   if (!evaluation) return null;
 

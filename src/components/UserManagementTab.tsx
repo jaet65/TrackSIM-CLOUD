@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { UserProfile } from '../types';
@@ -16,9 +16,7 @@ interface DomainRecord {
 }
 
 export const UserManagementTab: React.FC = () => {
-  const { showConfirm } = useSystemDialogs();
   const { userRole } = useAuth();
-  const { companies } = useData();
 
   if (userRole !== 'admin') {
     return (
@@ -31,6 +29,13 @@ export const UserManagementTab: React.FC = () => {
       </div>
     );
   }
+
+  return <UserManagementTabContent />;
+};
+
+const UserManagementTabContent: React.FC = () => {
+  const { showConfirm } = useSystemDialogs();
+  const { companies } = useData();
 
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [domains, setDomains] = useState<DomainRecord[]>([]);
@@ -52,7 +57,7 @@ export const UserManagementTab: React.FC = () => {
 
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'warning' | 'error' | 'info' } | null>(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       // 1. Cargar Usuarios
@@ -75,11 +80,11 @@ export const UserManagementTab: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,7 +130,7 @@ export const UserManagementTab: React.FC = () => {
 
   const handleCreateDomain = async (e: React.FormEvent) => {
     e.preventDefault();
-    let cleanDomain = newDomain.trim().toLowerCase().replace(/^https?:\/\//i, '').replace(/^@/, '');
+    const cleanDomain = newDomain.trim().toLowerCase().replace(/^https?:\/\//i, '').replace(/^@/, '');
     if (!cleanDomain || !cleanDomain.includes('.')) {
       setFeedback({ message: 'Ingresa un dominio corporativo válido (ej: almex.com).', type: 'warning' });
       return;

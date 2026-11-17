@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { CatalogExercise, getActiveCatalog, persistCatalogLocally, EXERCISE_CATALOG, parseCatalogCsv, serializeCatalogCsv } from '../services/exerciseCatalog';
 import { db, doc, getDoc, setDoc } from '../services/firebaseFirestore';
 import { logAudit } from '../services/auditLog';
@@ -32,8 +32,19 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
 
   useEscapeKey(isOpen, onClose);
 
+  const onCatalogUpdatedRef = useRef(onCatalogUpdated);
+  onCatalogUpdatedRef.current = onCatalogUpdated;
+
+  const resetForm = useCallback(() => {
+    setEditingIndex(null);
+    setNombre('');
+    setDescripcion('');
+    setErrorMsg('');
+    setSuccessMsg('');
+  }, []);
+
   // Cargar catálogo de Firestore y sincronizar
-  const loadCatalog = async () => {
+  const loadCatalog = useCallback(async () => {
     setLoading(true);
     try {
       const docRef = doc(db, 'configuracion', 'catalogo_ejercicios');
@@ -42,7 +53,7 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
         const loaded: CatalogExercise[] = snap.data().ejercicios;
         setExercises(loaded);
         persistCatalogLocally(loaded);
-        if (onCatalogUpdated) onCatalogUpdated(loaded);
+        if (onCatalogUpdatedRef.current) onCatalogUpdatedRef.current(loaded);
       } else {
         // Usar catálogo base
         const current = getActiveCatalog();
@@ -54,22 +65,14 @@ export const ExerciseCatalogModal: React.FC<ExerciseCatalogModalProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
       loadCatalog();
       resetForm();
     }
-  }, [isOpen]);
-
-  const resetForm = () => {
-    setEditingIndex(null);
-    setNombre('');
-    setDescripcion('');
-    setErrorMsg('');
-    setSuccessMsg('');
-  };
+  }, [isOpen, loadCatalog, resetForm]);
 
   const handleStartEdit = (idx: number) => {
     setEditingIndex(idx);

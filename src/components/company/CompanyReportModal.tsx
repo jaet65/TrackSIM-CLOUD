@@ -142,7 +142,7 @@ export const CompanyReportModal: React.FC<CompanyReportModalProps> = ({
         <body${themeAttribute}>${preview.outerHTML}</body>
       </html>`);
     setPreviewError('');
-  }, [isOpen]);
+  }, [isOpen, comp.nombre, periodText]);
 
   if (!isOpen) return null;
 

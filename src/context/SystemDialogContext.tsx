@@ -84,18 +84,21 @@ export const SystemDialogProvider: React.FC<React.PropsWithChildren> = ({ childr
     setActiveDialog(next);
   };
 
+  const activeDialogId = activeDialog?.id;
+  const activeDialogType = activeDialog?.type;
+
   useEffect(() => {
-    if (!activeDialog) return;
+    if (!activeDialogId) return;
 
     setPromptValue('');
-    const focusTarget = activeDialog.type === 'prompt' ? promptRef.current : primaryButtonRef.current;
+    const focusTarget = activeDialogType === 'prompt' ? promptRef.current : primaryButtonRef.current;
     focusTarget?.focus();
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [activeDialog?.id]);
+  }, [activeDialogId, activeDialogType]);
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {

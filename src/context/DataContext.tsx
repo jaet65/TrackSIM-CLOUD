@@ -130,7 +130,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const storedLastSync = !scopeChanged && cache ? cache.syncTime : null;
       const isIncremental = !forceFull && !scopeChanged && hasLocalData && !!storedLastSync;
 
-      let itemsMap = new Map<string, Evaluation>();
+      const itemsMap = new Map<string, Evaluation>();
       cachedItems.forEach((item) => itemsMap.set(item.id, item));
 
       if (isIncremental) {
@@ -230,6 +230,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sincroniza únicamente al cambiar el usuario, rol, empresas permitidas o modo demo
   useEffect(() => {
     if (isDemo) {
       setEvaluations(DEMO_EVALUATIONS);

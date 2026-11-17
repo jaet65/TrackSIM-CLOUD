@@ -21,7 +21,7 @@ describe('pdfBatchProcessor - Pruebas de estrés y carga masiva', () => {
     let activeOperations = 0;
     let maxSimultaneous = 0;
 
-    vi.spyOn(workerBridge, 'parsePDFFile').mockImplementation(async (file, filename) => {
+    vi.spyOn(workerBridge, 'parsePDFFile').mockImplementation(async (_file, filename) => {
       activeOperations++;
       maxSimultaneous = Math.max(maxSimultaneous, activeOperations);
 
@@ -56,7 +56,7 @@ describe('pdfBatchProcessor - Pruebas de estrés y carga masiva', () => {
       createMockFile('valido_2.pdf')
     ];
 
-    vi.spyOn(workerBridge, 'parsePDFFile').mockImplementation(async (file, filename) => {
+    vi.spyOn(workerBridge, 'parsePDFFile').mockImplementation(async (_file, filename) => {
       if (filename === 'corrupto.pdf') {
         throw new Error('Formato PDF inválido o dañado');
       }

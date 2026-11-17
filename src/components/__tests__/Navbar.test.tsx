@@ -6,6 +6,24 @@ import * as AuthContext from '../../context/AuthContext';
 import * as DataContext from '../../context/DataContext';
 import { ThemeProvider } from '../../context/ThemeContext';
 
+const NavbarHarness: React.FC<{
+  currentTab: 'dashboard' | 'evolucion' | 'empresas' | 'directorio' | 'ingesta' | 'usuarios';
+  onTabChange: (tab: any) => void;
+}> = ({ currentTab, onTabChange }) => {
+  const [isCollapsed, setIsCollapsed] = React.useState(true);
+  return (
+    <>
+      <Navbar
+        currentTab={currentTab}
+        onTabChange={onTabChange}
+        isCollapsed={isCollapsed}
+        onCollapsedChange={setIsCollapsed}
+      />
+      <AppHeader isCollapsed={isCollapsed} />
+    </>
+  );
+};
+
 describe('Navbar component', () => {
   const mockOnTabChange = vi.fn();
   const mockSetSelectedCompany = vi.fn();
@@ -45,24 +63,9 @@ describe('Navbar component', () => {
   });
 
   const renderNavbar = (currentTab: 'dashboard' | 'evolucion' | 'empresas' | 'directorio' | 'ingesta' | 'usuarios') => {
-    const NavbarHarness: React.FC = () => {
-      const [isCollapsed, setIsCollapsed] = React.useState(true);
-      return (
-        <>
-          <Navbar
-            currentTab={currentTab}
-            onTabChange={mockOnTabChange}
-            isCollapsed={isCollapsed}
-            onCollapsedChange={setIsCollapsed}
-          />
-          <AppHeader isCollapsed={isCollapsed} />
-        </>
-      );
-    };
-
     return render(
       <ThemeProvider>
-        <NavbarHarness />
+        <NavbarHarness currentTab={currentTab} onTabChange={mockOnTabChange} />
       </ThemeProvider>
     );
   };

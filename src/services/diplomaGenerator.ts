@@ -107,7 +107,7 @@ export function drawDiplomaOnCanvas(
   ctx.font = `bold ${fontSize}px 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif`;
 
   // 3. Ajuste responsivo de tamaño de fuente si el nombre es muy largo
-  let textMetrics = ctx.measureText(rawName);
+  const textMetrics = ctx.measureText(rawName);
   if (textMetrics.width > DIPLOMA_MAX_NAME_WIDTH) {
     const scale = DIPLOMA_MAX_NAME_WIDTH / textMetrics.width;
     fontSize = Math.max(38, Math.floor(fontSize * scale));

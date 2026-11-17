@@ -1,0 +1,76 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
+	"files": {
+		"includes": [
+			"**",
+			"!!**/dist",
+			"!!**/public/dist",
+			"!!**/public/js",
+			"!!**/build",
+			"!!**/node_modules"
+		]
+	},
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "space",
+		"indentWidth": 2
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "recommended",
+			"a11y": {
+				"noLabelWithoutControl": "off",
+				"noStaticElementInteractions": "off",
+				"noSvgWithoutTitle": "off",
+				"useButtonType": "off",
+				"useKeyWithClickEvents": "off",
+				"useSemanticElements": "off"
+			},
+			"complexity": {
+				"noExtraBooleanCast": "off",
+				"noImportantStyles": "off",
+				"noUselessSwitchCase": "off",
+				"useOptionalChain": "off"
+			},
+			"correctness": {
+				"noComponentHookFactories": "warn",
+				"noUnusedFunctionParameters": "warn",
+				"useExhaustiveDependencies": "warn",
+				"useHookAtTopLevel": "warn"
+			},
+			"style": {
+				"noDescendingSpecificity": "off",
+				"noNonNullAssertion": "off",
+				"useConst": "warn",
+				"useImportType": "off",
+				"useShorthandFunctionType": "off",
+				"useTemplate": "off"
+			},
+			"suspicious": {
+				"noArrayIndexKey": "off",
+				"noExplicitAny": "off",
+				"noGlobalIsNan": "off",
+				"useIterableCallbackReturn": "off"
+			}
+		}
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "single"
+		}
+	},
+	"assist": {
+		"enabled": true,
+		"actions": {
+			"source": {
+				"organizeImports": "on"
+			}
+		}
+	}
+}

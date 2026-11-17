@@ -1029,13 +1029,13 @@ export const EvolutionTab: React.FC = () => {
   };
 
   // Radar de Competencias basado en los 5 Ejes del Catálogo de Errores
-  const radarDimensions = [
+  const radarDimensions = useMemo(() => [
     MISTAKE_DIMENSIONS.EJE_1, // Normas de Tráfico
     MISTAKE_DIMENSIONS.EJE_2, // Dinámica y Seguridad
     MISTAKE_DIMENSIONS.EJE_3, // Eficiencia de Motor
     MISTAKE_DIMENSIONS.EJE_4, // Transmisión y Embrague
     MISTAKE_DIMENSIONS.EJE_5  // Arranque y Preparación
-  ];
+  ], []);
 
   // Acumular errores por eje a través de todas las evaluaciones del conductor (o de la última evaluación)
   const axisStats = useMemo(() => {

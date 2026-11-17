@@ -124,7 +124,25 @@ type DirectoryActionStatus = {
 };
 
 export const DirectoryTab: React.FC = () => {
-  const { user, userRole, reauthenticateForMassDelete } = useAuth();
+  const { userRole } = useAuth();
+
+  if (userRole !== 'admin') {
+    return (
+      <div className="glass-card" style={{ padding: '3rem', textAlign: 'center', margin: '2rem auto', maxWidth: '600px' }}>
+        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔒</div>
+        <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#ef4444' }}>Acceso Restringido</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
+          El Directorio de Evaluaciones y edición de registros es exclusivo para personal administrativo. No tienes permisos para visualizar esta sección.
+        </p>
+      </div>
+    );
+  }
+
+  return <DirectoryTabContent />;
+};
+
+const DirectoryTabContent: React.FC = () => {
+  const { user, reauthenticateForMassDelete } = useAuth();
   const { showAlert, showConfirm, showPrompt } = useSystemDialogs();
   const {
     evaluations,
@@ -145,18 +163,6 @@ export const DirectoryTab: React.FC = () => {
   const [importProgress, setImportProgress] = useState<string>('');
   const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [actionStatus, setActionStatus] = useState<DirectoryActionStatus | null>(null);
-
-  if (userRole !== 'admin') {
-    return (
-      <div className="glass-card" style={{ padding: '3rem', textAlign: 'center', margin: '2rem auto', maxWidth: '600px' }}>
-        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔒</div>
-        <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#ef4444' }}>Acceso Restringido</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
-          El Directorio de Evaluaciones y edición de registros es exclusivo para personal administrativo. No tienes permisos para visualizar esta sección.
-        </p>
-      </div>
-    );
-  }
 
   const [search, setSearch] = useState('');
   const [selectedYear, setSelectedYear] = useState('all');
@@ -182,6 +188,7 @@ export const DirectoryTab: React.FC = () => {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
+    void selectedCompany;
     setCurrentPage(1);
     setSelectedSede('all');
     setSelectedIds(new Set());
