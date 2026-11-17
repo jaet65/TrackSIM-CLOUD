@@ -23,7 +23,8 @@ vi.mock('pptxgenjs', () => {
           addShape: vi.fn(),
           addText: vi.fn(),
           addChart: vi.fn(),
-          addTable: vi.fn()
+          addTable: vi.fn(),
+          addImage: vi.fn()
         };
       }
       writeFile = writeFileMock;
@@ -124,5 +125,78 @@ describe('companyPresentationGenerator', () => {
 
     expect(fileName).toBe('Informe_Ejecutivo_Transcooler_2024_2026.pptx');
     expect(writeFileMock).toHaveBeenCalledWith({ fileName: 'Informe_Ejecutivo_Transcooler_2024_2026.pptx' });
+  });
+
+  it('calcula evolución histórica anual e impacto en operadores recurrentes cuando hay varios años', () => {
+    const comp = createMockCompany(4);
+    const multiYearEvaluations: Evaluation[] = [
+      {
+        id: 'y1-1',
+        empresa: 'Transcooler',
+        conductor: 'Juan Pérez',
+        fechaCapacitacion: '2024-05-10',
+        evaluacionFinalPuntos: 6.0,
+        colisiones: 2
+      },
+      {
+        id: 'y1-2',
+        empresa: 'Transcooler',
+        conductor: 'Ana López',
+        fechaCapacitacion: '2024-06-15',
+        evaluacionFinalPuntos: 7.0,
+        colisiones: 1
+      },
+      {
+        id: 'y2-1',
+        empresa: 'Transcooler',
+        conductor: 'Juan Pérez',
+        fechaCapacitacion: '2026-11-10',
+        evaluacionFinalPuntos: 8.5,
+        origen: 'TrackSIM-ZERO-V2',
+        erroresFrecuentes: []
+      },
+      {
+        id: 'y2-2',
+        empresa: 'Transcooler',
+        conductor: 'Ana López',
+        fechaCapacitacion: '2026-11-11',
+        evaluacionFinalPuntos: 9.1,
+        origen: 'TrackSIM-ZERO-V2',
+        erroresFrecuentes: [{ error: 'Colisión con un objeto', repeticiones: 1 }]
+      }
+    ];
+
+    const data = buildCompanyPresentationData({
+      comp,
+      selectedYear: 'all',
+      periodText: '2024 – 2026',
+      conductoresRecurrentes: 2,
+      pctRecurrentes: '50.0',
+      exerciseStats: [],
+      allEvaluations: multiYearEvaluations
+    });
+
+    expect(data.annualEvolution.hasMultiYear).toBe(true);
+    expect(data.annualEvolution.years).toHaveLength(2);
+    expect(data.annualEvolution.years[0]).toMatchObject({
+      year: '2024',
+      operadores: 2,
+      promedio: 6.5,
+      tasaAccidentes: 1.5
+    });
+    expect(data.annualEvolution.years[1]).toMatchObject({
+      year: '2026',
+      operadores: 2,
+      promedio: 8.8,
+      tasaAccidentes: 0.5
+    });
+    expect(data.annualEvolution.scoreDeltaFirstToLast).toBe(2.3);
+    expect(data.annualEvolution.accidentRateDeltaFirstToLast).toBe(-1);
+    expect(data.annualEvolution.recurrentImpact).toEqual({
+      count: 2,
+      firstAvg: 6.5,
+      latestAvg: 8.8,
+      improvedCount: 2
+    });
   });
 });

@@ -59,6 +59,15 @@ export interface CompanyPresentationData {
     promedio: number;
     nivel: string;
   }>;
+  exercisesByYear: Array<{
+    year: string;
+    exercises: Array<{
+      nombre: string;
+      totalEvaluaciones: number;
+      promedio: number;
+      nivel: string;
+    }>;
+  }>;
   criticalSummary: {
     hasV2Data: boolean;
     totalIncidentes: number;
@@ -68,6 +77,26 @@ export interface CompanyPresentationData {
   topMistakes: Array<{ error: string; repeticiones: number }>;
   top10Best: DriverRowSummary[];
   top10Worst: DriverRowSummary[];
+  annualEvolution: {
+    hasMultiYear: boolean;
+    years: Array<{
+      year: string;
+      operadores: number;
+      sesiones: number;
+      promedio: number;
+      tasaAprobacion: number;
+      totalAccidentes: number;
+      tasaAccidentes: number;
+    }>;
+    scoreDeltaFirstToLast: number;
+    accidentRateDeltaFirstToLast: number;
+    recurrentImpact: {
+      count: number;
+      firstAvg: number;
+      latestAvg: number;
+      improvedCount: number;
+    };
+  };
   actionPlan: string;
 }
 
@@ -99,6 +128,9 @@ function sanitizeFileSegment(value: string): string {
 }
 
 const SLIDE_COVER_BG_PATH = '/template/Slides.jpg';
+const LINKTREE_QR_PATH = '/template/Linktree.svg';
+const TRACKSIM_CLOUD_URL = 'https://tracksim-cloud.web.app';
+const LINKTREE_URL = 'https://linktr.ee/TrackSIM_ANTP';
 
 async function loadImageAsDataUrl(url: string): Promise<string | null> {
   if (typeof fetch === 'undefined' || typeof FileReader === 'undefined') return null;
@@ -117,8 +149,77 @@ async function loadImageAsDataUrl(url: string): Promise<string | null> {
   }
 }
 
+async function loadSvgAsPngDataUrl(url: string, size = 512): Promise<string | null> {
+  if (typeof fetch === 'undefined' || typeof document === 'undefined' || typeof Image === 'undefined') return null;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const svgText = await response.text();
+    const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+    const objectUrl = URL.createObjectURL(svgBlob);
+    try {
+      return await new Promise<string | null>((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              resolve(null);
+              return;
+            }
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, size, size);
+            ctx.drawImage(img, 0, 0, size, size);
+            resolve(canvas.toDataURL('image/png'));
+          } catch {
+            resolve(null);
+          }
+        };
+        img.onerror = () => resolve(null);
+        img.src = objectUrl;
+      });
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  } catch {
+    return null;
+  }
+}
+
+async function generateQrDataUrl(text: string): Promise<string | null> {
+  try {
+    const QRCode = await import('qrcode');
+    return await QRCode.toDataURL(text, {
+      width: 512,
+      margin: 1,
+      color: { dark: '#0F172A', light: '#FFFFFF' }
+    });
+  } catch {
+    return null;
+  }
+}
+
 function getDriverIncidents(c: any): number {
   return (c.colisiones || 0) + (c.fatalidades || 0) + (c.totalFueraVia || 0);
+}
+
+function getEvalYear(ev: Evaluation): string | null {
+  const dateStr = ev.fechaCapacitacion || ev.fechaReporte || ev.fecha || '';
+  const match = String(dateStr).match(/\b(20\d{2}|19\d{2})\b/);
+  return match ? match[1] : (String(dateStr).match(/\b\d{4}\b/)?.[0] || null);
+}
+
+function getEvalScore(ev: Evaluation): number {
+  return ev.evaluacionFinalPuntos ?? ev.calificacionExacta ?? ev.promedioScore ?? 0;
+}
+
+function getEvalTime(ev: Evaluation): number {
+  const raw = ev.fechaCapacitacion || ev.fechaReporte || ev.fecha || '';
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function buildActionPlan(
@@ -302,6 +403,73 @@ export function buildCompanyPresentationData(input: CompanyPresentationInput): C
     };
   });
 
+  // Agrupación de ejercicios por año para identificar qué escenarios se realizaron cada año
+  const exByYearMap = new Map<string, Map<string, { nombre: string; numero?: number; sum: number; count: number }>>();
+  allEvaluations.forEach((ev) => {
+    const yr = getEvalYear(ev);
+    if (!yr) return;
+
+    if (!exByYearMap.has(yr)) {
+      exByYearMap.set(yr, new Map());
+    }
+    const yearExMap = exByYearMap.get(yr)!;
+
+    if (Array.isArray(ev.ejercicios) && ev.ejercicios.length > 0) {
+      ev.ejercicios.forEach((ex) => {
+        if (!ex || ex.noRealizado || ex.estado?.toLowerCase() === 'no realizado') return;
+        const rawName = (ex.nombre || (ex.numero ? `Ejercicio ${ex.numero}` : '')).trim();
+        if (!rawName) return;
+        const score =
+          typeof ex.calificacion === 'number' ? ex.calificacion : parseFloat(String(ex.calificacion ?? ex.score ?? ''));
+        if (Number.isNaN(score)) return;
+        const key = rawName.toLowerCase();
+        const curr = yearExMap.get(key) || { nombre: rawName, numero: ex.numero, sum: 0, count: 0 };
+        curr.sum += score;
+        curr.count += 1;
+        yearExMap.set(key, curr);
+      });
+    } else if (ev.simulacionesDetalle) {
+      Object.entries(ev.simulacionesDetalle).forEach(([simKey, val]) => {
+        if (typeof val !== 'number' || Number.isNaN(val)) return;
+        const numMatch = simKey.match(/\d+/);
+        const num = numMatch ? Number(numMatch[0]) : undefined;
+        const rawName =
+          (num && ev.nombresSimulaciones?.[num]) ||
+          ev.nombresSimulaciones?.[simKey] ||
+          (num ? `Ejercicio ${num}` : simKey);
+        const key = rawName.trim().toLowerCase();
+        const curr = yearExMap.get(key) || { nombre: rawName.trim(), numero: num, sum: 0, count: 0 };
+        curr.sum += val;
+        curr.count += 1;
+        yearExMap.set(key, curr);
+      });
+    }
+  });
+
+  const exercisesByYear = Array.from(exByYearMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([year, exMap]) => {
+      const list = Array.from(exMap.values())
+        .filter((item) => item.count > 0)
+        .sort((a, b) => {
+          if (a.numero && b.numero) return a.numero - b.numero;
+          if (a.numero) return -1;
+          if (b.numero) return 1;
+          return b.sum / b.count - a.sum / a.count;
+        })
+        .map((item) => {
+          const avg = Number((item.sum / item.count).toFixed(2));
+          return {
+            nombre: item.nombre,
+            totalEvaluaciones: item.count,
+            promedio: avg,
+            nivel: avg >= 8.0 ? 'Sobresaliente' : avg >= 6.0 ? 'Aprobado' : 'Requiere Refuerzo'
+          };
+        });
+      return { year, exercises: list };
+    })
+    .filter((entry) => entry.exercises.length > 0);
+
   const sedesText = comp.esGlobal
     ? 'Todas las Sedes y Flotas'
     : comp.sedes && comp.sedes.length > 0
@@ -321,6 +489,92 @@ export function buildCompanyPresentationData(input: CompanyPresentationInput): C
     month: 'long',
     year: 'numeric'
   });
+
+  // Evolución multianual e impacto post-capacitación (cuando hay >= 2 años)
+  const yearMap = new Map<
+    string,
+    {
+      operators: Set<string>;
+      sesiones: number;
+      scoreSum: number;
+      approved: number;
+      accidentes: number;
+    }
+  >();
+  const driverHistoryMap = new Map<string, Array<{ time: number; score: number }>>();
+
+  allEvaluations.forEach((ev) => {
+    const score = getEvalScore(ev);
+    const opName = (ev.conductor || ev.operador || '').trim();
+    const opKey = opName.toLowerCase();
+    if (opKey) {
+      const list = driverHistoryMap.get(opKey) || [];
+      list.push({ time: getEvalTime(ev), score });
+      driverHistoryMap.set(opKey, list);
+    }
+
+    const yr = getEvalYear(ev);
+    if (!yr) return;
+    const bucket = yearMap.get(yr) || {
+      operators: new Set<string>(),
+      sesiones: 0,
+      scoreSum: 0,
+      approved: 0,
+      accidentes: 0
+    };
+    if (opName) bucket.operators.add(opKey);
+    bucket.sesiones += 1;
+    bucket.scoreSum += score;
+    if (score >= 6.0) bucket.approved += 1;
+
+    if (ev.origen === 'TrackSIM-ZERO-V2') {
+      const crits = getCriticalMistakes(ev.erroresFrecuentes || []);
+      const evCrits = crits.length > 0 ? crits.reduce((s, c) => s + c.repeticiones, 0) : (ev.accidentesCriticos || 0);
+      bucket.accidentes += evCrits;
+    } else {
+      const inc = getEvaluationIncidentCounts(ev);
+      bucket.accidentes += inc.colisiones + inc.fatalidades + inc.vehiculoFueraVia;
+    }
+    yearMap.set(yr, bucket);
+  });
+
+  const sortedYears = Array.from(yearMap.keys()).sort();
+  const yearsData = sortedYears.map((yr) => {
+    const b = yearMap.get(yr)!;
+    const opsCount = b.operators.size || b.sesiones;
+    return {
+      year: yr,
+      operadores: b.operators.size,
+      sesiones: b.sesiones,
+      promedio: Number((b.scoreSum / b.sesiones).toFixed(2)),
+      tasaAprobacion: Number(((b.approved / b.sesiones) * 100).toFixed(1)),
+      totalAccidentes: b.accidentes,
+      tasaAccidentes: opsCount > 0 ? Number((b.accidentes / opsCount).toFixed(2)) : 0
+    };
+  });
+
+  let recurrentCount = 0;
+  let firstSum = 0;
+  let latestSum = 0;
+  let improvedCount = 0;
+  driverHistoryMap.forEach((entries) => {
+    if (entries.length < 2) return;
+    const ordered = [...entries].sort((a, b) => a.time - b.time);
+    const first = ordered[0].score;
+    const latest = ordered[ordered.length - 1].score;
+    recurrentCount += 1;
+    firstSum += first;
+    latestSum += latest;
+    if (latest >= first) improvedCount += 1;
+  });
+
+  const hasMultiYear = yearsData.length >= 2;
+  const scoreDeltaFirstToLast = hasMultiYear
+    ? Number((yearsData[yearsData.length - 1].promedio - yearsData[0].promedio).toFixed(2))
+    : 0;
+  const accidentRateDeltaFirstToLast = hasMultiYear
+    ? Number((yearsData[yearsData.length - 1].tasaAccidentes - yearsData[0].tasaAccidentes).toFixed(2))
+    : 0;
 
   return {
     companyName: comp.nombre || 'Flota',
@@ -343,6 +597,7 @@ export function buildCompanyPresentationData(input: CompanyPresentationInput): C
       pctRefuerzo
     },
     exercises,
+    exercisesByYear,
     criticalSummary: {
       hasV2Data,
       totalIncidentes,
@@ -352,6 +607,18 @@ export function buildCompanyPresentationData(input: CompanyPresentationInput): C
     topMistakes,
     top10Best,
     top10Worst,
+    annualEvolution: {
+      hasMultiYear,
+      years: yearsData,
+      scoreDeltaFirstToLast,
+      accidentRateDeltaFirstToLast,
+      recurrentImpact: {
+        count: recurrentCount,
+        firstAvg: recurrentCount > 0 ? Number((firstSum / recurrentCount).toFixed(2)) : 0,
+        latestAvg: recurrentCount > 0 ? Number((latestSum / recurrentCount).toFixed(2)) : 0,
+        improvedCount
+      }
+    },
     actionPlan: buildActionPlan(topMistakes, totalIncidentes, comp.promedioFinal || 0)
   };
 }
@@ -474,8 +741,14 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
   pres.subject = `Informe Ejecutivo de Rendimiento - ${data.companyName} (${data.periodText})`;
   pres.title = `Informe Ejecutivo - ${data.companyName}`;
 
-  const totalSlides = 7;
-  const coverBgDataUrl = await loadImageAsDataUrl(SLIDE_COVER_BG_PATH);
+  const hasEvolutionSlide = data.annualEvolution.hasMultiYear;
+  const totalSlides = hasEvolutionSlide ? 9 : 8;
+  let slidePage = 2;
+  const [coverBgDataUrl, cloudQrDataUrl, linktreeQrDataUrl] = await Promise.all([
+    loadImageAsDataUrl(SLIDE_COVER_BG_PATH),
+    generateQrDataUrl(TRACKSIM_CLOUD_URL),
+    loadSvgAsPngDataUrl(LINKTREE_QR_PATH)
+  ]);
 
   // =========================================================================
   // SLIDE 1: PORTADA EJECUTIVA
@@ -489,39 +762,46 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
   }
 
   s1.addText('TrackSIM', {
-    x: 0.65,
-    y: 2.25,
-    w: 6.1,
+    x: 1.95,
+    y: 0.52,
+    w: 6.5,
     h: 0.32,
-    fontSize: 11,
+    fontSize: 12,
     bold: true,
     color: 'FB923C',
-    charSpacing: 2.5,
+    charSpacing: 1.5,
     fontFace: 'Segoe UI'
   });
 
   s1.addText('INFORME EJECUTIVO DE\nRENDIMIENTO DE FLOTA', {
-    x: 0.65,
-    y: 2.6,
-    w: 6.1,
-    h: 1.15,
-    fontSize: 28,
+    x: 1.95,
+    y: 0.88,
+    w: 6.5,
+    h: 1.05,
+    fontSize: 27,
     bold: true,
     color: COLORS.white,
     fontFace: 'Segoe UI'
   });
 
-  s1.addShape('rect', { x: 0.65, y: 3.85, w: 1.35, h: 0.06, fill: { color: 'F97316' } });
-
   s1.addText(data.companyName, {
     x: 0.65,
-    y: 4.02,
-    w: 6.1,
-    h: 0.55,
-    fontSize: 22,
+    y: 2.7,
+    w: 5.75,
+    h: 0.65,
+    fontSize: 25,
     bold: true,
     color: '38BDF8',
     fontFace: 'Segoe UI'
+  });
+
+  s1.addShape('roundRect', {
+    x: 0.65,
+    y: 3.4,
+    w: 1.45,
+    h: 0.06,
+    rectRadius: 0.03,
+    fill: { color: 'F97316' }
   });
 
   const metaCards = [
@@ -534,20 +814,21 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
   metaCards.forEach((mc, idx) => {
     const col = idx % 2;
     const row = Math.floor(idx / 2);
-    const x = 0.65 + col * 3.05;
-    const y = 4.72 + row * 0.88;
+    const x = 0.65 + col * 2.95;
+    const y = 3.82 + row * 0.96;
     s1.addShape('roundRect', {
       x,
       y,
-      w: 2.9,
-      h: 0.78,
+      w: 2.8,
+      h: 0.82,
+      rectRadius: 0.06,
       fill: { color: '1E293B', transparency: 90 },
       line: { color: '475569', width: 0.75 }
     });
     s1.addText(mc.label, {
       x: x + 0.14,
-      y: y + 0.08,
-      w: 2.62,
+      y: y + 0.09,
+      w: 2.52,
       h: 0.2,
       fontSize: 7.5,
       bold: true,
@@ -556,9 +837,9 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     });
     s1.addText(mc.value, {
       x: x + 0.14,
-      y: y + 0.3,
-      w: 2.62,
-      h: 0.4,
+      y: y + 0.32,
+      w: 2.52,
+      h: 0.42,
       fontSize: 10,
       bold: true,
       color: COLORS.white,
@@ -575,7 +856,7 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     sDesc,
     'Catálogo de Ejercicios Realizados',
     `Escenarios evaluados y su descripción oficial en ${data.companyName} (${data.periodText})`,
-    2,
+    slidePage++,
     totalSlides
   );
 
@@ -642,7 +923,7 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     s2,
     'Resumen Ejecutivo y Calificaciones',
     `${data.companyName}  •  ${data.periodText}  •  ${data.sedesText}`,
-    3,
+    slidePage++,
     totalSlides
   );
 
@@ -686,13 +967,21 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
       y: 1.3,
       w: 2.3,
       h: 1.55,
+      rectRadius: 0.08,
       fill: { color: COLORS.white },
       line: { color: COLORS.border, width: 1 }
     });
-    s2.addShape('rect', { x, y: 1.3, w: 2.3, h: 0.07, fill: { color: k.color } });
+    s2.addShape('roundRect', {
+      x: x + 0.16,
+      y: 1.4,
+      w: 1.98,
+      h: 0.05,
+      rectRadius: 0.02,
+      fill: { color: k.color }
+    });
     s2.addText(k.label, {
       x: x + 0.12,
-      y: 1.48,
+      y: 1.54,
       w: 2.06,
       h: 0.25,
       align: 'center',
@@ -730,6 +1019,7 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     y: 3.15,
     w: 7.4,
     h: 3.65,
+    rectRadius: 0.08,
     fill: { color: COLORS.white },
     line: { color: COLORS.border, width: 1 }
   });
@@ -790,6 +1080,7 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     y: 3.15,
     w: 4.48,
     h: 3.65,
+    rectRadius: 0.08,
     fill: { color: COLORS.white },
     line: { color: COLORS.border, width: 1 }
   });
@@ -835,6 +1126,7 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
       y,
       w: 3.98,
       h: 0.8,
+      rectRadius: 0.06,
       fill: { color: lv.bg },
       line: { color: lv.fg, width: 0.75 }
     });
@@ -871,14 +1163,242 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
   });
 
   // =========================================================================
-  // SLIDE 4: RENDIMIENTO POR EJERCICIOS REALIZADOS
+  // SLIDE EXTRA (MULTIANUAL): EVOLUCIÓN HISTÓRICA POST-CAPACITACIÓN
+  // =========================================================================
+  if (hasEvolutionSlide) {
+    const sEvo = pres.addSlide();
+    const yrs = data.annualEvolution.years;
+    const firstYear = yrs[0];
+    const lastYear = yrs[yrs.length - 1];
+
+    addSlideHeader(
+      sEvo,
+      'Evolución Histórica Post-Capacitación',
+      `Comparativa anual ${firstYear.year} – ${lastYear.year} e impacto de seguimiento en ${data.companyName}`,
+      slidePage++,
+      totalSlides
+    );
+
+    // Gráfica 1 (arriba izquierda): Tendencia Anual de Calificación Promedio
+    sEvo.addShape('roundRect', {
+      x: 0.6,
+      y: 1.25,
+      w: 6.15,
+      h: 2.68,
+      rectRadius: 0.08,
+      fill: { color: COLORS.white },
+      line: { color: COLORS.border, width: 1 }
+    });
+    sEvo.addText('Tendencia Anual: Calificación Promedio (0 - 10 pts)', {
+      x: 0.82,
+      y: 1.34,
+      w: 5.7,
+      h: 0.28,
+      fontSize: 11,
+      bold: true,
+      color: COLORS.navy,
+      fontFace: 'Segoe UI'
+    });
+
+    sEvo.addChart(
+      pres.ChartType.line,
+      [
+        {
+          name: 'Promedio Global',
+          labels: yrs.map((y) => y.year),
+          values: yrs.map((y) => y.promedio)
+        }
+      ],
+      {
+        x: 0.78,
+        y: 1.66,
+        w: 5.8,
+        h: 2.18,
+        chartColors: [COLORS.sky],
+        lineSize: 3,
+        lineSmooth: true,
+        lineDataSymbol: 'circle',
+        lineDataSymbolSize: 7,
+        showLegend: false,
+        valAxisMinVal: 0,
+        valAxisMaxVal: 10,
+        showValue: true,
+        dataLabelFormatCode: '0.00',
+        dataLabelPosition: 't',
+        dataLabelFontSize: 9,
+        dataLabelColor: COLORS.sky
+      }
+    );
+
+    // Gráfica 2 (abajo izquierda): Tendencia Anual de Tasa de Accidentes
+    sEvo.addShape('roundRect', {
+      x: 0.6,
+      y: 4.1,
+      w: 6.15,
+      h: 2.7,
+      rectRadius: 0.08,
+      fill: { color: COLORS.white },
+      line: { color: COLORS.border, width: 1 }
+    });
+    sEvo.addText('Tendencia Anual: Tasa de Accidentes (eventos / operador)', {
+      x: 0.82,
+      y: 4.19,
+      w: 5.7,
+      h: 0.28,
+      fontSize: 11,
+      bold: true,
+      color: COLORS.navy,
+      fontFace: 'Segoe UI'
+    });
+
+    sEvo.addChart(
+      pres.ChartType.line,
+      [
+        {
+          name: 'Tasa de Accidentes',
+          labels: yrs.map((y) => y.year),
+          values: yrs.map((y) => y.tasaAccidentes)
+        }
+      ],
+      {
+        x: 0.78,
+        y: 4.51,
+        w: 5.8,
+        h: 2.2,
+        chartColors: [COLORS.red],
+        lineSize: 3,
+        lineSmooth: true,
+        lineDataSymbol: 'circle',
+        lineDataSymbolSize: 7,
+        showLegend: false,
+        valAxisMinVal: 0,
+        showValue: true,
+        dataLabelFormatCode: '0.00',
+        dataLabelPosition: 't',
+        dataLabelFontSize: 9,
+        dataLabelColor: COLORS.red
+      }
+    );
+
+    // Tabla derecha superior: Comparativa Año con Año
+    const evoRows: any[][] = [
+      [
+        { text: 'Año', options: { bold: true, fontSize: 9, color: COLORS.white, fill: { color: COLORS.navy }, align: 'center' } },
+        { text: 'Ops.', options: { bold: true, fontSize: 9, color: COLORS.white, fill: { color: COLORS.navy }, align: 'center' } },
+        { text: 'Promedio', options: { bold: true, fontSize: 9, color: COLORS.white, fill: { color: COLORS.navy }, align: 'center' } },
+        { text: 'Aprob.', options: { bold: true, fontSize: 9, color: COLORS.white, fill: { color: COLORS.navy }, align: 'center' } },
+        { text: 'Tasa Acc.', options: { bold: true, fontSize: 9, color: COLORS.white, fill: { color: COLORS.navy }, align: 'center' } }
+      ]
+    ];
+
+    yrs.slice(-7).forEach((y, idx) => {
+      const bg = idx % 2 === 0 ? COLORS.white : 'F1F5F9';
+      const pColor = y.promedio >= 8 ? COLORS.green : y.promedio >= 6 ? COLORS.sky : COLORS.red;
+      const aColor = y.tasaAccidentes > 1 ? COLORS.red : y.tasaAccidentes > 0 ? COLORS.amber : COLORS.green;
+      evoRows.push([
+        { text: y.year, options: { fill: { color: bg }, fontSize: 9.5, bold: true, color: COLORS.navy, align: 'center' } },
+        { text: String(y.operadores), options: { fill: { color: bg }, fontSize: 9, color: COLORS.slate, align: 'center' } },
+        { text: y.promedio.toFixed(2), options: { fill: { color: bg }, fontSize: 9.5, bold: true, color: pColor, align: 'center' } },
+        { text: `${y.tasaAprobacion.toFixed(1)}%`, options: { fill: { color: bg }, fontSize: 9, color: COLORS.slate, align: 'center' } },
+        { text: y.tasaAccidentes.toFixed(2), options: { fill: { color: bg }, fontSize: 9.5, bold: true, color: aColor, align: 'center' } }
+      ]);
+    });
+
+    sEvo.addTable(evoRows, {
+      x: 6.95,
+      y: 1.25,
+      w: 5.78,
+      colW: [1.0, 0.9, 1.35, 1.25, 1.28],
+      rowH: 0.36,
+      border: { pt: 0.5, color: COLORS.border },
+      valign: 'middle'
+    });
+
+    // Tarjeta derecha inferior: Impacto tras las capacitaciones
+    sEvo.addShape('roundRect', {
+      x: 6.95,
+      y: 4.5,
+      w: 5.78,
+      h: 2.3,
+      rectRadius: 0.08,
+      fill: { color: COLORS.white },
+      line: { color: COLORS.sky, width: 1.25 }
+    });
+    sEvo.addShape('roundRect', {
+      x: 7.11,
+      y: 4.62,
+      w: 5.46,
+      h: 0.38,
+      rectRadius: 0.05,
+      fill: { color: COLORS.skyLight }
+    });
+    sEvo.addText('Impacto Medido Tras Capacitaciones', {
+      x: 7.22,
+      y: 4.66,
+      w: 5.24,
+      h: 0.3,
+      fontSize: 11.5,
+      bold: true,
+      color: COLORS.sky,
+      fontFace: 'Segoe UI'
+    });
+
+    const scoreDelta = data.annualEvolution.scoreDeltaFirstToLast;
+    const accDelta = data.annualEvolution.accidentRateDeltaFirstToLast;
+    const scoreSign = scoreDelta >= 0 ? '+' : '';
+    const accSign = accDelta > 0 ? '+' : '';
+
+    const rec = data.annualEvolution.recurrentImpact;
+    const recurrentLine =
+      rec.count > 0
+        ? `• Operadores recurrentes (${rec.count}): pasaron de ${rec.firstAvg.toFixed(2)} a ${rec.latestAvg.toFixed(2)} pts (${rec.improvedCount} mejoraron o mantuvieron nivel).`
+        : '• Aún no se registran operadores evaluados en más de una ocasión dentro del periodo.';
+
+    sEvo.addText(
+      [
+        {
+          text: `• Variación en Promedio (${firstYear.year} → ${lastYear.year}): `,
+          options: { bold: true, color: COLORS.navy }
+        },
+        {
+          text: `${scoreSign}${scoreDelta.toFixed(2)} pts\n`,
+          options: { bold: true, color: scoreDelta >= 0 ? COLORS.green : COLORS.red }
+        },
+        {
+          text: `• Variación en Tasa de Accidentes (${firstYear.year} → ${lastYear.year}): `,
+          options: { bold: true, color: COLORS.navy }
+        },
+        {
+          text: `${accSign}${accDelta.toFixed(2)} eventos/op.\n`,
+          options: { bold: true, color: accDelta <= 0 ? COLORS.green : COLORS.red }
+        },
+        {
+          text: recurrentLine,
+          options: { color: COLORS.slate }
+        }
+      ],
+      {
+        x: 7.15,
+        y: 5.05,
+        w: 5.38,
+        h: 1.65,
+        fontSize: 10,
+        fontFace: 'Segoe UI',
+        valign: 'top',
+        paraSpaceAfter: 6
+      }
+    );
+  }
+
+  // =========================================================================
+  // SLIDE: RENDIMIENTO POR EJERCICIOS REALIZADOS
   // =========================================================================
   const s3 = pres.addSlide();
   addSlideHeader(
     s3,
     'Rendimiento en Ejercicios Realizados',
     `${data.exercises.length} ejercicios evaluados en ${data.companyName} (${data.periodText})`,
-    4,
+    slidePage++,
     totalSlides
   );
 
@@ -904,6 +1424,7 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
         valAxisMinVal: 0,
         valAxisMaxVal: 10,
         showValue: true,
+        dataLabelFormatCode: '0.00',
         dataLabelFontSize: 9,
         dataLabelColor: COLORS.navy,
         catAxisLabelFontSize: 8.5
@@ -931,23 +1452,55 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
       ]
     ];
 
-    data.exercises.slice(0, 14).forEach((ex, idx) => {
-      const bg = idx % 2 === 0 ? COLORS.white : 'F1F5F9';
-      const color = ex.promedio >= 8 ? COLORS.green : ex.promedio >= 6 ? COLORS.sky : COLORS.red;
-      exRows.push([
-        { text: ex.nombre, options: { fill: { color: bg }, fontSize: 8.5, bold: true, color: COLORS.navy, align: 'left' } },
-        { text: String(ex.totalEvaluaciones), options: { fill: { color: bg }, fontSize: 8.5, color: COLORS.slate, align: 'center' } },
-        { text: `${ex.promedio.toFixed(2)}`, options: { fill: { color: bg }, fontSize: 8.5, bold: true, color, align: 'center' } },
-        { text: ex.nivel, options: { fill: { color: bg }, fontSize: 8, bold: true, color, align: 'center' } }
-      ]);
-    });
+    if (data.exercisesByYear.length >= 2) {
+      data.exercisesByYear.forEach((group) => {
+        if (exRows.length >= 20) return;
+        exRows.push([
+          {
+            text: `Año ${group.year} (${group.exercises.length} ejercicios)`,
+            options: {
+              colspan: 4,
+              bold: true,
+              fontSize: 8.5,
+              color: COLORS.sky,
+              fill: { color: COLORS.skyLight },
+              align: 'left'
+            }
+          }
+        ]);
 
+        group.exercises.forEach((ex, idx) => {
+          if (exRows.length >= 20) return;
+          const bg = idx % 2 === 0 ? COLORS.white : 'F8FAFC';
+          const color = ex.promedio >= 8 ? COLORS.green : ex.promedio >= 6 ? COLORS.sky : COLORS.red;
+          exRows.push([
+            { text: ex.nombre, options: { fill: { color: bg }, fontSize: 8, bold: true, color: COLORS.navy, align: 'left' } },
+            { text: String(ex.totalEvaluaciones), options: { fill: { color: bg }, fontSize: 8, color: COLORS.slate, align: 'center' } },
+            { text: `${ex.promedio.toFixed(2)}`, options: { fill: { color: bg }, fontSize: 8, bold: true, color, align: 'center' } },
+            { text: ex.nivel, options: { fill: { color: bg }, fontSize: 7.5, bold: true, color, align: 'center' } }
+          ]);
+        });
+      });
+    } else {
+      data.exercises.slice(0, 14).forEach((ex, idx) => {
+        const bg = idx % 2 === 0 ? COLORS.white : 'F1F5F9';
+        const color = ex.promedio >= 8 ? COLORS.green : ex.promedio >= 6 ? COLORS.sky : COLORS.red;
+        exRows.push([
+          { text: ex.nombre, options: { fill: { color: bg }, fontSize: 8.5, bold: true, color: COLORS.navy, align: 'left' } },
+          { text: String(ex.totalEvaluaciones), options: { fill: { color: bg }, fontSize: 8.5, color: COLORS.slate, align: 'center' } },
+          { text: `${ex.promedio.toFixed(2)}`, options: { fill: { color: bg }, fontSize: 8.5, bold: true, color, align: 'center' } },
+          { text: ex.nivel, options: { fill: { color: bg }, fontSize: 8, bold: true, color, align: 'center' } }
+        ]);
+      });
+    }
+
+    const exRowH = exRows.length > 15 ? 0.27 : exRows.length > 10 ? 0.31 : 0.34;
     s3.addTable(exRows, {
       x: 7.2,
       y: 1.25,
       w: 5.53,
       colW: [2.73, 0.65, 0.85, 1.3],
-      rowH: 0.34,
+      rowH: exRowH,
       border: { pt: 0.5, color: COLORS.border },
       valign: 'middle'
     });
@@ -971,7 +1524,7 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     s4,
     'Seguridad Vial y Errores Críticos',
     `Incidencias críticas y patrones frecuentes detectados en ${data.companyName}`,
-    5,
+    slidePage++,
     totalSlides
   );
 
@@ -982,15 +1535,17 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     y: 1.25,
     w: 5.9,
     h: 5.55,
+    rectRadius: 0.08,
     fill: { color: COLORS.white },
     line: { color: hasCriticals ? 'FCA5A5' : '86EFAC', width: 1.25 }
   });
 
-  s4.addShape('rect', {
-    x: 0.6,
-    y: 1.25,
-    w: 5.9,
-    h: 0.52,
+  s4.addShape('roundRect', {
+    x: 0.78,
+    y: 1.4,
+    w: 5.54,
+    h: 0.44,
+    rectRadius: 0.06,
     fill: { color: hasCriticals ? COLORS.redLight : COLORS.greenLight }
   });
   s4.addText(
@@ -998,11 +1553,11 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
       ? `Incidencias Críticas Acumuladas (${data.criticalSummary.totalIncidentes} en total)`
       : 'Conducción Segura sin Incidentes Críticos',
     {
-      x: 0.8,
-      y: 1.33,
-      w: 5.5,
-      h: 0.35,
-      fontSize: 12,
+      x: 0.9,
+      y: 1.45,
+      w: 5.3,
+      h: 0.34,
+      fontSize: 11.5,
       bold: true,
       color: hasCriticals ? COLORS.red : COLORS.green,
       fontFace: 'Segoe UI'
@@ -1030,10 +1585,10 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
       ]);
     });
     s4.addTable(critRows, {
-      x: 0.8,
-      y: 1.95,
-      w: 5.5,
-      colW: [4.3, 1.2],
+      x: 0.78,
+      y: 2.0,
+      w: 5.54,
+      colW: [4.34, 1.2],
       rowH: 0.38,
       border: { pt: 0.5, color: 'FECACA' },
       valign: 'middle'
@@ -1057,22 +1612,24 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     y: 1.25,
     w: 5.93,
     h: 5.55,
+    rectRadius: 0.08,
     fill: { color: COLORS.white },
     line: { color: COLORS.border, width: 1 }
   });
-  s4.addShape('rect', {
-    x: 6.8,
-    y: 1.25,
-    w: 5.93,
-    h: 0.52,
+  s4.addShape('roundRect', {
+    x: 6.98,
+    y: 1.4,
+    w: 5.57,
+    h: 0.44,
+    rectRadius: 0.06,
     fill: { color: COLORS.slateDark }
   });
   s4.addText('Top Errores Frecuentes en Telemetría', {
-    x: 7.0,
-    y: 1.33,
-    w: 5.5,
-    h: 0.35,
-    fontSize: 12,
+    x: 7.1,
+    y: 1.45,
+    w: 5.33,
+    h: 0.34,
+    fontSize: 11.5,
     bold: true,
     color: COLORS.white,
     fontFace: 'Segoe UI'
@@ -1099,10 +1656,10 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
       ]);
     });
     s4.addTable(errRows, {
-      x: 7.0,
-      y: 1.95,
-      w: 5.53,
-      colW: [4.23, 1.3],
+      x: 6.98,
+      y: 2.0,
+      w: 5.57,
+      colW: [4.27, 1.3],
       rowH: 0.42,
       border: { pt: 0.5, color: COLORS.border },
       valign: 'middle'
@@ -1127,7 +1684,7 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     s5,
     'Cuadro de Honor: Top 10 Mejores Conductores',
     `Operadores con mejor desempeño promedio en ${data.companyName} (${data.periodText})`,
-    6,
+    slidePage++,
     totalSlides
   );
 
@@ -1160,7 +1717,7 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     s6,
     'Atención Prioritaria: Top 10 Conductores con Menor Desempeño',
     `Operadores prioritarios para refuerzo técnico y plan de acción en ${data.companyName}`,
-    7,
+    slidePage++,
     totalSlides
   );
 
@@ -1176,12 +1733,13 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     });
   }
 
-  // Plan de Acción Recomendado al pie de la diapositiva 6
+  // Plan de Acción Recomendado al pie de la diapositiva
   s6.addShape('roundRect', {
     x: 0.6,
     y: 6.08,
     w: 12.133,
     h: 0.85,
+    rectRadius: 0.06,
     fill: { color: COLORS.skyLight },
     line: { color: COLORS.sky, width: 1 }
   });
@@ -1204,6 +1762,284 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     color: COLORS.navy,
     fontFace: 'Segoe UI',
     valign: 'top'
+  });
+
+  // =========================================================================
+  // SLIDE FINAL: CIERRE, ACCESO A PLATAFORMA Y CONTACTO
+  // =========================================================================
+  const sClose = pres.addSlide();
+  sClose.background = { color: COLORS.navy };
+  sClose.addShape('rect', { x: 0, y: 0, w: 13.333, h: 0.1, fill: { color: 'F97316' } });
+
+  sClose.addText('¡Gracias por su atención!', {
+    x: 0.8,
+    y: 0.35,
+    w: 11.733,
+    h: 0.5,
+    align: 'center',
+    fontSize: 26,
+    bold: true,
+    color: COLORS.white,
+    fontFace: 'Segoe UI'
+  });
+  sClose.addText('Acceso a la plataforma y canales oficiales de contacto', {
+    x: 0.8,
+    y: 0.88,
+    w: 11.733,
+    h: 0.3,
+    align: 'center',
+    fontSize: 11.5,
+    color: '94A3B8',
+    fontFace: 'Segoe UI'
+  });
+
+  // Tarjeta izquierda: Acceso a TrackSIM Cloud Analytics
+  sClose.addShape('roundRect', {
+    x: 0.95,
+    y: 1.38,
+    w: 5.45,
+    h: 3.55,
+    rectRadius: 0.08,
+    fill: { color: COLORS.slateDark },
+    line: { color: COLORS.sky, width: 1.25 }
+  });
+  sClose.addShape('roundRect', {
+    x: 1.15,
+    y: 1.54,
+    w: 5.05,
+    h: 0.38,
+    rectRadius: 0.06,
+    fill: { color: COLORS.sky }
+  });
+  sClose.addText('PLATAFORMA TRACKSIM CLOUD', {
+    x: 1.25,
+    y: 1.58,
+    w: 4.85,
+    h: 0.3,
+    align: 'center',
+    fontSize: 11,
+    bold: true,
+    color: COLORS.white,
+    fontFace: 'Segoe UI'
+  });
+
+  sClose.addShape('roundRect', {
+    x: 2.6,
+    y: 2.06,
+    w: 2.15,
+    h: 2.15,
+    rectRadius: 0.06,
+    fill: { color: COLORS.white }
+  });
+  if (cloudQrDataUrl) {
+    sClose.addImage({
+      data: cloudQrDataUrl,
+      x: 2.7,
+      y: 2.16,
+      w: 1.95,
+      h: 1.95
+    });
+  }
+
+  sClose.addText(TRACKSIM_CLOUD_URL, {
+    x: 1.15,
+    y: 4.32,
+    w: 5.05,
+    h: 0.3,
+    align: 'center',
+    fontSize: 12,
+    bold: true,
+    color: '38BDF8',
+    underline: { style: 'sng' },
+    hyperlink: { url: TRACKSIM_CLOUD_URL },
+    fontFace: 'Segoe UI'
+  });
+  sClose.addText('Consulta métricas, expedientes y evolución en línea', {
+    x: 1.25,
+    y: 4.62,
+    w: 4.85,
+    h: 0.25,
+    align: 'center',
+    fontSize: 9,
+    color: 'CBD5E1',
+    fontFace: 'Segoe UI'
+  });
+
+  // Tarjeta derecha: QR Linktree
+  sClose.addShape('roundRect', {
+    x: 6.93,
+    y: 1.38,
+    w: 5.45,
+    h: 3.55,
+    rectRadius: 0.08,
+    fill: { color: COLORS.slateDark },
+    line: { color: 'F97316', width: 1.25 }
+  });
+  sClose.addShape('roundRect', {
+    x: 7.13,
+    y: 1.54,
+    w: 5.05,
+    h: 0.38,
+    rectRadius: 0.06,
+    fill: { color: 'EA580C' }
+  });
+  sClose.addText('CANALES Y REDES (LINKTREE)', {
+    x: 7.23,
+    y: 1.58,
+    w: 4.85,
+    h: 0.3,
+    align: 'center',
+    fontSize: 11,
+    bold: true,
+    color: COLORS.white,
+    fontFace: 'Segoe UI'
+  });
+
+  sClose.addShape('roundRect', {
+    x: 8.58,
+    y: 2.06,
+    w: 2.15,
+    h: 2.15,
+    rectRadius: 0.06,
+    fill: { color: COLORS.white }
+  });
+  if (linktreeQrDataUrl) {
+    sClose.addImage({
+      data: linktreeQrDataUrl,
+      x: 8.68,
+      y: 2.16,
+      w: 1.95,
+      h: 1.95
+    });
+  }
+
+  sClose.addText(LINKTREE_URL, {
+    x: 7.13,
+    y: 4.32,
+    w: 5.05,
+    h: 0.3,
+    align: 'center',
+    fontSize: 12,
+    bold: true,
+    color: 'FB923C',
+    underline: { style: 'sng' },
+    hyperlink: { url: LINKTREE_URL },
+    fontFace: 'Segoe UI'
+  });
+  sClose.addText('Escanea para acceder a todos nuestros enlaces de contacto', {
+    x: 7.23,
+    y: 4.62,
+    w: 4.85,
+    h: 0.25,
+    align: 'center',
+    fontSize: 9,
+    color: 'CBD5E1',
+    fontFace: 'Segoe UI'
+  });
+
+  // Tarjeta inferior (ancho completo debajo de los 2 QR): Firma Ejecutiva
+  sClose.addShape('roundRect', {
+    x: 0.95,
+    y: 5.15,
+    w: 11.43,
+    h: 1.72,
+    rectRadius: 0.08,
+    fill: { color: COLORS.slateDark },
+    line: { color: '475569', width: 1 }
+  });
+  sClose.addShape('roundRect', {
+    x: 1.15,
+    y: 5.38,
+    w: 0.08,
+    h: 1.25,
+    rectRadius: 0.04,
+    fill: { color: 'F97316' }
+  });
+
+  sClose.addText('Mario Alberto Agraz Martínez', {
+    x: 1.4,
+    y: 5.45,
+    w: 4.3,
+    h: 0.4,
+    fontSize: 16,
+    bold: true,
+    color: COLORS.white,
+    fontFace: 'Segoe UI'
+  });
+  sClose.addText('Gerente de operaciones', {
+    x: 1.4,
+    y: 5.88,
+    w: 4.3,
+    h: 0.32,
+    fontSize: 11.5,
+    italic: true,
+    color: 'FB923C',
+    fontFace: 'Segoe UI'
+  });
+  sClose.addText('TrackSIM • Simulador de Manejo', {
+    x: 1.4,
+    y: 6.24,
+    w: 4.3,
+    h: 0.28,
+    fontSize: 9.5,
+    color: '94A3B8',
+    fontFace: 'Segoe UI'
+  });
+
+  sClose.addShape('line', {
+    x: 5.85,
+    y: 5.38,
+    w: 0,
+    h: 1.25,
+    line: { color: '475569', width: 0.75 }
+  });
+
+  sClose.addText(
+    [
+      { text: '📍  Av. Isaac Newton 232, Polanco V Sección, 11560\n', options: { color: 'E2E8F0', fontSize: 10.5 } },
+      {
+        text: '📞  +52 1 55 3656 2504\n',
+        options: { color: '38BDF8', fontSize: 10.5, underline: { style: 'sng' }, hyperlink: { url: 'tel:+5215536562504' } }
+      },
+      {
+        text: '✉️  magraz@corporativomaf.com\n',
+        options: {
+          color: '38BDF8',
+          fontSize: 10.5,
+          underline: { style: 'sng' },
+          hyperlink: { url: 'mailto:magraz@corporativomaf.com' }
+        }
+      },
+      {
+        text: '🌐  www.tracksim.mx',
+        options: {
+          color: '38BDF8',
+          fontSize: 10.5,
+          underline: { style: 'sng' },
+          hyperlink: { url: 'https://www.tracksim.mx' }
+        }
+      }
+    ],
+    {
+      x: 6.15,
+      y: 5.38,
+      w: 6.0,
+      h: 1.3,
+      fontFace: 'Segoe UI',
+      valign: 'middle',
+      paraSpaceAfter: 5
+    }
+  );
+
+  sClose.addText(`TrackSIM Cloud Analytics  •  Informe Ejecutivo  •  Diapositiva ${slidePage++} de ${totalSlides}`, {
+    x: 0.6,
+    y: 7.12,
+    w: 12.133,
+    h: 0.25,
+    align: 'right',
+    fontSize: 8.5,
+    color: '94A3B8',
+    fontFace: 'Segoe UI'
   });
 
   const safeCompany = sanitizeFileSegment(data.companyName) || 'Flota';
