@@ -121,7 +121,7 @@ describe('companyAiInsights', () => {
     expect(fallback).not.toContain('Reforzar la prueba "Efectos del alcohol"');
   });
 
-  it('usa Gemini 3.8 Flash cuando la respuesta es exitosa y hace fallback si hay error de cuota', async () => {
+  it('prioriza Gemini 3.5 Flash-Lite cuando la respuesta es exitosa, respalda con 3.8 Flash y usa motor local si ambos fallan', async () => {
     generateContentMock.mockResolvedValueOnce({
       response: {
         text: () =>
@@ -151,7 +151,7 @@ describe('companyAiInsights', () => {
     });
 
     expect(okResult.source).toBe('gemini');
-    expect(okResult.model).toBe('gemini-3.8-flash');
+    expect(okResult.model).toBe('gemini-3.5-flash-lite');
     expect(okResult.summary).toContain('Desempeño sólido');
     expect(okResult.fromCache).toBe(false);
 
@@ -213,7 +213,7 @@ describe('companyAiInsights', () => {
       forceRefresh: true
     });
     expect(retryModelResult.source).toBe('gemini');
-    expect(retryModelResult.model).toBe('gemini-3.5-flash-lite');
+    expect(retryModelResult.model).toBe('gemini-3.8-flash');
 
     generateContentMock.mockRejectedValue(new Error('429 quota exceeded'));
 

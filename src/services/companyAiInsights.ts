@@ -58,7 +58,9 @@ export interface CompanyAiInsightResult {
   warning?: string;
 }
 
-const GEMINI_MODEL_CANDIDATES = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'] as const;
+const GEMINI_MODEL_CANDIDATES = ['gemini-3.5-flash-lite', 'gemini-3.8-flash'] as const;
+const MODEL_COOLDOWN_MS = 5 * 60 * 1000;
+const modelCooldownUntil = new Map<string, number>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const STORAGE_KEY_PREFIX = 'tracksim_ai_insight_v6:';
 
@@ -648,8 +650,12 @@ export async function generateCompanyAiInsight(input: CompanyAiInsightRequest): 
     const { getAI, getGenerativeModel, GoogleAIBackend, ThinkingLevel } = await import('firebase/ai');
     const ai = getAI(app, { backend: new GoogleAIBackend() });
 
+    const nowMs = Date.now();
+    const activeModels = GEMINI_MODEL_CANDIDATES.filter((id) => (modelCooldownUntil.get(id) ?? 0) <= nowMs);
+    const candidates = activeModels.length > 0 ? activeModels : GEMINI_MODEL_CANDIDATES;
+
     let lastError: unknown;
-    for (const modelId of GEMINI_MODEL_CANDIDATES) {
+    for (const modelId of candidates) {
       try {
         const model = getGenerativeModel(ai, {
           model: modelId,
@@ -696,6 +702,9 @@ export async function generateCompanyAiInsight(input: CompanyAiInsightRequest): 
       } catch (modelErr) {
         lastError = modelErr;
         const msg = modelErr instanceof Error ? modelErr.message : String(modelErr);
+        if (/429|quota|resource.*exhausted|503|unavailable|overloaded/i.test(msg)) {
+          modelCooldownUntil.set(modelId, Date.now() + MODEL_COOLDOWN_MS);
+        }
         const shouldRetryNextModel = /503|unavailable|overloaded|429|quota|resource.*exhausted|not found|404|timeout|tiempo de espera/i.test(msg);
         if (!shouldRetryNextModel) {
           throw modelErr;
