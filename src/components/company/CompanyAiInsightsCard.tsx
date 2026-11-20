@@ -1,6 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
-import type { CompanyAiInsightResult, CompanyAiStructuredReport } from '../../services/companyAiInsights';
+import type { AiQuickAnswerResult, CompanyAiInsightResult, CompanyAiStructuredReport } from '../../services/companyAiInsights';
+import {
+  askTrackyQuickQuestion,
+  getQuickQuestionsForSubject,
+  type TrackyQuickQuestionId
+} from '../../services/trackyQuickQuestions';
+import type { Evaluation } from '../../types';
 import { TrackyAssistant, type TrackySubjectType } from './TrackyAssistant';
 
 interface CompanyAiInsightsCardProps {
@@ -10,6 +16,7 @@ interface CompanyAiInsightsCardProps {
   companyName: string;
   periodText: string;
   subjectType?: TrackySubjectType;
+  evaluations?: Evaluation[];
   onRegenerate: () => void;
   onClose: () => void;
 }
@@ -374,11 +381,17 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
   companyName,
   periodText,
   subjectType = 'company',
+  evaluations,
   onRegenerate,
   onClose
 }) => {
   const [copied, setCopied] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [activeQuestionId, setActiveQuestionId] = useState<TrackyQuickQuestionId | null>(null);
+  const [quickAnswer, setQuickAnswer] = useState<AiQuickAnswerResult | null>(null);
+  const [isLoadingQuick, setIsLoadingQuick] = useState(false);
+  const [copiedQuick, setCopiedQuick] = useState(false);
+  const quickRequestIdRef = useRef(0);
 
   useEffect(() => {
     if (!isLoading) {
@@ -392,9 +405,82 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
     return () => window.clearInterval(intervalId);
   }, [isLoading]);
 
+  const insightStamp = insight?.generatedAt;
+  useEffect(() => {
+    void isOpen;
+    void companyName;
+    void periodText;
+    void subjectType;
+    void insightStamp;
+    quickRequestIdRef.current += 1;
+    setActiveQuestionId(null);
+    setQuickAnswer(null);
+    setIsLoadingQuick(false);
+    setCopiedQuick(false);
+  }, [isOpen, companyName, periodText, subjectType, insightStamp]);
+
   useEscapeKey(isOpen, onClose);
 
   if (!isOpen) return null;
+
+  const quickQuestions = getQuickQuestionsForSubject(subjectType);
+  const activeQuestion = quickQuestions.find((q) => q.id === activeQuestionId) || null;
+
+  const handleCloseQuickPanel = () => {
+    quickRequestIdRef.current += 1;
+    setActiveQuestionId(null);
+    setQuickAnswer(null);
+    setIsLoadingQuick(false);
+    setCopiedQuick(false);
+  };
+
+  const handleAskQuickQuestion = async (questionId: TrackyQuickQuestionId, forceRefresh = false) => {
+    if (!insight) return;
+    if (!forceRefresh && activeQuestionId === questionId && !isLoadingQuick && quickAnswer) {
+      handleCloseQuickPanel();
+      return;
+    }
+
+    const reqId = ++quickRequestIdRef.current;
+    setActiveQuestionId(questionId);
+    setIsLoadingQuick(true);
+    setCopiedQuick(false);
+    if (!forceRefresh) {
+      setQuickAnswer(null);
+    }
+
+    try {
+      const result = await askTrackyQuickQuestion({
+        questionId,
+        subjectType,
+        companyName,
+        periodText,
+        insight,
+        evaluations,
+        forceRefresh
+      });
+      if (quickRequestIdRef.current === reqId) {
+        setQuickAnswer(result);
+      }
+    } catch (error) {
+      console.error('Error al responder pregunta rápida de Tracky:', error);
+    } finally {
+      if (quickRequestIdRef.current === reqId) {
+        setIsLoadingQuick(false);
+      }
+    }
+  };
+
+  const handleCopyQuickAnswer = async () => {
+    if (!quickAnswer?.answer || typeof navigator === 'undefined' || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(quickAnswer.answer);
+      setCopiedQuick(true);
+      setTimeout(() => setCopiedQuick(false), 2000);
+    } catch {
+      // Sin acceso al portapapeles
+    }
+  };
 
   const handleCopy = async () => {
     if (!insight?.summary || typeof navigator === 'undefined' || !navigator.clipboard) return;
@@ -559,6 +645,212 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
                 structured={insight.structured}
                 warning={insight.warning}
               />
+
+              <div
+                style={{
+                  marginBottom: '1rem',
+                  padding: '0.8rem 0.95rem',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border-subtle)',
+                  background: 'var(--bg-subtle, rgba(148, 163, 184, 0.06))'
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    color: 'var(--text-muted)',
+                    marginBottom: '0.55rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
+                >
+                  <span>⚡</span>
+                  <span>Preguntas rápidas a Tracky</span>
+                </div>
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem' }}>
+                  {quickQuestions.map((q) => {
+                    const isActive = activeQuestionId === q.id;
+                    return (
+                      <button
+                        key={q.id}
+                        type="button"
+                        aria-pressed={isActive}
+                        disabled={isLoadingQuick && isActive}
+                        onClick={() => void handleAskQuickQuestion(q.id, false)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          padding: '0.38rem 0.72rem',
+                          borderRadius: '999px',
+                          fontSize: '0.77rem',
+                          fontWeight: 600,
+                          border: isActive
+                            ? '1px solid rgba(139, 92, 246, 0.55)'
+                            : '1px solid var(--border-subtle)',
+                          background: isActive
+                            ? 'rgba(139, 92, 246, 0.14)'
+                            : 'var(--bg-card, #ffffff)',
+                          color: isActive ? '#6d28d9' : 'var(--text-main)',
+                          cursor: isLoadingQuick && isActive ? 'wait' : 'pointer',
+                          transition: 'all 0.16s ease'
+                        }}
+                      >
+                        <span>{q.icon}</span>
+                        <span>{q.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {activeQuestionId && activeQuestion && (
+                  <div
+                    role="region"
+                    aria-label={`Respuesta rápida: ${activeQuestion.label}`}
+                    style={{
+                      marginTop: '0.75rem',
+                      padding: '0.85rem 0.95rem',
+                      borderRadius: '10px',
+                      background: 'var(--bg-card, #ffffff)',
+                      border: '1px solid rgba(139, 92, 246, 0.3)'
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '0.5rem',
+                        marginBottom: '0.6rem',
+                        paddingBottom: '0.45rem',
+                        borderBottom: '1px solid var(--border-subtle)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        <span>{activeQuestion.icon}</span>
+                        <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                          {activeQuestion.label}
+                        </span>
+                        {quickAnswer && !isLoadingQuick && (
+                          <span
+                            style={{
+                              fontSize: '0.66rem',
+                              fontWeight: 700,
+                              padding: '0.12rem 0.45rem',
+                              borderRadius: '999px',
+                              background:
+                                quickAnswer.source === 'gemini'
+                                  ? 'rgba(139, 92, 246, 0.12)'
+                                  : 'rgba(14, 165, 233, 0.12)',
+                              color: quickAnswer.source === 'gemini' ? '#6d28d9' : '#0369a1'
+                            }}
+                          >
+                            {quickAnswer.model}
+                          </span>
+                        )}
+                        {quickAnswer?.fromCache && !isLoadingQuick && (
+                          <span
+                            style={{
+                              fontSize: '0.65rem',
+                              fontWeight: 600,
+                              padding: '0.12rem 0.42rem',
+                              borderRadius: '999px',
+                              background: 'rgba(16, 185, 129, 0.12)',
+                              color: '#047857'
+                            }}
+                          >
+                            ⚡ Guardado (&lt; 24h)
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        {quickAnswer && !isLoadingQuick && (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={handleCopyQuickAnswer}
+                              style={{ fontSize: '0.74rem', padding: '0.25rem 0.55rem' }}
+                            >
+                              {copiedQuick ? '✓ Copiado' : activeQuestion.copyLabel}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => void handleAskQuickQuestion(activeQuestion.id, true)}
+                              style={{ fontSize: '0.74rem', padding: '0.25rem 0.5rem' }}
+                              title="Regenerar respuesta rápida"
+                            >
+                              🔄
+                            </button>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={handleCloseQuickPanel}
+                          aria-label="Cerrar respuesta rápida"
+                          title="Cerrar respuesta rápida"
+                          style={{ fontSize: '0.74rem', padding: '0.25rem 0.5rem' }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+
+                    {isLoadingQuick ? (
+                      <div style={{ fontSize: '0.83rem', color: 'var(--text-muted)', padding: '0.25rem 0' }}>
+                        🐾 Tracky está preparando tu respuesta...
+                      </div>
+                    ) : quickAnswer ? (
+                      <>
+                        {quickAnswer.warning && (
+                          <div
+                            style={{
+                              marginBottom: '0.55rem',
+                              padding: '0.45rem 0.65rem',
+                              borderRadius: '6px',
+                              background: 'rgba(245, 158, 11, 0.1)',
+                              border: '1px solid rgba(245, 158, 11, 0.3)',
+                              color: '#b45309',
+                              fontSize: '0.74rem',
+                              fontWeight: 600
+                            }}
+                          >
+                            ℹ️ {quickAnswer.warning}
+                          </div>
+                        )}
+                        {activeQuestion.id === 'whatsapp' ? (
+                          <div
+                            style={{
+                              whiteSpace: 'pre-wrap',
+                              fontSize: '0.86rem',
+                              lineHeight: 1.55,
+                              color: 'var(--text-main)',
+                              background: 'rgba(34, 197, 94, 0.08)',
+                              border: '1px solid rgba(34, 197, 94, 0.25)',
+                              borderRadius: '8px',
+                              padding: '0.75rem 0.85rem'
+                            }}
+                          >
+                            {quickAnswer.answer}
+                          </div>
+                        ) : (
+                          <div>{renderInsightMarkdown(quickAnswer.answer)}</div>
+                        )}
+                      </>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+
               {insight.warning && (
                 <div
                   style={{

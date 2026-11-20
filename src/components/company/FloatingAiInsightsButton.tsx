@@ -179,6 +179,7 @@ export const FloatingAiInsightsButton: React.FC = () => {
         insight={insight}
         companyName={comp.nombre}
         periodText={periodText}
+        evaluations={evaluationsByYear}
         onRegenerate={() => void handleExplainWithAi(true)}
         onClose={() => setIsOpen(false)}
       />

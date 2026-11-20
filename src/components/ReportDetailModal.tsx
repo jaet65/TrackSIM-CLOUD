@@ -456,6 +456,7 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
       companyName={driverName}
       periodText={`${evaluation.empresa || 'TrackSIM'} • ${sessionScopeLabel}`}
       subjectType="driver"
+      evaluations={[evaluation]}
       onRegenerate={() => void handleExplainSessionWithAi(true)}
       onClose={() => setIsAiOpen(false)}
     />

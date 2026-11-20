@@ -1,8 +1,19 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CompanyAiInsightResult } from '../../services/companyAiInsights';
+import { askTrackyQuickQuestion } from '../../services/trackyQuickQuestions';
 import { CompanyAiInsightsCard } from '../company/CompanyAiInsightsCard';
+
+vi.mock('../../services/trackyQuickQuestions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/trackyQuickQuestions')>();
+  return {
+    ...actual,
+    askTrackyQuickQuestion: vi.fn()
+  };
+});
+
+const askTrackyQuickQuestionMock = vi.mocked(askTrackyQuickQuestion);
 import {
   TRACKY_GIF_PATH,
   TRACKY_WEBP_PATH,
@@ -48,6 +59,10 @@ function createStructuredInsight(): CompanyAiInsightResult {
 }
 
 describe('CompanyAiInsightsCard', () => {
+  beforeEach(() => {
+    askTrackyQuickQuestionMock.mockReset();
+  });
+
   it('no renderiza el modal ni a Tracky cuando isOpen es false', () => {
     render(
       <CompanyAiInsightsCard
@@ -117,5 +132,82 @@ describe('CompanyAiInsightsCard', () => {
 
     expect(screen.getByText(/Lo más positivo: Alta aprobación en montaña/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Siguiente consejo \(2\/4\)/ })).toBeInTheDocument();
+  });
+
+  it('adapta las preguntas rápidas por contexto, consulta a Tracky al hacer clic y permite cerrar el panel', async () => {
+    askTrackyQuickQuestionMock.mockResolvedValueOnce({
+      answer: '📊 *Resumen TrackSIM — Transcooler (Año 2026)*\n✅ Alta aprobación en montaña.',
+      source: 'gemini',
+      model: 'gemini-3.5-flash-lite',
+      generatedAt: '20-nov, 02:55 a. m.'
+    });
+
+    const { rerender } = render(
+      <CompanyAiInsightsCard
+        isOpen={true}
+        isLoading={false}
+        insight={createStructuredInsight()}
+        companyName="Transcooler"
+        periodText="Año 2026"
+        subjectType="company"
+        onRegenerate={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    const whatsappBtn = screen.getByRole('button', { name: /Resumen para WhatsApp/ });
+    expect(whatsappBtn).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /¿Qué hábitos elevan el diésel\?/ })).toBeInTheDocument();
+
+    fireEvent.click(whatsappBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Resumen TrackSIM — Transcooler \(Año 2026\)/)).toBeInTheDocument();
+    });
+
+    expect(askTrackyQuickQuestionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        questionId: 'whatsapp',
+        subjectType: 'company',
+        companyName: 'Transcooler',
+        periodText: 'Año 2026'
+      })
+    );
+    expect(screen.getByRole('button', { name: /Copiar para WhatsApp/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar respuesta rápida' }));
+    expect(screen.queryByRole('region', { name: /Respuesta rápida/ })).toBeNull();
+
+    rerender(
+      <CompanyAiInsightsCard
+        isOpen={true}
+        isLoading={false}
+        insight={createStructuredInsight()}
+        companyName="Juan Pérez"
+        periodText="Transcooler • 2 sesiones"
+        subjectType="driver"
+        onRegenerate={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /Mensaje para el operador/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Guion rápido para supervisor/ })).toBeInTheDocument();
+
+    rerender(
+      <CompanyAiInsightsCard
+        isOpen={true}
+        isLoading={false}
+        insight={createStructuredInsight()}
+        companyName="Transcooler"
+        periodText="2 años (2024 - 2025)"
+        subjectType="evolution"
+        onRegenerate={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /Resumen ejecutivo WhatsApp/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /¿Funcionó la re-capacitación\?/ })).toBeInTheDocument();
   });
 });

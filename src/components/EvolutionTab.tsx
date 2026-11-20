@@ -1343,6 +1343,7 @@ export const EvolutionTab: React.FC = () => {
             companyName={currentDriver?.nombre || 'Operador'}
             periodText={`${currentDriver?.empresa || 'TrackSIM'} • ${driverScopeLabel}`}
             subjectType="driver"
+            evaluations={driverEvaluations}
             onRegenerate={() => void handleExplainDriverWithAi(true)}
             onClose={() => setIsDriverAiOpen(false)}
           />
@@ -1403,6 +1404,7 @@ export const EvolutionTab: React.FC = () => {
             companyName={currentCompany?.nombre || 'Flota'}
             periodText={companyYearsStats}
             subjectType="evolution"
+            evaluations={companyEvaluations}
             onRegenerate={() => void handleExplainFleetEvolutionWithAi(true)}
             onClose={() => setIsFleetEvolutionAiOpen(false)}
           />

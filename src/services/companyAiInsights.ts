@@ -58,16 +58,28 @@ export interface CompanyAiInsightResult {
   warning?: string;
 }
 
+export interface AiQuickAnswerResult {
+  answer: string;
+  source: 'gemini' | 'fallback';
+  model: string;
+  generatedAt: string;
+  createdAtMs?: number;
+  fromCache?: boolean;
+  warning?: string;
+}
+
 const GEMINI_MODEL_CANDIDATES = ['gemini-3.5-flash-lite', 'gemini-3.8-flash'] as const;
 const MODEL_COOLDOWN_MS = 5 * 60 * 1000;
 const modelCooldownUntil = new Map<string, number>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const STORAGE_KEY_PREFIX = 'tracksim_ai_insight_v6:';
+const TEXT_STORAGE_KEY_PREFIX = 'tracksim_ai_qa_v1:';
 
 export function isAlcoholAwarenessExercise(nombre: string): boolean {
   return /alcohol/i.test(nombre);
 }
 const insightCache = new Map<string, CompanyAiInsightResult>();
+const textAnswerCache = new Map<string, AiQuickAnswerResult>();
 
 function getStorage(): Storage | null {
   try {
@@ -85,41 +97,72 @@ function isCacheValid(item: CompanyAiInsightResult | null | undefined): item is 
   return Date.now() - item.createdAtMs < CACHE_TTL_MS;
 }
 
-function readCachedInsight(cacheKey: string): CompanyAiInsightResult | null {
-  const mem = insightCache.get(cacheKey);
-  if (isCacheValid(mem)) {
+function isTextCacheValid(item: AiQuickAnswerResult | null | undefined): item is AiQuickAnswerResult {
+  if (!item || item.source !== 'gemini' || !item.createdAtMs) return false;
+  return Date.now() - item.createdAtMs < CACHE_TTL_MS;
+}
+
+function readCachedValue<T>(
+  memoryMap: Map<string, T>,
+  storagePrefix: string,
+  isValid: (item: T | null | undefined) => item is T,
+  cacheKey: string
+): (T & { fromCache?: boolean }) | null {
+  const mem = memoryMap.get(cacheKey);
+  if (isValid(mem)) {
     return { ...mem, fromCache: true };
   }
   if (mem) {
-    insightCache.delete(cacheKey);
+    memoryMap.delete(cacheKey);
   }
 
   const storage = getStorage();
   if (!storage) return null;
   try {
-    const raw = storage.getItem(`${STORAGE_KEY_PREFIX}${cacheKey}`);
+    const raw = storage.getItem(`${storagePrefix}${cacheKey}`);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as CompanyAiInsightResult;
-    if (isCacheValid(parsed)) {
-      insightCache.set(cacheKey, parsed);
+    const parsed = JSON.parse(raw) as T;
+    if (isValid(parsed)) {
+      memoryMap.set(cacheKey, parsed);
       return { ...parsed, fromCache: true };
     }
-    storage.removeItem(`${STORAGE_KEY_PREFIX}${cacheKey}`);
+    storage.removeItem(`${storagePrefix}${cacheKey}`);
   } catch {
     // Caché corrupta o inaccesible
   }
   return null;
 }
 
-function writeCachedInsight(cacheKey: string, result: CompanyAiInsightResult): void {
-  insightCache.set(cacheKey, result);
+function writeCachedValue<T>(
+  memoryMap: Map<string, T>,
+  storagePrefix: string,
+  cacheKey: string,
+  result: T
+): void {
+  memoryMap.set(cacheKey, result);
   const storage = getStorage();
   if (!storage) return;
   try {
-    storage.setItem(`${STORAGE_KEY_PREFIX}${cacheKey}`, JSON.stringify(result));
+    storage.setItem(`${storagePrefix}${cacheKey}`, JSON.stringify(result));
   } catch {
     // Cuota de almacenamiento llena o bloqueada
   }
+}
+
+function readCachedInsight(cacheKey: string): CompanyAiInsightResult | null {
+  return readCachedValue(insightCache, STORAGE_KEY_PREFIX, isCacheValid, cacheKey);
+}
+
+function writeCachedInsight(cacheKey: string, result: CompanyAiInsightResult): void {
+  writeCachedValue(insightCache, STORAGE_KEY_PREFIX, cacheKey, result);
+}
+
+function readCachedTextAnswer(cacheKey: string): AiQuickAnswerResult | null {
+  return readCachedValue(textAnswerCache, TEXT_STORAGE_KEY_PREFIX, isTextCacheValid, cacheKey);
+}
+
+function writeCachedTextAnswer(cacheKey: string, result: AiQuickAnswerResult): void {
+  writeCachedValue(textAnswerCache, TEXT_STORAGE_KEY_PREFIX, cacheKey, result);
 }
 
 function getEvalScore(ev: Evaluation): number {
@@ -637,6 +680,10 @@ export function readCachedAiInsight(cacheKey: string): CompanyAiInsightResult | 
   return readCachedInsight(cacheKey);
 }
 
+export function readCachedAiTextAnswer(cacheKey: string): AiQuickAnswerResult | null {
+  return readCachedTextAnswer(cacheKey);
+}
+
 export function getCachedCompanyAiInsight(input: CompanyAiInsightRequest): CompanyAiInsightResult | null {
   const metrics = buildCompanyAiMetricsContext(input);
   const cacheKey = buildCacheKey(input, metrics);
@@ -648,6 +695,87 @@ export interface GeminiStructuredInsightOptions {
   prompt: string;
   buildFallback: () => CompanyAiStructuredReport;
   forceRefresh?: boolean;
+}
+
+export interface GeminiTextAnswerOptions {
+  cacheKey: string;
+  prompt: string;
+  buildFallback: () => string;
+  forceRefresh?: boolean;
+  maxOutputTokens?: number;
+}
+
+async function runGeminiPromptWithFallback({
+  prompt,
+  maxOutputTokens = 4096,
+  responseMimeType
+}: {
+  prompt: string;
+  maxOutputTokens?: number;
+  responseMimeType?: string;
+}): Promise<{ text: string; model: string }> {
+  const { getAI, getGenerativeModel, GoogleAIBackend, ThinkingLevel } = await import('firebase/ai');
+  const ai = getAI(app, { backend: new GoogleAIBackend() });
+
+  const nowMs = Date.now();
+  const activeModels = GEMINI_MODEL_CANDIDATES.filter((id) => (modelCooldownUntil.get(id) ?? 0) <= nowMs);
+  const candidates = activeModels.length > 0 ? activeModels : GEMINI_MODEL_CANDIDATES;
+
+  let lastError: unknown;
+  for (const modelId of candidates) {
+    try {
+      const model = getGenerativeModel(ai, {
+        model: modelId,
+        generationConfig: {
+          candidateCount: 1,
+          maxOutputTokens,
+          temperature: 0.35,
+          ...(responseMimeType ? { responseMimeType } : {}),
+          thinkingConfig: {
+            thinkingLevel: modelId === 'gemini-3.5-flash-lite' ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW
+          }
+        }
+      });
+
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const response = await Promise.race([
+        model.generateContent(prompt),
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('Tiempo de espera agotado al consultar Gemini.')), 25000);
+        })
+      ]).finally(() => {
+        if (timeoutId) clearTimeout(timeoutId);
+      });
+      const text = response.response.text().trim();
+
+      if (!text) {
+        throw new Error('La respuesta de Gemini llegó vacía.');
+      }
+
+      return { text, model: modelId };
+    } catch (modelErr) {
+      lastError = modelErr;
+      const msg = modelErr instanceof Error ? modelErr.message : String(modelErr);
+      if (/429|quota|resource.*exhausted|503|unavailable|overloaded/i.test(msg)) {
+        modelCooldownUntil.set(modelId, Date.now() + MODEL_COOLDOWN_MS);
+      }
+      const shouldRetryNextModel = /503|unavailable|overloaded|429|quota|resource.*exhausted|not found|404|timeout|tiempo de espera/i.test(msg);
+      if (!shouldRetryNextModel) {
+        throw modelErr;
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Todos los modelos de Gemini fallaron temporalmente.');
+}
+
+function buildGeminiFallbackWarning(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  const isQuotaOrSetup =
+    /quota|429|503|unavailable|overloaded|permission|403|api.*not.*enabled|ai logic|ailogic/i.test(message);
+  return isQuotaOrSetup
+    ? 'Gemini Developer API está temporalmente saturado (503/429) o aún no está habilitado; se generó el análisis visual con el motor analítico local.'
+    : 'No se pudo conectar con Gemini Developer API; se generó el análisis visual con el motor analítico local.';
 }
 
 export async function invokeGeminiStructuredInsight({
@@ -664,77 +792,27 @@ export async function invokeGeminiStructuredInsight({
   }
 
   try {
-    const { getAI, getGenerativeModel, GoogleAIBackend, ThinkingLevel } = await import('firebase/ai');
-    const ai = getAI(app, { backend: new GoogleAIBackend() });
+    const { text, model: modelId } = await runGeminiPromptWithFallback({
+      prompt,
+      maxOutputTokens: 4096,
+      responseMimeType: 'application/json'
+    });
 
-    const nowMs = Date.now();
-    const activeModels = GEMINI_MODEL_CANDIDATES.filter((id) => (modelCooldownUntil.get(id) ?? 0) <= nowMs);
-    const candidates = activeModels.length > 0 ? activeModels : GEMINI_MODEL_CANDIDATES;
-
-    let lastError: unknown;
-    for (const modelId of candidates) {
-      try {
-        const model = getGenerativeModel(ai, {
-          model: modelId,
-          generationConfig: {
-            candidateCount: 1,
-            maxOutputTokens: 4096,
-            temperature: 0.35,
-            responseMimeType: 'application/json',
-            thinkingConfig: {
-              thinkingLevel: modelId === 'gemini-3.5-flash-lite' ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW
-            }
-          }
-        });
-
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        const response = await Promise.race([
-          model.generateContent(prompt),
-          new Promise<never>((_, reject) => {
-            timeoutId = setTimeout(() => reject(new Error('Tiempo de espera agotado al consultar Gemini.')), 25000);
-          })
-        ]).finally(() => {
-          if (timeoutId) clearTimeout(timeoutId);
-        });
-        const text = response.response.text().trim();
-
-        if (!text) {
-          throw new Error('La respuesta de Gemini llegó vacía.');
-        }
-
-        const structured = parseStructuredAiResponse(text) ?? undefined;
-        const formattedSummary = structured ? formatStructuredReportAsText(structured) : text;
-        const now = new Date();
-        const result: CompanyAiInsightResult = {
-          summary: formattedSummary,
-          structured,
-          source: 'gemini',
-          model: modelId,
-          generatedAt: now.toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
-          createdAtMs: now.getTime(),
-          fromCache: false
-        };
-        writeCachedInsight(cacheKey, result);
-        return result;
-      } catch (modelErr) {
-        lastError = modelErr;
-        const msg = modelErr instanceof Error ? modelErr.message : String(modelErr);
-        if (/429|quota|resource.*exhausted|503|unavailable|overloaded/i.test(msg)) {
-          modelCooldownUntil.set(modelId, Date.now() + MODEL_COOLDOWN_MS);
-        }
-        const shouldRetryNextModel = /503|unavailable|overloaded|429|quota|resource.*exhausted|not found|404|timeout|tiempo de espera/i.test(msg);
-        if (!shouldRetryNextModel) {
-          throw modelErr;
-        }
-      }
-    }
-
-    throw lastError instanceof Error ? lastError : new Error('Todos los modelos de Gemini fallaron temporalmente.');
+    const structured = parseStructuredAiResponse(text) ?? undefined;
+    const formattedSummary = structured ? formatStructuredReportAsText(structured) : text;
+    const now = new Date();
+    const result: CompanyAiInsightResult = {
+      summary: formattedSummary,
+      structured,
+      source: 'gemini',
+      model: modelId,
+      generatedAt: now.toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+      createdAtMs: now.getTime(),
+      fromCache: false
+    };
+    writeCachedInsight(cacheKey, result);
+    return result;
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const isQuotaOrSetup =
-      /quota|429|503|unavailable|overloaded|permission|403|api.*not.*enabled|ai logic|ailogic/i.test(message);
-
     const structuredFallback = buildFallback();
     const fallback: CompanyAiInsightResult = {
       summary: formatStructuredReportAsText(structuredFallback),
@@ -742,11 +820,51 @@ export async function invokeGeminiStructuredInsight({
       source: 'fallback',
       model: 'Motor Local (Respaldo)',
       generatedAt: new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
-      warning: isQuotaOrSetup
-        ? 'Gemini Developer API está temporalmente saturado (503/429) o aún no está habilitado; se generó el análisis visual con el motor analítico local.'
-        : 'No se pudo conectar con Gemini Developer API; se generó el análisis visual con el motor analítico local.'
+      warning: buildGeminiFallbackWarning(err)
     };
     return fallback;
+  }
+}
+
+export async function invokeGeminiTextAnswer({
+  cacheKey,
+  prompt,
+  buildFallback,
+  forceRefresh,
+  maxOutputTokens = 1024
+}: GeminiTextAnswerOptions): Promise<AiQuickAnswerResult> {
+  if (!forceRefresh) {
+    const cached = readCachedTextAnswer(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
+
+  try {
+    const { text, model: modelId } = await runGeminiPromptWithFallback({
+      prompt,
+      maxOutputTokens
+    });
+
+    const now = new Date();
+    const result: AiQuickAnswerResult = {
+      answer: text,
+      source: 'gemini',
+      model: modelId,
+      generatedAt: now.toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+      createdAtMs: now.getTime(),
+      fromCache: false
+    };
+    writeCachedTextAnswer(cacheKey, result);
+    return result;
+  } catch (err) {
+    return {
+      answer: buildFallback(),
+      source: 'fallback',
+      model: 'Motor Local (Respaldo)',
+      generatedAt: new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+      warning: buildGeminiFallbackWarning(err)
+    };
   }
 }
 
