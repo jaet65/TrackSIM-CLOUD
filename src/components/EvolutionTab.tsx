@@ -61,6 +61,9 @@ export const EvolutionTab: React.FC = () => {
   const [isDriverAiOpen, setIsDriverAiOpen] = useState(false);
   const [isLoadingDriverAi, setIsLoadingDriverAi] = useState(false);
   const [driverAiInsight, setDriverAiInsight] = useState<CompanyAiInsightResult | null>(null);
+  const [isFleetEvolutionAiOpen, setIsFleetEvolutionAiOpen] = useState(false);
+  const [isLoadingFleetEvolutionAi, setIsLoadingFleetEvolutionAi] = useState(false);
+  const [fleetEvolutionAiInsight, setFleetEvolutionAiInsight] = useState<CompanyAiInsightResult | null>(null);
 
   // Asegurar que al entrar a la pestaña o al cambiar de operador, se active la vista de conductor y la página suba al inicio
   useEffect(() => {
@@ -943,6 +946,33 @@ export const EvolutionTab: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    void currentCompany?.nombre;
+    setIsFleetEvolutionAiOpen(false);
+    setFleetEvolutionAiInsight(null);
+  }, [currentCompany?.nombre]);
+
+  const handleExplainFleetEvolutionWithAi = async (forceRefresh = false) => {
+    if (!currentCompany || isLoadingFleetEvolutionAi || companyEvaluations.length === 0) return;
+    setIsFleetEvolutionAiOpen(true);
+    setIsLoadingFleetEvolutionAi(true);
+    try {
+      const { generateFleetEvolutionAiInsight } = await import('../services/fleetEvolutionAiInsights');
+      const result = await generateFleetEvolutionAiInsight({
+        companyName: currentCompany.nombre,
+        scopeLabel: companyYearsStats,
+        evaluations: companyEvaluations,
+        annualRows: consolidatedAnnualRows,
+        forceRefresh
+      });
+      setFleetEvolutionAiInsight(result);
+    } catch (error) {
+      console.error('Error generando análisis IA de evolución de flota:', error);
+    } finally {
+      setIsLoadingFleetEvolutionAi(false);
+    }
+  };
+
   // Datos para Gráfico de Evolución de Puntaje del Conductor
   const scoreLabels = driverEvaluations.map((e, idx) => e.fechaCapacitacionFormato || e.fechaCapacitacion || `Sesión ${idx + 1}`);
   const evolutionChartData = {
@@ -1362,6 +1392,19 @@ export const EvolutionTab: React.FC = () => {
           <CompanyExecutiveHeader
             currentCompany={currentCompany}
             companyYearsStats={companyYearsStats}
+            onExplainWithAi={() => void handleExplainFleetEvolutionWithAi(false)}
+            isLoadingAi={isLoadingFleetEvolutionAi}
+          />
+
+          <CompanyAiInsightsCard
+            isOpen={isFleetEvolutionAiOpen}
+            isLoading={isLoadingFleetEvolutionAi}
+            insight={fleetEvolutionAiInsight}
+            companyName={currentCompany?.nombre || 'Flota'}
+            periodText={companyYearsStats}
+            subjectType="evolution"
+            onRegenerate={() => void handleExplainFleetEvolutionWithAi(true)}
+            onClose={() => setIsFleetEvolutionAiOpen(false)}
           />
 
           {/* Gráficos Anuales de Flota (Evolución y Siniestralidad) */}

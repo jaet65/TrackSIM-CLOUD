@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import type { CompanyAiInsightResult, CompanyAiStructuredReport } from '../../services/companyAiInsights';
-import { TrackyAssistant } from './TrackyAssistant';
+import { TrackyAssistant, type TrackySubjectType } from './TrackyAssistant';
 
 interface CompanyAiInsightsCardProps {
   isOpen: boolean;
@@ -9,7 +9,7 @@ interface CompanyAiInsightsCardProps {
   insight: CompanyAiInsightResult | null;
   companyName: string;
   periodText: string;
-  subjectType?: 'company' | 'driver';
+  subjectType?: TrackySubjectType;
   onRegenerate: () => void;
   onClose: () => void;
 }
@@ -462,7 +462,11 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <h3 id="ai-insights-modal-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                  {subjectType === 'driver' ? 'Tracky · Retroalimentación del Operador' : 'Tracky · Interpretación Ejecutiva con IA'}
+                  {subjectType === 'driver'
+                    ? 'Tracky · Retroalimentación del Operador'
+                    : subjectType === 'evolution'
+                      ? 'Tracky · Evolución Histórica de la Flota'
+                      : 'Tracky · Interpretación Ejecutiva con IA'}
                 </h3>
                 {insight && (
                   <span

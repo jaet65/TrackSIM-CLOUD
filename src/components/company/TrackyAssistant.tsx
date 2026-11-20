@@ -10,11 +10,13 @@ export const TRACKY_GIF_PATH = trackyGif;
 export const TRACKY_WHEEL_WEBP_PATH = trackyWheelWebp;
 export const TRACKY_WHEEL_GIF_PATH = trackyWheelGif;
 
+export type TrackySubjectType = 'company' | 'driver' | 'evolution';
+
 interface TrackyAssistantProps {
   mode: 'loading' | 'ready';
   companyName: string;
   periodText: string;
-  subjectType?: 'company' | 'driver';
+  subjectType?: TrackySubjectType;
   elapsedSeconds?: number;
   structured?: CompanyAiStructuredReport;
   warning?: string;
@@ -24,7 +26,7 @@ function getLoadingMessage(
   elapsedSeconds: number,
   companyName: string,
   periodText: string,
-  subjectType: 'company' | 'driver'
+  subjectType: TrackySubjectType
 ): string {
   if (subjectType === 'driver') {
     if (elapsedSeconds < 4) {
@@ -34,6 +36,15 @@ function getLoadingMessage(
       return 'Analizando sus calificaciones, ejercicios y hábitos de manejo...';
     }
     return 'Preparando su retroalimentación personalizada y metas prácticas...';
+  }
+  if (subjectType === 'evolution') {
+    if (elapsedSeconds < 4) {
+      return `¡Hola! Soy Tracky. Estoy comparando el historial anual de ${companyName} (${periodText})...`;
+    }
+    if (elapsedSeconds < 9) {
+      return 'Analizando tendencias año contra año, siniestralidad y avance de operadores recurrentes...';
+    }
+    return 'Preparando conclusiones históricas y metas para el próximo ciclo de capacitación...';
   }
   if (elapsedSeconds < 4) {
     return `¡Hola! Soy Tracky. Estoy leyendo las evaluaciones de ${companyName} (${periodText})...`;
@@ -47,7 +58,7 @@ function getLoadingMessage(
 function buildReadyTips(
   companyName: string,
   periodText: string,
-  subjectType: 'company' | 'driver',
+  subjectType: TrackySubjectType,
   structured?: CompanyAiStructuredReport,
   warning?: string
 ): string[] {
@@ -61,12 +72,19 @@ function buildReadyTips(
           atencion: `¡Hola! Ya analicé a ${companyName} (${periodText}) y preparé recomendaciones prácticas para reforzar su manejo.`,
           critico: `Atención con ${companyName} (${periodText}): identifiqué los puntos prioritarios para trabajar en simulador.`
         }
-      : {
-          sobresaliente: `¡Excelente trabajo en ${companyName} (${periodText})! Aquí tienes el resumen listo para compartir.`,
-          bueno: `¡Hola! Revisé los datos de ${companyName} (${periodText}): van por buen camino con oportunidades concretas.`,
-          atencion: `¡Hola! Ya analicé ${companyName} (${periodText}) y detecté varios puntos clave que conviene reforzar.`,
-          critico: `Atención en ${companyName} (${periodText}): preparé las prioridades urgentes para proteger a la flota.`
-        };
+      : subjectType === 'evolution'
+        ? {
+            sobresaliente: `¡Excelente trayectoria histórica de ${companyName} (${periodText})! La flota muestra una evolución sólida.`,
+            bueno: `¡Hola! Revisé la evolución de ${companyName} (${periodText}): hay avances claros y oportunidades puntuales entre años.`,
+            atencion: `¡Hola! Ya analicé el historial de ${companyName} (${periodText}) y detecté cambios clave entre ciclos que conviene atender.`,
+            critico: `Atención en la evolución de ${companyName} (${periodText}): identifiqué retrocesos prioritarios para corregir en el siguiente ciclo.`
+          }
+        : {
+            sobresaliente: `¡Excelente trabajo en ${companyName} (${periodText})! Aquí tienes el resumen listo para compartir.`,
+            bueno: `¡Hola! Revisé los datos de ${companyName} (${periodText}): van por buen camino con oportunidades concretas.`,
+            atencion: `¡Hola! Ya analicé ${companyName} (${periodText}) y detecté varios puntos clave que conviene reforzar.`,
+            critico: `Atención en ${companyName} (${periodText}): preparé las prioridades urgentes para proteger a la flota.`
+          };
 
   if (structured) {
     tips.push(nivelGreeting[structured.estadoGeneral.nivel]);
@@ -83,7 +101,9 @@ function buildReadyTips(
     tips.push(
       subjectType === 'driver'
         ? `¡Listo! Ya preparé la retroalimentación de ${companyName} (${periodText}).`
-        : `¡Listo! Ya preparé la interpretación de ${companyName} (${periodText}).`
+        : subjectType === 'evolution'
+          ? `¡Listo! Ya preparé el análisis histórico de evolución de ${companyName} (${periodText}).`
+          : `¡Listo! Ya preparé la interpretación de ${companyName} (${periodText}).`
     );
   }
 

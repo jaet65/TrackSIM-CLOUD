@@ -4,11 +4,15 @@ import { CompanySummary } from '../../types';
 interface CompanyExecutiveHeaderProps {
   currentCompany: (CompanySummary & { esGlobal?: boolean }) | null;
   companyYearsStats: string;
+  onExplainWithAi?: () => void;
+  isLoadingAi?: boolean;
 }
 
 export const CompanyExecutiveHeader: React.FC<CompanyExecutiveHeaderProps> = ({
   currentCompany,
-  companyYearsStats
+  companyYearsStats,
+  onExplainWithAi,
+  isLoadingAi = false
 }) => {
   if (!currentCompany) return null;
 
@@ -85,6 +89,48 @@ export const CompanyExecutiveHeader: React.FC<CompanyExecutiveHeaderProps> = ({
             </div>
           </div>
         </div>
+
+        {onExplainWithAi && (
+          <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={onExplainWithAi}
+              disabled={isLoadingAi}
+              title={`Generar análisis histórico de ${currentCompany.nombre} con Tracky`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                padding: '0.5rem 0.95rem',
+                borderRadius: '8px',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                background: 'var(--bg-card, #ffffff)',
+                border: '1px solid var(--border-glow)',
+                color: 'var(--primary)',
+                cursor: isLoadingAi ? 'wait' : 'pointer',
+                opacity: isLoadingAi ? 0.75 : 1,
+                transition: 'all 0.2s ease',
+                boxShadow: 'var(--shadow-card)'
+              }}
+              onMouseEnter={(e) => {
+                if (isLoadingAi) return;
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.borderColor = 'var(--primary)';
+                e.currentTarget.style.background = 'rgba(56, 189, 248, 0.08)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.borderColor = 'var(--border-glow)';
+                e.currentTarget.style.background = 'var(--bg-card, #ffffff)';
+              }}
+            >
+              <span>✨</span>
+              <span>{isLoadingAi ? 'Analizando...' : 'Análisis IA'}</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Prioridad 3: Todo lo demás (Años, Operadores, Promedio Histórico, Tasa Aprobación) */}
