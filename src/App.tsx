@@ -1,36 +1,14 @@
 import React, { lazy, Suspense } from 'react';
-import { useAuth } from './context/AuthContext';
 import { LoginScreen } from './components/LoginScreen';
+import { TrackyLoadingScreen } from './components/TrackyLoadingScreen';
+import { useAuth } from './context/AuthContext';
 import { SystemDialogProvider } from './context/SystemDialogContext';
 
 const AuthenticatedApp = lazy(() =>
   import('./AuthenticatedApp').then((module) => ({ default: module.AuthenticatedApp }))
 );
 
-const AppLoadingFallback: React.FC = () => (
-  <div style={{
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100vh',
-    background: 'var(--bg-app)',
-    color: 'var(--primary)',
-    fontFamily: 'Plus Jakarta Sans, sans-serif'
-  }}>
-    <div style={{
-      width: '40px',
-      height: '40px',
-      border: '3px solid rgba(56, 189, 248, 0.2)',
-      borderTopColor: '#38bdf8',
-      borderRadius: '50%',
-      animation: 'spin 0.8s linear infinite',
-      marginBottom: '1rem'
-    }} />
-    <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Conectando con TrackSIM CLOUD...</p>
-    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-  </div>
-);
+const AppLoadingFallback: React.FC = () => <TrackyLoadingScreen message="Conectando con TrackSIM CLOUD..." />;
 
 export const App: React.FC = () => {
   const { user, isDemo, loading } = useAuth();

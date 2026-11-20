@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import type { CompanyAiInsightResult, CompanyAiStructuredReport } from '../../services/companyAiInsights';
+import { TrackyAssistant } from './TrackyAssistant';
 
 interface CompanyAiInsightsCardProps {
   isOpen: boolean;
@@ -452,11 +453,11 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-            <span style={{ fontSize: '1.35rem' }}>✨</span>
+            <span style={{ fontSize: '1.35rem' }}>🐾</span>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <h3 id="ai-insights-modal-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                  Interpretación Ejecutiva con IA
+                  Tracky · Interpretación Ejecutiva con IA
                 </h3>
                 {insight && (
                   <span
@@ -532,32 +533,21 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
 
         <div style={{ padding: '1.35rem 1.5rem', overflowY: 'auto', flex: 1 }}>
           {isLoading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', padding: '1.5rem 0', color: 'var(--text-secondary)' }}>
-              <style>
-                {`@keyframes aiSpin { to { transform: rotate(360deg); } }
-                  @keyframes aiPulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }`}
-              </style>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                <div
-                  style={{
-                    width: '24px',
-                    height: '24px',
-                    border: '2.5px solid rgba(168, 85, 247, 0.22)',
-                    borderTopColor: '#a855f7',
-                    borderRightColor: '#38bdf8',
-                    borderRadius: '50%',
-                    animation: 'aiSpin 0.75s linear infinite',
-                    flexShrink: 0
-                  }}
-                />
-                <span style={{ fontSize: '0.9rem', animation: 'aiPulse 1.8s ease-in-out infinite' }}>
-                  Analizando calificaciones, ejercicios, incidencias críticas y telemetría con Gemini...
-                  {elapsedSeconds > 0 ? ` (${elapsedSeconds}s)` : ''}
-                </span>
-              </div>
-            </div>
+            <TrackyAssistant
+              mode="loading"
+              companyName={companyName}
+              periodText={periodText}
+              elapsedSeconds={elapsedSeconds}
+            />
           ) : insight ? (
             <div>
+              <TrackyAssistant
+                mode="ready"
+                companyName={companyName}
+                periodText={periodText}
+                structured={insight.structured}
+                warning={insight.warning}
+              />
               {insight.warning && (
                 <div
                   style={{
@@ -565,8 +555,9 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
                     padding: '0.6rem 0.9rem',
                     borderRadius: '8px',
                     background: 'rgba(245, 158, 11, 0.1)',
-                    border: '1px solid rgba(245, 158, 11, 0.3)',
-                    color: '#fbbf24',
+                    border: '1px solid rgba(245, 158, 11, 0.35)',
+                    color: '#b45309',
+                    fontWeight: 600,
                     fontSize: '0.78rem'
                   }}
                 >

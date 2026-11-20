@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useState } from 'react';
 import { DataProvider, useData } from './context/DataContext';
 import { useAuth } from './context/AuthContext';
 import { LobbyScreen } from './components/LobbyScreen';
+import { TrackyLoadingScreen } from './components/TrackyLoadingScreen';
 import { FloatingAiInsightsButton } from './components/company/FloatingAiInsightsButton';
 import { AppHeader, Navbar } from './components/Navbar';
 import { DashboardTab } from './components/DashboardTab';
@@ -13,58 +14,9 @@ const DirectoryTab = lazy(() => import('./components/DirectoryTab').then((m) => 
 const IngestaTab = lazy(() => import('./components/IngestaTab').then((m) => ({ default: m.IngestaTab })));
 const UserManagementTab = lazy(() => import('./components/UserManagementTab').then((m) => ({ default: m.UserManagementTab })));
 
-const TabLoadingFallback: React.FC = () => (
-  <div style={{
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: '50vh',
-    color: 'var(--primary)',
-    fontFamily: 'Plus Jakarta Sans, sans-serif'
-  }}>
-    <div style={{
-      width: '36px',
-      height: '36px',
-      border: '3px solid rgba(56, 189, 248, 0.2)',
-      borderTopColor: '#38bdf8',
-      borderRadius: '50%',
-      animation: 'spin 0.8s linear infinite',
-      marginBottom: '0.85rem'
-    }} />
-    <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Cargando módulo...</p>
-    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-  </div>
-);
+const TabLoadingFallback: React.FC = () => <TrackyLoadingScreen message="Cargando módulo..." compact />;
 
-const InitialLoadingScreen: React.FC<{ message: string }> = ({ message }) => (
-  <div
-    role="status"
-    aria-live="polite"
-    style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: '100vh',
-      background: 'var(--bg-app)',
-      color: 'var(--primary)',
-      fontFamily: 'Plus Jakarta Sans, sans-serif'
-    }}
-  >
-    <div style={{
-      width: '40px',
-      height: '40px',
-      border: '3px solid rgba(56, 189, 248, 0.2)',
-      borderTopColor: '#38bdf8',
-      borderRadius: '50%',
-      animation: 'spin 0.8s linear infinite',
-      marginBottom: '1rem'
-    }} />
-    <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{message}</p>
-    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-  </div>
-);
+const InitialLoadingScreen: React.FC<{ message: string }> = ({ message }) => <TrackyLoadingScreen message={message} />;
 
 const MainLayout: React.FC = () => {
   const { userRole, allowedCompanies, profile, isDemo } = useAuth();
