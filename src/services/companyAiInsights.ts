@@ -633,6 +633,12 @@ function buildCacheKey(
   return `${input.comp.nombre}|${input.selectedYear}|${metrics.totalEvaluaciones}|${metrics.promedioGlobal}|${metrics.totalCriticalEvents}`;
 }
 
+export function getCachedCompanyAiInsight(input: CompanyAiInsightRequest): CompanyAiInsightResult | null {
+  const metrics = buildCompanyAiMetricsContext(input);
+  const cacheKey = buildCacheKey(input, metrics);
+  return readCachedInsight(cacheKey);
+}
+
 export async function generateCompanyAiInsight(input: CompanyAiInsightRequest): Promise<CompanyAiInsightResult> {
   const metrics = buildCompanyAiMetricsContext(input);
   const cacheKey = buildCacheKey(input, metrics);

@@ -1,5 +1,6 @@
 import { CompanySummary, Evaluation } from '../types';
 import { logAudit } from './auditLog';
+import type { CompanyAiStructuredReport } from './companyAiInsights';
 import { findCatalogExercise } from './exerciseCatalog';
 import { getCriticalMistakes, getEvaluationIncidentCounts } from './incidentMetrics';
 
@@ -20,6 +21,8 @@ export interface CompanyPresentationInput {
   operadoresConHistorialPrevio?: { count: number; pct: string };
   exerciseStats: ExerciseStatSummary[];
   allEvaluations: Evaluation[];
+  aiReport?: CompanyAiStructuredReport;
+  aiSourceLabel?: string;
 }
 
 export interface DriverRowSummary {
@@ -742,7 +745,8 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
   pres.title = `Informe Ejecutivo - ${data.companyName}`;
 
   const hasEvolutionSlide = data.annualEvolution.hasMultiYear;
-  const totalSlides = hasEvolutionSlide ? 9 : 8;
+  const hasAiSlide = Boolean(input.aiReport);
+  const totalSlides = (hasEvolutionSlide ? 9 : 8) + (hasAiSlide ? 1 : 0);
   let slidePage = 2;
   const [coverBgDataUrl, cloudQrDataUrl, linktreeQrDataUrl] = await Promise.all([
     loadImageAsDataUrl(SLIDE_COVER_BG_PATH),
@@ -1763,6 +1767,299 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     fontFace: 'Segoe UI',
     valign: 'top'
   });
+
+  // =========================================================================
+  // SLIDE OPCIONAL: CONCLUSIONES EJECUTIVAS Y PLAN ANUAL (IA)
+  // =========================================================================
+  if (input.aiReport) {
+    const ai = input.aiReport;
+    const sAi = pres.addSlide();
+    addSlideHeader(
+      sAi,
+      'Conclusiones Ejecutivas y Plan Anual',
+      `${input.aiSourceLabel || 'Síntesis Ejecutiva con IA'} • ${data.companyName} (${data.periodText})`,
+      slidePage++,
+      totalSlides
+    );
+
+    const nivelPalette: Record<
+      CompanyAiStructuredReport['estadoGeneral']['nivel'],
+      { label: string; accent: string; bg: string; border: string }
+    > = {
+      sobresaliente: { label: 'NIVEL SOBRESALIENTE', accent: COLORS.green, bg: 'F0FDF4', border: '86EFAC' },
+      bueno: { label: 'BUEN DESEMPEÑO', accent: COLORS.sky, bg: 'F0F9FF', border: '7DD3FC' },
+      atencion: { label: 'REQUIERE ATENCIÓN', accent: COLORS.amber, bg: 'FFFBEB', border: 'FCD34D' },
+      critico: { label: 'ATENCIÓN PRIORITARIA', accent: COLORS.red, bg: 'FEF2F2', border: 'FCA5A5' }
+    };
+    const pal = nivelPalette[ai.estadoGeneral.nivel] || nivelPalette.atencion;
+
+    // Fila superior izquierda: Semáforo de Estado General
+    sAi.addShape('roundRect', {
+      x: 0.6,
+      y: 1.15,
+      w: 7.45,
+      h: 1.14,
+      rectRadius: 0.08,
+      fill: { color: pal.bg },
+      line: { color: pal.border, width: 1 }
+    });
+    sAi.addShape('roundRect', {
+      x: 0.72,
+      y: 1.27,
+      w: 0.08,
+      h: 0.9,
+      rectRadius: 0.04,
+      fill: { color: pal.accent }
+    });
+    sAi.addText(pal.label, {
+      x: 0.9,
+      y: 1.22,
+      w: 6.95,
+      h: 0.2,
+      fontSize: 7.5,
+      bold: true,
+      color: pal.accent,
+      fontFace: 'Segoe UI'
+    });
+    sAi.addText(ai.estadoGeneral.titulo, {
+      x: 0.9,
+      y: 1.42,
+      w: 6.95,
+      h: 0.28,
+      fontSize: 12,
+      bold: true,
+      color: COLORS.navy,
+      fontFace: 'Segoe UI'
+    });
+    sAi.addText(ai.estadoGeneral.resumenSimple, {
+      x: 0.9,
+      y: 1.7,
+      w: 6.95,
+      h: 0.54,
+      fontSize: 9,
+      color: COLORS.slateDark,
+      fontFace: 'Segoe UI',
+      valign: 'top'
+    });
+
+    // Fila superior derecha: Metas para el Próximo Año
+    sAi.addShape('roundRect', {
+      x: 8.23,
+      y: 1.15,
+      w: 4.5,
+      h: 1.14,
+      rectRadius: 0.08,
+      fill: { color: COLORS.white },
+      line: { color: COLORS.border, width: 1 }
+    });
+    sAi.addText('METAS PARA EL PRÓXIMO AÑO', {
+      x: 8.38,
+      y: 1.22,
+      w: 4.2,
+      h: 0.2,
+      fontSize: 8,
+      bold: true,
+      color: COLORS.purple,
+      fontFace: 'Segoe UI'
+    });
+    const metaRuns: any[] = [];
+    ai.metasSimples.slice(0, 3).forEach((m, idx) => {
+      if (idx > 0) metaRuns.push({ text: '\n' });
+      metaRuns.push({ text: `${m.indicador}: `, options: { bold: true, color: COLORS.navy, fontSize: 8.5 } });
+      metaRuns.push({ text: `${m.actual} → `, options: { color: COLORS.slate, fontSize: 8.5 } });
+      metaRuns.push({ text: m.meta, options: { bold: true, color: COLORS.green, fontSize: 8.5 } });
+    });
+    if (metaRuns.length > 0) {
+      sAi.addText(metaRuns, {
+        x: 8.38,
+        y: 1.44,
+        w: 4.2,
+        h: 0.8,
+        fontFace: 'Segoe UI',
+        valign: 'top',
+        paraSpaceAfter: 2
+      });
+    }
+
+    // Fila media izquierda: Lo que está funcionando bien
+    sAi.addShape('roundRect', {
+      x: 0.6,
+      y: 2.42,
+      w: 5.95,
+      h: 2.38,
+      rectRadius: 0.08,
+      fill: { color: 'F0FDF4' },
+      line: { color: '86EFAC', width: 1 }
+    });
+    sAi.addShape('roundRect', {
+      x: 0.74,
+      y: 2.52,
+      w: 5.67,
+      h: 0.3,
+      rectRadius: 0.06,
+      fill: { color: COLORS.green }
+    });
+    sAi.addText('LO QUE ESTÁ FUNCIONANDO BIEN', {
+      x: 0.86,
+      y: 2.55,
+      w: 5.43,
+      h: 0.24,
+      fontSize: 9,
+      bold: true,
+      color: COLORS.white,
+      fontFace: 'Segoe UI'
+    });
+    const goodRuns: any[] = [];
+    ai.loQueVaBien.slice(0, 3).forEach((item, idx) => {
+      if (idx > 0) goodRuns.push({ text: '\n' });
+      goodRuns.push({ text: `• ${item.titulo}: `, options: { bold: true, color: COLORS.navy, fontSize: 8.8 } });
+      goodRuns.push({ text: item.detalle, options: { color: COLORS.slateDark, fontSize: 8.5 } });
+    });
+    if (goodRuns.length > 0) {
+      sAi.addText(goodRuns, {
+        x: 0.76,
+        y: 2.9,
+        w: 5.63,
+        h: 1.82,
+        fontFace: 'Segoe UI',
+        valign: 'top',
+        paraSpaceAfter: 4
+      });
+    }
+
+    // Fila media derecha: Puntos a mejorar y riesgos
+    sAi.addShape('roundRect', {
+      x: 6.78,
+      y: 2.42,
+      w: 5.95,
+      h: 2.38,
+      rectRadius: 0.08,
+      fill: { color: 'FFFBEB' },
+      line: { color: 'FCD34D', width: 1 }
+    });
+    sAi.addShape('roundRect', {
+      x: 6.92,
+      y: 2.52,
+      w: 5.67,
+      h: 0.3,
+      rectRadius: 0.06,
+      fill: { color: COLORS.amber }
+    });
+    sAi.addText('PUNTOS A MEJORAR Y RIESGOS', {
+      x: 7.04,
+      y: 2.55,
+      w: 5.43,
+      h: 0.24,
+      fontSize: 9,
+      bold: true,
+      color: COLORS.white,
+      fontFace: 'Segoe UI'
+    });
+    const riskRuns: any[] = [];
+    ai.focosDeAtencion.slice(0, 3).forEach((item, idx) => {
+      if (idx > 0) riskRuns.push({ text: '\n' });
+      if (item.nivel === 'alto') {
+        riskRuns.push({ text: '[PRIORIDAD ALTA] ', options: { bold: true, color: COLORS.red, fontSize: 8 } });
+      }
+      riskRuns.push({ text: `${item.titulo}: `, options: { bold: true, color: COLORS.navy, fontSize: 8.8 } });
+      riskRuns.push({ text: item.porqueImporta, options: { color: COLORS.slateDark, fontSize: 8.5 } });
+    });
+    if (riskRuns.length > 0) {
+      sAi.addText(riskRuns, {
+        x: 6.94,
+        y: 2.9,
+        w: 5.63,
+        h: 1.82,
+        fontFace: 'Segoe UI',
+        valign: 'top',
+        paraSpaceAfter: 4
+      });
+    }
+
+    // Fila inferior: Plan de Capacitación Sugerido para el Próximo Año
+    sAi.addShape('roundRect', {
+      x: 0.6,
+      y: 4.94,
+      w: 12.133,
+      h: 2.02,
+      rectRadius: 0.08,
+      fill: { color: 'F0F9FF' },
+      line: { color: '7DD3FC', width: 1 }
+    });
+    sAi.addShape('roundRect', {
+      x: 0.76,
+      y: 5.04,
+      w: 11.813,
+      h: 0.3,
+      rectRadius: 0.06,
+      fill: { color: COLORS.sky }
+    });
+    sAi.addText('PLAN DE CAPACITACIÓN SUGERIDO PARA EL PRÓXIMO AÑO', {
+      x: 0.9,
+      y: 5.07,
+      w: 11.5,
+      h: 0.24,
+      fontSize: 9,
+      bold: true,
+      color: COLORS.white,
+      fontFace: 'Segoe UI'
+    });
+
+    ai.planDeAccion.slice(0, 3).forEach((step, idx) => {
+      const cardX = 0.76 + idx * 4.01;
+      const cardY = 5.44;
+      const cardW = 3.78;
+      const cardH = 1.42;
+      sAi.addShape('roundRect', {
+        x: cardX,
+        y: cardY,
+        w: cardW,
+        h: cardH,
+        rectRadius: 0.07,
+        fill: { color: COLORS.white },
+        line: { color: 'BAE6FD', width: 0.75 }
+      });
+      sAi.addShape('roundRect', {
+        x: cardX + 0.12,
+        y: cardY + 0.1,
+        w: cardW - 0.24,
+        h: 0.24,
+        rectRadius: 0.05,
+        fill: { color: COLORS.skyLight }
+      });
+      sAi.addText(`${idx + 1}. ${step.plazo}`, {
+        x: cardX + 0.18,
+        y: cardY + 0.12,
+        w: cardW - 0.36,
+        h: 0.2,
+        fontSize: 8,
+        bold: true,
+        color: COLORS.sky,
+        fontFace: 'Segoe UI'
+      });
+      sAi.addText(step.accion, {
+        x: cardX + 0.12,
+        y: cardY + 0.38,
+        w: cardW - 0.24,
+        h: 0.56,
+        fontSize: 8.5,
+        bold: true,
+        color: COLORS.navy,
+        fontFace: 'Segoe UI',
+        valign: 'top'
+      });
+      sAi.addText(`Impacto: ${step.impacto}`, {
+        x: cardX + 0.12,
+        y: cardY + 0.96,
+        w: cardW - 0.24,
+        h: 0.4,
+        fontSize: 7.8,
+        color: COLORS.muted,
+        fontFace: 'Segoe UI',
+        valign: 'top'
+      });
+    });
+  }
 
   // =========================================================================
   // SLIDE FINAL: CIERRE, ACCESO A PLATAFORMA Y CONTACTO

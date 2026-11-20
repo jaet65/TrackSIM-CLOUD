@@ -649,7 +649,26 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
     if (!comp || isExportingPptx) return;
     setIsExportingPptx(true);
     try {
-      const { generateCompanyPresentationPptx } = await import('../services/companyPresentationGenerator');
+      const [{ generateCompanyPresentationPptx }, { generateCompanyAiInsight }] = await Promise.all([
+        import('../services/companyPresentationGenerator'),
+        import('../services/companyAiInsights')
+      ]);
+
+      let aiResult: Awaited<ReturnType<typeof generateCompanyAiInsight>> | null = null;
+      try {
+        aiResult = await generateCompanyAiInsight({
+          comp,
+          periodText,
+          selectedYear,
+          conductoresRecurrentes,
+          pctRecurrentes,
+          exerciseStats,
+          allEvaluations: evaluationsByYear
+        });
+      } catch {
+        // Si falla la síntesis IA, continuar generando el PPTX normalmente
+      }
+
       await generateCompanyPresentationPptx({
         comp,
         selectedYear,
@@ -658,7 +677,10 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         pctRecurrentes,
         operadoresConHistorialPrevio,
         exerciseStats,
-        allEvaluations: evaluationsByYear
+        allEvaluations: evaluationsByYear,
+        aiReport: aiResult?.structured,
+        aiSourceLabel:
+          aiResult?.source === 'gemini' ? 'Análisis Ejecutivo con IA (TrackSIM)' : 'Síntesis Ejecutiva Automática'
       });
     } catch (error) {
       console.error('Error al generar presentación PowerPoint:', error);

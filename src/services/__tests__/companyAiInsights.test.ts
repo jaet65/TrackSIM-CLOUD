@@ -4,7 +4,8 @@ import {
   buildCompanyAiMetricsContext,
   buildCompanyAiPrompt,
   buildLocalFallbackInsight,
-  generateCompanyAiInsight
+  generateCompanyAiInsight,
+  getCachedCompanyAiInsight
 } from '../companyAiInsights';
 
 const generateContentMock = vi.fn();
@@ -197,6 +198,29 @@ describe('companyAiInsights', () => {
     expect(allYearsResult.fromCache).toBe(false);
     expect(allYearsResult.summary).toContain('Resumen histórico todos los años');
     expect(generateContentMock).toHaveBeenCalledTimes(2);
+
+    const syncedCache = getCachedCompanyAiInsight({
+      comp: createSummary(),
+      periodText: 'Histórico general',
+      selectedYear: 'all',
+      conductoresRecurrentes: 0,
+      pctRecurrentes: '0.0',
+      exerciseStats: [],
+      allEvaluations: []
+    });
+    expect(syncedCache?.fromCache).toBe(true);
+    expect(syncedCache?.summary).toBe(allYearsResult.summary);
+
+    const emptyCache = getCachedCompanyAiInsight({
+      comp: createSummary(),
+      periodText: 'Año 2025',
+      selectedYear: '2025',
+      conductoresRecurrentes: 0,
+      pctRecurrentes: '0.0',
+      exerciseStats: [],
+      allEvaluations: []
+    });
+    expect(emptyCache).toBeNull();
 
     generateContentMock.mockRejectedValueOnce(new Error('503 Service Unavailable')).mockResolvedValueOnce({
       response: { text: () => '### 1. Diagnóstico Ejecutivo y Salud de la Flota\nRespaldo con 2.5 Flash.' }

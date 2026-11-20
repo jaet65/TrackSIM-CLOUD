@@ -7,6 +7,7 @@ vi.mock('../auditLog', () => ({
 }));
 
 const writeFileMock = vi.fn().mockResolvedValue('Informe.pptx');
+const createdSlides: Array<{ texts: string[] }> = [];
 
 vi.mock('pptxgenjs', () => {
   return {
@@ -18,10 +19,18 @@ vi.mock('pptxgenjs', () => {
       title = '';
       ChartType = { bar: 'bar', doughnut: 'doughnut' };
       addSlide() {
+        const texts: string[] = [];
+        createdSlides.push({ texts });
         return {
           background: {},
           addShape: vi.fn(),
-          addText: vi.fn(),
+          addText: vi.fn((content: unknown) => {
+            if (typeof content === 'string') {
+              texts.push(content);
+            } else if (Array.isArray(content)) {
+              texts.push(content.map((item: { text?: string }) => item?.text || '').join(''));
+            }
+          }),
           addChart: vi.fn(),
           addTable: vi.fn(),
           addImage: vi.fn()
@@ -198,5 +207,51 @@ describe('companyPresentationGenerator', () => {
       latestAvg: 8.8,
       improvedCount: 2
     });
+  });
+
+  it('agrega la diapositiva ejecutiva de IA antes del cierre cuando se proporciona aiReport', async () => {
+    createdSlides.length = 0;
+    writeFileMock.mockClear();
+    const comp = createMockCompany(5);
+
+    await generateCompanyPresentationPptx({
+      comp,
+      selectedYear: '2026',
+      periodText: 'Año 2026',
+      conductoresRecurrentes: 2,
+      pctRecurrentes: '40.0',
+      exerciseStats: [{ key: 'e1', nombre: 'Autopista', promedio: 7.5, totalEvaluaciones: 5 }],
+      allEvaluations: [],
+      aiSourceLabel: 'Análisis Ejecutivo con IA (TrackSIM)',
+      aiReport: {
+        estadoGeneral: {
+          nivel: 'bueno',
+          titulo: 'Flota con avance sólido en 2026',
+          resumenSimple: 'Promedio de 7.2 con tendencia favorable.'
+        },
+        loQueVaBien: [{ titulo: 'Control de carril', detalle: 'Sin salidas de vía graves.' }],
+        focosDeAtencion: [
+          { titulo: 'Velocidad en pendiente', porqueImporta: 'Incrementa desgaste de frenos.', nivel: 'alto' }
+        ],
+        planDeAccion: [
+          {
+            plazo: '1er ciclo próximo año',
+            accion: 'Reforzar uso de freno auxiliar',
+            impacto: 'Menor fatiga térmica.'
+          }
+        ],
+        metasSimples: [{ indicador: 'Promedio', actual: '7.2', meta: '≥ 7.8 próximo año' }]
+      }
+    });
+
+    expect(createdSlides.length).toBe(9);
+    const aiSlideTexts = createdSlides[createdSlides.length - 2].texts.join(' ');
+    expect(aiSlideTexts).toContain('Conclusiones Ejecutivas y Plan Anual');
+    expect(aiSlideTexts).toContain('Flota con avance sólido en 2026');
+    expect(aiSlideTexts).toContain('Control de carril');
+    expect(aiSlideTexts).toContain('Velocidad en pendiente');
+    expect(aiSlideTexts).toContain('Reforzar uso de freno auxiliar');
+    expect(aiSlideTexts).toContain('≥ 7.8 próximo año');
+    expect(createdSlides[createdSlides.length - 1].texts.join(' ')).toContain('¡Gracias por su atención!');
   });
 });

@@ -1,6 +1,11 @@
 import React from 'react';
 import { CompanySummary, Evaluation } from '../../types';
 import { logAudit } from '../../services/auditLog';
+import {
+  getCachedCompanyAiInsight,
+  generateCompanyAiInsight,
+  type CompanyAiInsightResult
+} from '../../services/companyAiInsights';
 import { getCriticalMistakes, getEvaluationIncidentCounts } from '../../services/incidentMetrics';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 
@@ -40,6 +45,47 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
   allEvaluations = []
 }) => {
   useEscapeKey(isOpen, onClose);
+  const [aiInsight, setAiInsight] = React.useState<CompanyAiInsightResult | null>(null);
+  const [isLoadingAi, setIsLoadingAi] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isOpen || !comp) {
+      setAiInsight(null);
+      return;
+    }
+    const cached = getCachedCompanyAiInsight({
+      comp,
+      periodText,
+      selectedYear,
+      conductoresRecurrentes,
+      pctRecurrentes: String(pctRecurrentes),
+      exerciseStats,
+      allEvaluations
+    });
+    setAiInsight(cached);
+  }, [isOpen, comp, periodText, selectedYear, conductoresRecurrentes, pctRecurrentes, exerciseStats, allEvaluations]);
+
+  const handleLoadOrRefreshAi = async (forceRefresh = false) => {
+    if (!comp || isLoadingAi) return;
+    setIsLoadingAi(true);
+    try {
+      const res = await generateCompanyAiInsight({
+        comp,
+        periodText,
+        selectedYear,
+        conductoresRecurrentes,
+        pctRecurrentes: String(pctRecurrentes),
+        exerciseStats,
+        allEvaluations,
+        forceRefresh
+      });
+      setAiInsight(res);
+    } catch (err) {
+      console.error('Error al cargar análisis IA para Single-Page:', err);
+    } finally {
+      setIsLoadingAi(false);
+    }
+  };
 
   React.useEffect(() => {
     if (isOpen) {
@@ -298,7 +344,44 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
               </div>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {aiInsight?.structured && (
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  padding: '0.22rem 0.55rem',
+                  borderRadius: '999px',
+                  background: 'rgba(139, 92, 246, 0.12)',
+                  color: '#6d28d9',
+                  border: '1px solid rgba(139, 92, 246, 0.3)'
+                }}
+              >
+                ✨ IA aplicada
+              </span>
+            )}
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => void handleLoadOrRefreshAi(Boolean(aiInsight?.structured))}
+              disabled={isLoadingAi}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                padding: '0.45rem 0.85rem',
+                borderRadius: '8px',
+                fontWeight: 600,
+                fontSize: '0.8rem',
+                cursor: isLoadingAi ? 'wait' : 'pointer'
+              }}
+              title="Reutiliza el análisis IA en caché o genera uno nuevo para enriquecer las secciones de diagnóstico y plan"
+            >
+              <span>{isLoadingAi ? '⏳' : aiInsight?.structured ? '🔄' : '✨'}</span>
+              <span>
+                {isLoadingAi ? 'Analizando...' : aiInsight?.structured ? 'Actualizar IA' : 'Incluir análisis IA'}
+              </span>
+            </button>
             <button
               type="button"
               className="btn btn-primary btn-sm"
@@ -769,21 +852,46 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
                 marginBottom: '0.65rem'
               }}
             >
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#0f172a', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span>📋</span>
-                <span>Diagnóstico Operativo y Estado de la Flota</span>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#0f172a', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span>{aiInsight?.structured ? '✨' : '📋'}</span>
+                  <span>Diagnóstico Operativo y Estado de la Flota</span>
+                </span>
+                {aiInsight?.structured && (
+                  <span style={{ fontSize: '6.8pt', fontWeight: 700, color: '#6d28d9', background: '#ede9fe', padding: '0.1rem 0.45rem', borderRadius: '999px' }}>
+                    Síntesis IA
+                  </span>
+                )}
               </div>
-              <div style={{ fontSize: '7.6pt', color: '#334155', lineHeight: 1.45 }}>
-                <p style={{ margin: '0 0 0.3rem 0' }}>
-                  • <strong>Alineación Técnica:</strong> La flota alcanzó una calificación media de <strong>{comp.promedioFinal.toFixed(2)}/10</strong> con un <strong>{comp.tasaAprobacion.toFixed(1)}%</strong> de operadores aprobados. {comp.promedioFinal >= 7.5 ? 'El rendimiento demuestra solidez en el control vehicular y maniobrabilidad.' : 'Se recomienda reforzar prácticas en simulador para estandarizar el dominio técnico.'}
-                </p>
-                <p style={{ margin: '0 0 0.3rem 0' }}>
-                  • <strong>Control de Incidentes:</strong> Se registraron {totalIncidentes} siniestros acumulados ({incidentRate} por conductor) con {comp.totalColisiones || 0} colisiones y {comp.totalFueraVia || 0} salidas de vía registradas en el simulador.
-                </p>
-                <p style={{ margin: 0 }}>
-                  • <strong>Continuidad de Capacitación:</strong> {selectedYear && selectedYear !== 'all' && operadoresConHistorialPrevio ? `El ${operadoresConHistorialPrevio.pct}% del grupo cuenta con registros previos en años anteriores, lo que facilita el análisis de evolución y retención de destrezas.` : `El ${pctRecurrentes}% de los conductores registra más de una sesión, facilitando el seguimiento preventivo continuo.`}
-                </p>
-              </div>
+              {aiInsight?.structured ? (
+                <div style={{ fontSize: '7.6pt', color: '#334155', lineHeight: 1.45 }}>
+                  <p style={{ margin: '0 0 0.3rem 0' }}>
+                    • <strong>Estado General ({aiInsight.structured.estadoGeneral.titulo}):</strong> {aiInsight.structured.estadoGeneral.resumenSimple}
+                  </p>
+                  {aiInsight.structured.loQueVaBien[0] && (
+                    <p style={{ margin: '0 0 0.3rem 0' }}>
+                      • <strong>Fortaleza Clave ({aiInsight.structured.loQueVaBien[0].titulo}):</strong> {aiInsight.structured.loQueVaBien[0].detalle}
+                    </p>
+                  )}
+                  {aiInsight.structured.focosDeAtencion[0] && (
+                    <p style={{ margin: 0 }}>
+                      • <strong>Foco Prioritario ({aiInsight.structured.focosDeAtencion[0].titulo}):</strong> {aiInsight.structured.focosDeAtencion[0].porqueImporta}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div style={{ fontSize: '7.6pt', color: '#334155', lineHeight: 1.45 }}>
+                  <p style={{ margin: '0 0 0.3rem 0' }}>
+                    • <strong>Alineación Técnica:</strong> La flota alcanzó una calificación media de <strong>{comp.promedioFinal.toFixed(2)}/10</strong> con un <strong>{comp.tasaAprobacion.toFixed(1)}%</strong> de operadores aprobados. {comp.promedioFinal >= 7.5 ? 'El rendimiento demuestra solidez en el control vehicular y maniobrabilidad.' : 'Se recomienda reforzar prácticas en simulador para estandarizar el dominio técnico.'}
+                  </p>
+                  <p style={{ margin: '0 0 0.3rem 0' }}>
+                    • <strong>Control de Incidentes:</strong> Se registraron {totalIncidentes} siniestros acumulados ({incidentRate} por conductor) con {comp.totalColisiones || 0} colisiones y {comp.totalFueraVia || 0} salidas de vía registradas en el simulador.
+                  </p>
+                  <p style={{ margin: 0 }}>
+                    • <strong>Continuidad de Capacitación:</strong> {selectedYear && selectedYear !== 'all' && operadoresConHistorialPrevio ? `El ${operadoresConHistorialPrevio.pct}% del grupo cuenta con registros previos en años anteriores, lo que facilita el análisis de evolución y retención de destrezas.` : `El ${pctRecurrentes}% de los conductores registra más de una sesión, facilitando el seguimiento preventivo continuo.`}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* SECCIÓN 4: RECOMENDACIONES PREVENTIVAS BASADAS EN ERRORES RECURRENTES */}
@@ -796,21 +904,51 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
                 marginBottom: '0.75rem'
               }}
             >
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#1e40af', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span>💡</span>
-                <span>Recomendaciones Preventivas (Basadas en Errores Más Recurrentes)</span>
-              </div>
-              <div style={{ fontSize: '7.6pt', color: '#1e3a8a', lineHeight: 1.45 }}>
-                {topRecurringMistakes.length > 0 && (
-                  <p style={{ margin: '0 0 0.25rem 0' }}>
-                    • <strong>Patrones de Falla Detectados:</strong> Las incidencias con mayor frecuencia en la flota son:{' '}
-                    <strong>{topRecurringMistakes.map((m) => `"${m.error}" (${m.repeticiones} repeticiones)`).join(', ')}</strong>.
-                  </p>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#1e40af', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span>💡</span>
+                  <span>
+                    {aiInsight?.structured
+                      ? 'Plan de Capacitación y Metas Próximo Año'
+                      : 'Recomendaciones Preventivas (Basadas en Errores Más Recurrentes)'}
+                  </span>
+                </span>
+                {aiInsight?.structured && (
+                  <span style={{ fontSize: '6.8pt', fontWeight: 700, color: '#6d28d9', background: '#ede9fe', padding: '0.1rem 0.45rem', borderRadius: '999px' }}>
+                    Plan IA
+                  </span>
                 )}
-                <p style={{ margin: 0 }}>
-                  • <strong>Plan de Acción Recomendado:</strong> {dynamicActionPlan}
-                </p>
               </div>
+              {aiInsight?.structured ? (
+                <div style={{ fontSize: '7.6pt', color: '#1e3a8a', lineHeight: 1.45 }}>
+                  {aiInsight.structured.planDeAccion.slice(0, 2).map((step, idx) => (
+                    <p key={idx} style={{ margin: '0 0 0.25rem 0' }}>
+                      • <strong>{step.plazo}:</strong> {step.accion} <em>({step.impacto})</em>
+                    </p>
+                  ))}
+                  {aiInsight.structured.metasSimples.length > 0 && (
+                    <p style={{ margin: 0 }}>
+                      • <strong>Metas Próximo Año:</strong>{' '}
+                      {aiInsight.structured.metasSimples
+                        .slice(0, 3)
+                        .map((m) => `${m.indicador}: ${m.actual} → ${m.meta}`)
+                        .join(' • ')}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div style={{ fontSize: '7.6pt', color: '#1e3a8a', lineHeight: 1.45 }}>
+                  {topRecurringMistakes.length > 0 && (
+                    <p style={{ margin: '0 0 0.25rem 0' }}>
+                      • <strong>Patrones de Falla Detectados:</strong> Las incidencias con mayor frecuencia en la flota son:{' '}
+                      <strong>{topRecurringMistakes.map((m) => `"${m.error}" (${m.repeticiones} repeticiones)`).join(', ')}</strong>.
+                    </p>
+                  )}
+                  <p style={{ margin: 0 }}>
+                    • <strong>Plan de Acción Recomendado:</strong> {dynamicActionPlan}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* PIE DE PÁGINA FORMAL Y FIRMAS */}

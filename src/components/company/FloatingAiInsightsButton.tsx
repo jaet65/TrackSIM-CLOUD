@@ -168,8 +168,8 @@ export const FloatingAiInsightsButton: React.FC = () => {
           {isLoading
             ? 'Analizando...'
             : selectedYear !== 'all'
-              ? `Análisis IA · ${selectedYear}`
-              : 'Análisis IA'}
+              ? `Tracky IA · ${selectedYear}`
+              : 'Tracky IA'}
         </span>
       </button>
 

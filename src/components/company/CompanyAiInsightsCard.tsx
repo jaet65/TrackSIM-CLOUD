@@ -471,7 +471,7 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
                       border: `1px solid ${insight.source === 'gemini' ? 'rgba(139, 92, 246, 0.35)' : 'rgba(14, 165, 233, 0.35)'}`
                     }}
                   >
-                    {insight.source === 'gemini' ? `${insight.model} • Plan Spark` : insight.model}
+                    {insight.source === 'gemini' ? `${insight.model}` : insight.model}
                   </span>
                 )}
                 {insight?.fromCache && (
