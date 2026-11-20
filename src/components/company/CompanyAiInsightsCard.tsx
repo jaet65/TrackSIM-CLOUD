@@ -1,0 +1,583 @@
+import React, { useEffect, useState } from 'react';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
+import type { CompanyAiInsightResult, CompanyAiStructuredReport } from '../../services/companyAiInsights';
+
+interface CompanyAiInsightsCardProps {
+  isOpen: boolean;
+  isLoading: boolean;
+  insight: CompanyAiInsightResult | null;
+  companyName: string;
+  periodText: string;
+  onRegenerate: () => void;
+  onClose: () => void;
+}
+
+function renderFormattedInline(text: string): React.ReactNode[] {
+  const tokens = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
+  return tokens.map((token, index) => {
+    if (token.startsWith('**') && token.endsWith('**')) {
+      return (
+        <strong key={index} style={{ color: 'var(--text-main)' }}>
+          {token.slice(2, -2)}
+        </strong>
+      );
+    }
+    if (token.startsWith('*') && token.endsWith('*')) {
+      return (
+        <em key={index} style={{ color: 'var(--primary)' }}>
+          {token.slice(1, -1)}
+        </em>
+      );
+    }
+    return <React.Fragment key={index}>{token}</React.Fragment>;
+  });
+}
+
+function renderInsightMarkdown(markdown: string): React.ReactNode {
+  const lines = markdown.split(/\r?\n/);
+  const blocks: React.ReactNode[] = [];
+  let listItems: string[] = [];
+
+  const flushList = (keyPrefix: string) => {
+    if (listItems.length === 0) return;
+    blocks.push(
+      <ul key={keyPrefix} style={{ margin: '0.25rem 0 0.85rem', paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        {listItems.map((item, idx) => (
+          <li key={idx} style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', lineHeight: 1.55 }}>
+            {renderFormattedInline(item)}
+          </li>
+        ))}
+      </ul>
+    );
+    listItems = [];
+  };
+
+  lines.forEach((rawLine, idx) => {
+    const line = rawLine.trim();
+    if (!line) {
+      flushList(`list-${idx}`);
+      return;
+    }
+
+    if (line.startsWith('### ') || line.startsWith('## ')) {
+      flushList(`list-${idx}`);
+      const title = line.replace(/^#{2,3}\s+/, '');
+      blocks.push(
+        <h4
+          key={`h-${idx}`}
+          style={{
+            margin: blocks.length === 0 ? '0 0 0.45rem' : '1.1rem 0 0.45rem',
+            paddingTop: blocks.length === 0 ? 0 : '0.85rem',
+            borderTop: blocks.length === 0 ? 'none' : '1px solid var(--border-subtle)',
+            fontSize: '0.94rem',
+            fontWeight: 700,
+            color: 'var(--primary)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.45rem'
+          }}
+        >
+          {title}
+        </h4>
+      );
+      return;
+    }
+
+    if (line.startsWith('#### ')) {
+      flushList(`list-${idx}`);
+      blocks.push(
+        <h5
+          key={`h4-${idx}`}
+          style={{
+            margin: '0.65rem 0 0.3rem',
+            fontSize: '0.86rem',
+            fontWeight: 700,
+            color: 'var(--text-main)'
+          }}
+        >
+          {line.replace(/^####\s+/, '')}
+        </h5>
+      );
+      return;
+    }
+
+    if (line.startsWith('- ') || line.startsWith('* ') || /^\d+\.\s+/.test(line)) {
+      listItems.push(line.replace(/^(-|\*|\d+\.)\s+/, '').trim());
+      return;
+    }
+
+    flushList(`list-${idx}`);
+    blocks.push(
+      <p key={`p-${idx}`} style={{ margin: '0 0 0.55rem', color: 'var(--text-secondary)', fontSize: '0.89rem', lineHeight: 1.6 }}>
+        {renderFormattedInline(line)}
+      </p>
+    );
+  });
+
+  flushList('list-end');
+  return blocks;
+}
+
+const NIVEL_STYLES: Record<
+  CompanyAiStructuredReport['estadoGeneral']['nivel'],
+  { emoji: string; label: string; bg: string; border: string; accent: string }
+> = {
+  sobresaliente: {
+    emoji: '🟢',
+    label: 'Nivel Sobresaliente',
+    bg: 'rgba(16, 185, 129, 0.10)',
+    border: 'rgba(16, 185, 129, 0.35)',
+    accent: '#047857'
+  },
+  bueno: {
+    emoji: '🔵',
+    label: 'Buen Desempeño',
+    bg: 'rgba(14, 165, 233, 0.10)',
+    border: 'rgba(14, 165, 233, 0.35)',
+    accent: '#0369a1'
+  },
+  atencion: {
+    emoji: '🟡',
+    label: 'Requiere Atención',
+    bg: 'rgba(245, 158, 11, 0.12)',
+    border: 'rgba(245, 158, 11, 0.4)',
+    accent: '#b45309'
+  },
+  critico: {
+    emoji: '🔴',
+    label: 'Atención Prioritaria',
+    bg: 'rgba(239, 68, 68, 0.10)',
+    border: 'rgba(239, 68, 68, 0.38)',
+    accent: '#b91c1c'
+  }
+};
+
+function renderStructuredVisualReport(report: CompanyAiStructuredReport): React.ReactNode {
+  const statusStyle = NIVEL_STYLES[report.estadoGeneral.nivel] || NIVEL_STYLES.atencion;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
+      {/* Semáforo de Estado General */}
+      <div
+        style={{
+          padding: '1rem 1.15rem',
+          borderRadius: '14px',
+          background: statusStyle.bg,
+          border: `1px solid ${statusStyle.border}`,
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '0.85rem'
+        }}
+      >
+        <span style={{ fontSize: '1.6rem', lineHeight: 1.1, flexShrink: 0 }}>{statusStyle.emoji}</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
+            <span
+              style={{
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                color: statusStyle.accent
+              }}
+            >
+              {statusStyle.label}
+            </span>
+          </div>
+          <h4 style={{ margin: '0 0 0.35rem', fontSize: '1.02rem', fontWeight: 700, color: 'var(--text-main)' }}>
+            {report.estadoGeneral.titulo}
+          </h4>
+          <p style={{ margin: 0, fontSize: '0.89rem', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+            {report.estadoGeneral.resumenSimple}
+          </p>
+        </div>
+      </div>
+
+      {/* Metas Simples en Tarjetas */}
+      {report.metasSimples.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.75rem' }}>
+          {report.metasSimples.map((kpi, idx) => (
+            <div
+              key={idx}
+              style={{
+                padding: '0.8rem 1rem',
+                borderRadius: '12px',
+                background: 'var(--bg-card, #ffffff)',
+                border: '1px solid var(--border-subtle)',
+                boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.25rem'
+              }}
+            >
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                {kpi.indicador}
+              </span>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.45rem', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-main)' }}>{kpi.actual}</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>→</span>
+                <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#047857' }}>{kpi.meta}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Grid de Lo que va bien vs Puntos a mejorar */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.9rem' }}>
+        {/* Lo que va bien */}
+        <div
+          style={{
+            padding: '1rem 1.05rem',
+            borderRadius: '14px',
+            background: 'rgba(16, 185, 129, 0.08)',
+            border: '1px solid rgba(16, 185, 129, 0.28)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.65rem'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 700, fontSize: '0.92rem', color: '#047857' }}>
+            <span>✅</span>
+            <span>Lo que está funcionando bien</span>
+          </div>
+          {report.loQueVaBien.map((item, idx) => (
+            <div
+              key={idx}
+              style={{
+                padding: '0.75rem 0.85rem',
+                borderRadius: '10px',
+                background: 'var(--bg-card, #ffffff)',
+                border: '1px solid rgba(16, 185, 129, 0.24)',
+                boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)'
+              }}
+            >
+              <div style={{ fontWeight: 700, fontSize: '0.86rem', color: 'var(--text-main)', marginBottom: '0.25rem' }}>
+                {item.titulo}
+              </div>
+              <div style={{ fontSize: '0.83rem', lineHeight: 1.5, color: 'var(--text-secondary)' }}>{item.detalle}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Puntos a mejorar */}
+        <div
+          style={{
+            padding: '1rem 1.05rem',
+            borderRadius: '14px',
+            background: 'rgba(245, 158, 11, 0.08)',
+            border: '1px solid rgba(245, 158, 11, 0.32)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.65rem'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 700, fontSize: '0.92rem', color: '#b45309' }}>
+            <span>⚠️</span>
+            <span>Puntos a mejorar y por qué importan</span>
+          </div>
+          {report.focosDeAtencion.map((item, idx) => (
+            <div
+              key={idx}
+              style={{
+                padding: '0.75rem 0.85rem',
+                borderRadius: '10px',
+                background: 'var(--bg-card, #ffffff)',
+                border: `1px solid ${item.nivel === 'alto' ? 'rgba(239, 68, 68, 0.34)' : 'rgba(245, 158, 11, 0.3)'}`,
+                boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem', marginBottom: '0.25rem' }}>
+                <span style={{ fontWeight: 700, fontSize: '0.86rem', color: 'var(--text-main)' }}>{item.titulo}</span>
+                <span
+                  style={{
+                    fontSize: '0.66rem',
+                    fontWeight: 700,
+                    padding: '0.12rem 0.5rem',
+                    borderRadius: '999px',
+                    background: item.nivel === 'alto' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(245, 158, 11, 0.14)',
+                    color: item.nivel === 'alto' ? '#b91c1c' : '#b45309',
+                    flexShrink: 0
+                  }}
+                >
+                  {item.nivel === 'alto' ? 'Prioridad alta' : 'Atención'}
+                </span>
+              </div>
+              <div style={{ fontSize: '0.83rem', lineHeight: 1.5, color: 'var(--text-secondary)' }}>{item.porqueImporta}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Plan de Acción Paso a Paso */}
+      {report.planDeAccion.length > 0 && (
+        <div
+          style={{
+            padding: '1rem 1.05rem',
+            borderRadius: '14px',
+            background: 'rgba(14, 165, 233, 0.07)',
+            border: '1px solid rgba(14, 165, 233, 0.28)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.65rem'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 700, fontSize: '0.92rem', color: '#0369a1' }}>
+            <span>🎯</span>
+            <span>Qué hacer ahora (Plan paso a paso)</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.7rem' }}>
+            {report.planDeAccion.map((step, idx) => (
+              <div
+                key={idx}
+                style={{
+                  padding: '0.8rem 0.9rem',
+                  borderRadius: '10px',
+                  background: 'var(--bg-card, #ffffff)',
+                  border: '1px solid rgba(14, 165, 233, 0.24)',
+                  boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.35rem'
+                }}
+              >
+                <span
+                  style={{
+                    alignSelf: 'flex-start',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    padding: '0.14rem 0.55rem',
+                    borderRadius: '999px',
+                    background: 'rgba(14, 165, 233, 0.12)',
+                    color: '#0369a1'
+                  }}
+                >
+                  {idx + 1}. {step.plazo}
+                </span>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1.45 }}>{step.accion}</div>
+                <div style={{ fontSize: '0.79rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>💡 {step.impacto}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
+  isOpen,
+  isLoading,
+  insight,
+  companyName,
+  periodText,
+  onRegenerate,
+  onClose
+}) => {
+  const [copied, setCopied] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setElapsedSeconds(0);
+      return;
+    }
+    setElapsedSeconds(0);
+    const intervalId = window.setInterval(() => {
+      setElapsedSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [isLoading]);
+
+  useEscapeKey(isOpen, onClose);
+
+  if (!isOpen) return null;
+
+  const handleCopy = async () => {
+    if (!insight?.summary || typeof navigator === 'undefined' || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(insight.summary);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Sin acceso al portapapeles
+    }
+  };
+
+  return (
+    <div
+      className="no-print"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="ai-insights-modal-title"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1100,
+        background: 'rgba(15, 23, 42, 0.72)',
+        backdropFilter: 'blur(6px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1.25rem'
+      }}
+    >
+      <div
+        className="glass-card"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 'min(880px, 96vw)',
+          maxHeight: '88vh',
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'var(--bg-card, #ffffff)',
+          border: '1px solid rgba(139, 92, 246, 0.35)',
+          borderRadius: '18px',
+          overflow: 'hidden',
+          boxShadow: '0 24px 60px rgba(0, 0, 0, 0.45)'
+        }}
+      >
+        <div
+          style={{
+            padding: '1rem 1.4rem',
+            borderBottom: '1px solid var(--border-subtle)',
+            background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.16), rgba(56, 189, 248, 0.09))',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
+            flexShrink: 0
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <span style={{ fontSize: '1.35rem' }}>✨</span>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <h3 id="ai-insights-modal-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                  Interpretación Ejecutiva con IA
+                </h3>
+                {insight && (
+                  <span
+                    style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      padding: '0.15rem 0.55rem',
+                      borderRadius: '999px',
+                      background: insight.source === 'gemini' ? 'rgba(139, 92, 246, 0.14)' : 'rgba(14, 165, 233, 0.14)',
+                      color: insight.source === 'gemini' ? '#6d28d9' : '#0369a1',
+                      border: `1px solid ${insight.source === 'gemini' ? 'rgba(139, 92, 246, 0.35)' : 'rgba(14, 165, 233, 0.35)'}`
+                    }}
+                  >
+                    {insight.source === 'gemini' ? `${insight.model} • Plan Spark` : insight.model}
+                  </span>
+                )}
+                {insight?.fromCache && (
+                  <span
+                    style={{
+                      fontSize: '0.68rem',
+                      fontWeight: 600,
+                      padding: '0.15rem 0.5rem',
+                      borderRadius: '999px',
+                      background: 'rgba(16, 185, 129, 0.12)',
+                      color: '#047857',
+                      border: '1px solid rgba(16, 185, 129, 0.32)'
+                    }}
+                    title="Análisis guardado en las últimas 24 horas"
+                  >
+                    ⚡ Guardado (&lt; 24h)
+                  </span>
+                )}
+              </div>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                {companyName} • {periodText}
+                {insight ? ` • Generado ${insight.generatedAt}` : ''}
+              </span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {insight && !isLoading && (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleCopy}
+                  style={{ fontSize: '0.78rem', padding: '0.35rem 0.7rem' }}
+                >
+                  {copied ? '✓ Copiado' : '📋 Copiar'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={onRegenerate}
+                  style={{ fontSize: '0.78rem', padding: '0.35rem 0.7rem' }}
+                >
+                  🔄 Regenerar
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={onClose}
+              style={{ fontSize: '0.78rem', padding: '0.35rem 0.65rem' }}
+              title="Cerrar modal (Esc)"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        <div style={{ padding: '1.35rem 1.5rem', overflowY: 'auto', flex: 1 }}>
+          {isLoading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', padding: '1.5rem 0', color: 'var(--text-secondary)' }}>
+              <style>
+                {`@keyframes aiSpin { to { transform: rotate(360deg); } }
+                  @keyframes aiPulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }`}
+              </style>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                <div
+                  style={{
+                    width: '24px',
+                    height: '24px',
+                    border: '2.5px solid rgba(168, 85, 247, 0.22)',
+                    borderTopColor: '#a855f7',
+                    borderRightColor: '#38bdf8',
+                    borderRadius: '50%',
+                    animation: 'aiSpin 0.75s linear infinite',
+                    flexShrink: 0
+                  }}
+                />
+                <span style={{ fontSize: '0.9rem', animation: 'aiPulse 1.8s ease-in-out infinite' }}>
+                  Analizando calificaciones, ejercicios, incidencias críticas y telemetría con Gemini...
+                  {elapsedSeconds > 0 ? ` (${elapsedSeconds}s)` : ''}
+                </span>
+              </div>
+            </div>
+          ) : insight ? (
+            <div>
+              {insight.warning && (
+                <div
+                  style={{
+                    marginBottom: '0.95rem',
+                    padding: '0.6rem 0.9rem',
+                    borderRadius: '8px',
+                    background: 'rgba(245, 158, 11, 0.1)',
+                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                    color: '#fbbf24',
+                    fontSize: '0.78rem'
+                  }}
+                >
+                  ℹ️ {insight.warning}
+                </div>
+              )}
+              {insight.structured ? renderStructuredVisualReport(insight.structured) : renderInsightMarkdown(insight.summary)}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+};

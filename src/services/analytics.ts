@@ -370,3 +370,79 @@ export function createCompanySummaryFromEvaluations(
     nombresSimulaciones
   };
 }
+
+export function getEvaluationYear(
+  evalItem: Pick<Evaluation, 'fechaCapacitacion' | 'fechaReporte' | 'fecha'> | null | undefined
+): string | null {
+  const date = evalItem?.fechaCapacitacion || evalItem?.fechaReporte || evalItem?.fecha || '';
+  const match = String(date).match(/\b(20\d{2}|19\d{2})\b/);
+  return match ? match[1] : (String(date).match(/\b\d{4}\b/)?.[0] || null);
+}
+
+export interface CompanyExerciseStat {
+  key: string;
+  nombre: string;
+  numero?: number;
+  promedio: number;
+  totalEvaluaciones: number;
+}
+
+export function buildExerciseStatsFromCompany(comp: CompanySummary | null): CompanyExerciseStat[] {
+  if (!comp?.conductores) return [];
+  const map = new Map<string, { key: string; nombre: string; numero?: number; scores: number[] }>();
+
+  comp.conductores.forEach((c) => {
+    if (c.promediosEjercicios) {
+      Object.entries(c.promediosEjercicios).forEach(([key, data]) => {
+        if (!data || typeof data.promedio !== 'number' || Number.isNaN(data.promedio)) return;
+        if (!map.has(key)) {
+          map.set(key, { key, nombre: data.nombre, numero: data.numero, scores: [] });
+        }
+        const times = data.totalVeces || 1;
+        for (let i = 0; i < times; i++) {
+          map.get(key)!.scores.push(data.promedio);
+        }
+      });
+    } else if (Array.isArray(c.ejercicios)) {
+      c.ejercicios.forEach((ex) => {
+        if (!ex) return;
+        const rawName = (ex.nombre || (ex.numero ? `Ejercicio ${ex.numero}` : '')).trim();
+        if (!rawName) return;
+        const key = rawName.toLowerCase();
+        const score =
+          typeof ex.calificacion === 'number'
+            ? ex.calificacion
+            : parseFloat(String(ex.calificacion || ex.score || ''));
+        if (!Number.isNaN(score)) {
+          if (!map.has(key)) {
+            map.set(key, { key, nombre: rawName, numero: ex.numero, scores: [] });
+          }
+          map.get(key)!.scores.push(score);
+        }
+      });
+    }
+  });
+
+  const result = Array.from(map.values())
+    .map((item) => {
+      const sum = item.scores.reduce((a, b) => a + b, 0);
+      const avg = item.scores.length > 0 ? sum / item.scores.length : 0;
+      return {
+        key: item.key,
+        nombre: item.nombre,
+        numero: item.numero,
+        promedio: parseFloat(avg.toFixed(2)),
+        totalEvaluaciones: item.scores.length
+      };
+    })
+    .filter((item) => item.totalEvaluaciones > 0);
+
+  result.sort((a, b) => {
+    if (a.numero && b.numero) return a.numero - b.numero;
+    if (a.numero) return -1;
+    if (b.numero) return 1;
+    return b.promedio - a.promedio;
+  });
+
+  return result;
+}

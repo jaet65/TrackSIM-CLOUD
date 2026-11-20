@@ -45,6 +45,8 @@ describe('Navbar component', () => {
       companiesSummaries: [],
       driverSummaries: [],
       selectedCompanySummary: null,
+      selectedYear: 'all',
+      setSelectedYear: vi.fn(),
       selectedDriverName: '',
       setSelectedDriverName: vi.fn(),
       setSelectedCompany: mockSetSelectedCompany,

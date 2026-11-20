@@ -147,6 +147,8 @@ const DirectoryTabContent: React.FC = () => {
   const {
     evaluations,
     selectedCompany,
+    selectedYear,
+    setSelectedYear,
     deleteEvaluation,
     deleteAllEvaluations,
     updateEvaluation,
@@ -165,7 +167,6 @@ const DirectoryTabContent: React.FC = () => {
   const [actionStatus, setActionStatus] = useState<DirectoryActionStatus | null>(null);
 
   const [search, setSearch] = useState('');
-  const [selectedYear, setSelectedYear] = useState('all');
   const [selectedEstado, setSelectedEstado] = useState('all');
   const [selectedSede, setSelectedSede] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);

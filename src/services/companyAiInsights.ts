@@ -1,0 +1,725 @@
+import type { CompanySummary, Evaluation } from '../types';
+import { getEvaluationYear } from './analytics';
+import { app } from './firebaseApp';
+import { getCriticalMistakes, getEvaluationIncidentCounts } from './incidentMetrics';
+
+export interface AiExerciseInput {
+  nombre: string;
+  promedio: number;
+  totalEvaluaciones: number;
+}
+
+export interface CompanyAiInsightRequest {
+  comp: CompanySummary & { esGlobal?: boolean };
+  periodText: string;
+  selectedYear: string;
+  conductoresRecurrentes: number;
+  pctRecurrentes: string;
+  exerciseStats: AiExerciseInput[];
+  allEvaluations: Evaluation[];
+  forceRefresh?: boolean;
+}
+
+export interface CompanyAiStructuredReport {
+  estadoGeneral: {
+    nivel: 'sobresaliente' | 'bueno' | 'atencion' | 'critico';
+    titulo: string;
+    resumenSimple: string;
+  };
+  loQueVaBien: Array<{
+    titulo: string;
+    detalle: string;
+  }>;
+  focosDeAtencion: Array<{
+    titulo: string;
+    porqueImporta: string;
+    nivel: 'alto' | 'medio';
+  }>;
+  planDeAccion: Array<{
+    plazo: string;
+    accion: string;
+    impacto: string;
+  }>;
+  metasSimples: Array<{
+    indicador: string;
+    actual: string;
+    meta: string;
+  }>;
+}
+
+export interface CompanyAiInsightResult {
+  summary: string;
+  structured?: CompanyAiStructuredReport;
+  source: 'gemini' | 'fallback';
+  model: string;
+  generatedAt: string;
+  createdAtMs?: number;
+  fromCache?: boolean;
+  warning?: string;
+}
+
+const GEMINI_MODEL_CANDIDATES = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'] as const;
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const STORAGE_KEY_PREFIX = 'tracksim_ai_insight_v6:';
+
+function isAlcoholAwarenessExercise(nombre: string): boolean {
+  return /alcohol/i.test(nombre);
+}
+const insightCache = new Map<string, CompanyAiInsightResult>();
+
+function getStorage(): Storage | null {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage;
+    }
+  } catch {
+    // Acceso bloqueado a localStorage
+  }
+  return null;
+}
+
+function isCacheValid(item: CompanyAiInsightResult | null | undefined): item is CompanyAiInsightResult {
+  if (!item || item.source !== 'gemini' || !item.createdAtMs) return false;
+  return Date.now() - item.createdAtMs < CACHE_TTL_MS;
+}
+
+function readCachedInsight(cacheKey: string): CompanyAiInsightResult | null {
+  const mem = insightCache.get(cacheKey);
+  if (isCacheValid(mem)) {
+    return { ...mem, fromCache: true };
+  }
+  if (mem) {
+    insightCache.delete(cacheKey);
+  }
+
+  const storage = getStorage();
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(`${STORAGE_KEY_PREFIX}${cacheKey}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CompanyAiInsightResult;
+    if (isCacheValid(parsed)) {
+      insightCache.set(cacheKey, parsed);
+      return { ...parsed, fromCache: true };
+    }
+    storage.removeItem(`${STORAGE_KEY_PREFIX}${cacheKey}`);
+  } catch {
+    // Caché corrupta o inaccesible
+  }
+  return null;
+}
+
+function writeCachedInsight(cacheKey: string, result: CompanyAiInsightResult): void {
+  insightCache.set(cacheKey, result);
+  const storage = getStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(`${STORAGE_KEY_PREFIX}${cacheKey}`, JSON.stringify(result));
+  } catch {
+    // Cuota de almacenamiento llena o bloqueada
+  }
+}
+
+function getEvalScore(ev: Evaluation): number {
+  return ev.evaluacionFinalPuntos ?? ev.calificacionExacta ?? ev.promedioScore ?? 0;
+}
+
+function calcMedian(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function calcStdDev(values: number[], mean: number): number {
+  if (values.length <= 1) return 0;
+  const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
+  return Math.sqrt(variance);
+}
+
+export function buildCompanyAiMetricsContext(input: CompanyAiInsightRequest) {
+  const { comp, periodText, conductoresRecurrentes, pctRecurrentes, exerciseStats, allEvaluations } = input;
+  const conductores = comp.conductores || [];
+  const totalConductores = conductores.length;
+  const sobresalientes = conductores.filter((c) => c.promedioScore >= 8.0).length;
+  const aprobados = conductores.filter((c) => c.promedioScore >= 6.0 && c.promedioScore < 8.0).length;
+  const refuerzo = conductores.filter((c) => c.promedioScore < 6.0).length;
+  const criticosBajo5 = conductores.filter((c) => c.promedioScore < 5.0).length;
+
+  const scores = allEvaluations.map(getEvalScore).filter((s) => s > 0);
+  const meanScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : comp.promedioFinal || 0;
+  const minScore = scores.length > 0 ? Math.min(...scores) : 0;
+  const maxScore = scores.length > 0 ? Math.max(...scores) : 0;
+  const medianScore = calcMedian(scores);
+  const stdDevScore = calcStdDev(scores, meanScore);
+
+  const hasV2Data = allEvaluations.some((ev) => ev.origen === 'TrackSIM-ZERO-V2');
+  const critMap = new Map<string, number>();
+  const mistakesMap = new Map<string, { reps: number; evalsWithMistake: number; eje?: string }>();
+  const ejeMap = new Map<string, number>();
+  const sedeMap = new Map<string, { count: number; scoreSum: number; approved: number; accidents: number }>();
+  const yearMap = new Map<string, { count: number; scoreSum: number; approved: number; accidents: number }>();
+
+  let evalsWithCritical = 0;
+  let scoreSumWithCrit = 0;
+  let evalsWithoutCritical = 0;
+  let scoreSumWithoutCrit = 0;
+  let habilidadesPctSum = 0;
+  let habilidadesCount = 0;
+  let practicaPctSum = 0;
+  let practicaCount = 0;
+  let destrezaPctSum = 0;
+  let destrezaCount = 0;
+  let ecoPctSum = 0;
+  let ecoCount = 0;
+
+  allEvaluations.forEach((ev) => {
+    const score = getEvalScore(ev);
+    let evAccidents = 0;
+
+    if (ev.origen === 'TrackSIM-ZERO-V2') {
+      const crits = getCriticalMistakes(ev.erroresFrecuentes || []);
+      if (crits.length > 0) {
+        crits.forEach((c) => {
+          critMap.set(c.error, (critMap.get(c.error) || 0) + c.repeticiones);
+          evAccidents += c.repeticiones;
+        });
+      } else if ((ev.accidentesCriticos || 0) > 0) {
+        const n = ev.accidentesCriticos || 0;
+        critMap.set('Incidencias Críticas', (critMap.get('Incidencias Críticas') || 0) + n);
+        evAccidents += n;
+      }
+    } else {
+      const inc = getEvaluationIncidentCounts(ev);
+      if (inc.colisiones > 0) critMap.set('Colisiones', (critMap.get('Colisiones') || 0) + inc.colisiones);
+      if (inc.vehiculoFueraVia > 0) critMap.set('Salidas de Vía', (critMap.get('Salidas de Vía') || 0) + inc.vehiculoFueraVia);
+      if (inc.fatalidades > 0) critMap.set('Fatalidades', (critMap.get('Fatalidades') || 0) + inc.fatalidades);
+      evAccidents = inc.colisiones + inc.vehiculoFueraVia + inc.fatalidades;
+    }
+
+    if (evAccidents > 0) {
+      evalsWithCritical += 1;
+      scoreSumWithCrit += score;
+    } else {
+      evalsWithoutCritical += 1;
+      scoreSumWithoutCrit += score;
+    }
+
+    if (typeof ev.habilidadesManejoPct === 'number' && ev.habilidadesManejoPct > 0) {
+      habilidadesPctSum += ev.habilidadesManejoPct;
+      habilidadesCount += 1;
+    }
+    if (typeof ev.practicaSimuladorPct === 'number' && ev.practicaSimuladorPct > 0) {
+      practicaPctSum += ev.practicaSimuladorPct;
+      practicaCount += 1;
+    }
+    if (typeof ev.destrezaPuntos === 'number' && typeof ev.destrezaMax === 'number' && ev.destrezaMax > 0) {
+      destrezaPctSum += (ev.destrezaPuntos / ev.destrezaMax) * 100;
+      destrezaCount += 1;
+    }
+    if (typeof ev.ecoDrivingPuntos === 'number' && typeof ev.ecoDrivingMax === 'number' && ev.ecoDrivingMax > 0) {
+      ecoPctSum += (ev.ecoDrivingPuntos / ev.ecoDrivingMax) * 100;
+      ecoCount += 1;
+    }
+
+    const seenMistakesInEval = new Set<string>();
+    if (Array.isArray(ev.erroresFrecuentes)) {
+      ev.erroresFrecuentes.forEach((m) => {
+        const name = (m.error || m.errorRaw || '').trim();
+        if (!name) return;
+        const reps = m.repeticiones || 1;
+        const prev = mistakesMap.get(name) || { reps: 0, evalsWithMistake: 0, eje: m.ejeNombre || m.ejeShortName };
+        prev.reps += reps;
+        if (!seenMistakesInEval.has(name)) {
+          prev.evalsWithMistake += 1;
+          seenMistakesInEval.add(name);
+        }
+        mistakesMap.set(name, prev);
+
+        const ejeName = (m.ejeNombre || m.ejeShortName || '').trim();
+        if (ejeName) {
+          ejeMap.set(ejeName, (ejeMap.get(ejeName) || 0) + reps);
+        }
+      });
+    }
+
+    const sedeName = (ev.sede || ev.ciudad || 'Principal').trim() || 'Principal';
+    const sedeCurr = sedeMap.get(sedeName) || { count: 0, scoreSum: 0, approved: 0, accidents: 0 };
+    sedeCurr.count += 1;
+    sedeCurr.scoreSum += score;
+    if (score >= 6.0) sedeCurr.approved += 1;
+    sedeCurr.accidents += evAccidents;
+    sedeMap.set(sedeName, sedeCurr);
+
+    const yr = getEvaluationYear(ev);
+    if (yr) {
+      const curr = yearMap.get(yr) || { count: 0, scoreSum: 0, approved: 0, accidents: 0 };
+      curr.count += 1;
+      curr.scoreSum += score;
+      if (score >= 6.0) curr.approved += 1;
+      curr.accidents += evAccidents;
+      yearMap.set(yr, curr);
+    }
+  });
+
+  const criticalBreakdown = Array.from(critMap.entries())
+    .map(([nombre, total]) => ({ nombre, total }))
+    .sort((a, b) => b.total - a.total);
+  const totalCriticalEvents = criticalBreakdown.reduce((sum, item) => sum + item.total, 0);
+
+  const totalEvalsCount = Math.max(allEvaluations.length, 1);
+  const topMistakes = Array.from(mistakesMap.entries())
+    .map(([nombre, data]) => ({
+      nombre,
+      repeticiones: data.reps,
+      presenciaPct: Number(((data.evalsWithMistake / totalEvalsCount) * 100).toFixed(1)),
+      eje: data.eje || undefined
+    }))
+    .sort((a, b) => b.repeticiones - a.repeticiones)
+    .slice(0, 10);
+
+  const telemetryAxes = Array.from(ejeMap.entries())
+    .map(([eje, repeticiones]) => ({ eje, repeticiones }))
+    .sort((a, b) => b.repeticiones - a.repeticiones);
+
+  const sedeBreakdown = Array.from(sedeMap.entries())
+    .map(([sede, d]) => ({
+      sede,
+      evaluaciones: d.count,
+      promedio: Number((d.scoreSum / d.count).toFixed(2)),
+      aprobacionPct: Number(((d.approved / d.count) * 100).toFixed(1)),
+      incidentes: d.accidents
+    }))
+    .sort((a, b) => b.evaluaciones - a.evaluaciones);
+
+  const annualTrend = Array.from(yearMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([year, d]) => ({
+      year,
+      evaluaciones: d.count,
+      promedio: Number((d.scoreSum / d.count).toFixed(2)),
+      aprobacionPct: Number(((d.approved / d.count) * 100).toFixed(1)),
+      accidentes: d.accidents
+    }));
+
+  const operadoresConIncidentes = conductores.filter(
+    (c) => (c.colisiones || 0) + (c.fatalidades || 0) + (c.totalFueraVia || 0) > 0
+  ).length;
+
+  return {
+    empresa: comp.nombre,
+    periodo: periodText,
+    filtroAnioActivo: input.selectedYear === 'all' ? 'Todos los años' : input.selectedYear,
+    sedes: comp.sedes?.length ? comp.sedes : ['Principal'],
+    totalOperadores: totalConductores,
+    totalEvaluaciones: comp.totalEvaluaciones || allEvaluations.length,
+    promedioGlobal: Number((comp.promedioFinal || 0).toFixed(2)),
+    tasaAprobacionPct: Number((comp.tasaAprobacion || 0).toFixed(1)),
+    estadisticaCalificaciones: {
+      minimo: Number(minScore.toFixed(2)),
+      mediana: Number(medianScore.toFixed(2)),
+      maximo: Number(maxScore.toFixed(2)),
+      desviacionEstandar: Number(stdDevScore.toFixed(2))
+    },
+    dimensionesEvaluacionPct: {
+      habilidadesManejoPct: habilidadesCount > 0 ? Number((habilidadesPctSum / habilidadesCount).toFixed(1)) : null,
+      practicaSimuladorPct: practicaCount > 0 ? Number((practicaPctSum / practicaCount).toFixed(1)) : null,
+      destrezaPct: destrezaCount > 0 ? Number((destrezaPctSum / destrezaCount).toFixed(1)) : null,
+      ecoDrivingPct: ecoCount > 0 ? Number((ecoPctSum / ecoCount).toFixed(1)) : null
+    },
+    conductoresRecurrentes,
+    pctRecurrentes,
+    distribucionAptitud: {
+      sobresalientes,
+      sobresalientesPct: totalConductores > 0 ? Number(((sobresalientes / totalConductores) * 100).toFixed(1)) : 0,
+      aprobados,
+      aprobadosPct: totalConductores > 0 ? Number(((aprobados / totalConductores) * 100).toFixed(1)) : 0,
+      requiereRefuerzo: refuerzo,
+      requiereRefuerzoPct: totalConductores > 0 ? Number(((refuerzo / totalConductores) * 100).toFixed(1)) : 0,
+      criticosBajo5
+    },
+    hasV2Data,
+    totalCriticalEvents,
+    operadoresConIncidentes,
+    correlacionIncidentes: {
+      evaluacionesConIncidentes: evalsWithCritical,
+      promedioConIncidentes: evalsWithCritical > 0 ? Number((scoreSumWithCrit / evalsWithCritical).toFixed(2)) : null,
+      evaluacionesSinIncidentes: evalsWithoutCritical,
+      promedioSinIncidentes: evalsWithoutCritical > 0 ? Number((scoreSumWithoutCrit / evalsWithoutCritical).toFixed(2)) : null
+    },
+    criticalBreakdown,
+    topMistakes,
+    telemetryAxes,
+    ejercicios: exerciseStats.slice(0, 14).map((ex) => ({
+      nombre: ex.nombre,
+      promedio: ex.promedio,
+      evaluaciones: ex.totalEvaluaciones,
+      esConcientizacionIntencional: isAlcoholAwarenessExercise(ex.nombre)
+    })),
+    sedeBreakdown,
+    annualTrend
+  };
+}
+
+export function formatStructuredReportAsText(report: CompanyAiStructuredReport): string {
+  const lines: string[] = [
+    `RESUMEN GENERAL: ${report.estadoGeneral.titulo}`,
+    report.estadoGeneral.resumenSimple,
+    '',
+    'LO QUE VA BIEN:',
+    ...report.loQueVaBien.map((item) => `- ${item.titulo}: ${item.detalle}`),
+    '',
+    'PUNTOS A MEJORAR:',
+    ...report.focosDeAtencion.map((item) => `- ${item.titulo}: ${item.porqueImporta}`),
+    '',
+    'PLAN DE ACCIÓN:',
+    ...report.planDeAccion.map((step, i) => `${i + 1}. [${step.plazo}] ${step.accion} (${step.impacto})`),
+    '',
+    'METAS SUGERIDAS:',
+    ...report.metasSimples.map((kpi) => `- ${kpi.indicador}: ${kpi.actual} → ${kpi.meta}`)
+  ];
+  return lines.join('\n');
+}
+
+export function parseStructuredAiResponse(rawText: string): CompanyAiStructuredReport | null {
+  const cleaned = rawText
+    .trim()
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+
+  try {
+    const parsed = JSON.parse(cleaned) as Partial<CompanyAiStructuredReport>;
+    if (!parsed?.estadoGeneral?.titulo || !parsed.estadoGeneral.resumenSimple) {
+      return null;
+    }
+    const nivel = parsed.estadoGeneral.nivel;
+    const validNivel =
+      nivel === 'sobresaliente' || nivel === 'bueno' || nivel === 'atencion' || nivel === 'critico'
+        ? nivel
+        : 'atencion';
+
+    return {
+      estadoGeneral: {
+        nivel: validNivel,
+        titulo: String(parsed.estadoGeneral.titulo),
+        resumenSimple: String(parsed.estadoGeneral.resumenSimple)
+      },
+      loQueVaBien: Array.isArray(parsed.loQueVaBien)
+        ? parsed.loQueVaBien.slice(0, 4).map((x) => ({
+            titulo: String(x?.titulo || 'Fortaleza'),
+            detalle: String(x?.detalle || '')
+          }))
+        : [],
+      focosDeAtencion: Array.isArray(parsed.focosDeAtencion)
+        ? parsed.focosDeAtencion.slice(0, 4).map((x) => ({
+            titulo: String(x?.titulo || 'Área de mejora'),
+            porqueImporta: String(x?.porqueImporta || ''),
+            nivel: x?.nivel === 'alto' ? 'alto' : 'medio'
+          }))
+        : [],
+      planDeAccion: Array.isArray(parsed.planDeAccion)
+        ? parsed.planDeAccion.slice(0, 4).map((x) => ({
+            plazo: String(x?.plazo || 'Próximo paso'),
+            accion: String(x?.accion || ''),
+            impacto: String(x?.impacto || '')
+          }))
+        : [],
+      metasSimples: Array.isArray(parsed.metasSimples)
+        ? parsed.metasSimples.slice(0, 4).map((x) => ({
+            indicador: String(x?.indicador || ''),
+            actual: String(x?.actual || ''),
+            meta: String(x?.meta || '')
+          }))
+        : []
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function buildCompanyAiPrompt(metrics: ReturnType<typeof buildCompanyAiMetricsContext>): string {
+  return [
+    'Eres un asesor de seguridad vial y capacitación de conductores que explica resultados a gerentes y público general.',
+    'Tu objetivo es que CUALQUIER persona entienda en segundos cómo está la flota, qué va bien, qué riesgos hay en la vida diaria (accidentes, gasto de diésel, desgaste de frenos) y qué hacer.',
+    'REGLAS ESTRICTAS:',
+    '- Usa un español claro, cercano y natural. PROHIBIDO usar jerga estadística (nada de "desviación estándar", "mediana", "sigma", "V2", "telemetría agregada").',
+    '- Los cursos en simulador se toman 1 o 2 veces al año; por ello, el plan y las metas deben plantearse para el PRÓXIMO AÑO o los próximos ciclos semestrales (PROHIBIDO proponer plazos de "esta semana", "este mes" o "90 días").',
+    '- REGLA SOBRE "Efectos del alcohol" (esConcientizacionIntencional: true): es un ejercicio de CONCIENTIZACIÓN planeado intencionalmente para salir mal y mostrar el riesgo de manejar alcoholizado. Es completamente natural tener calificación baja y accidentes en ese ejercicio; NO lo marques como falla técnica ni recomiendes reforzar o mejorar su calificación.',
+    '- Si filtroAnioActivo es un año específico (por ejemplo "2026"), analiza únicamente ese año sin mencionar tendencias de varios años; si es "Todos los años", incluye la evolución anual cuando haya 2 o más años.',
+    '- No inventes números ni nombres; usa solo los datos del JSON.',
+    '- Frases cortas y directas (máximo 2 líneas por punto).',
+    '- Responde ÚNICAMENTE con un objeto JSON válido con esta estructura exacta (sin markdown ni texto extra):',
+    '{',
+    '  "estadoGeneral": {',
+    '    "nivel": "sobresaliente | bueno | atencion | critico",',
+    '    "titulo": "Frase corta de máximo 8 palabras que resuma cómo está la flota",',
+    '    "resumenSimple": "2 oraciones claras explicando la calificación promedio, cuántos aprobaron y la tendencia si hay varios años."',
+    '  },',
+    '  "loQueVaBien": [',
+    '    { "titulo": "Ej. Buen manejo en...", "detalle": "Explicación simple con el dato real." }',
+    '  ],',
+    '  "focosDeAtencion": [',
+    '    { "titulo": "Ej. Exceso de aceleración o choques", "porqueImporta": "Qué riesgo real provoca (más diésel, desgaste o accidentes) y el dato.", "nivel": "alto | medio" }',
+    '  ],',
+    '  "planDeAccion": [',
+    '    { "plazo": "1er ciclo próximo año | 2do ciclo próximo año | Seguimiento anual", "accion": "Qué enfoque dar a la próxima jornada de simulador", "impacto": "Beneficio esperado" }',
+    '  ],',
+    '  "metasSimples": [',
+    '    { "indicador": "Nombre corto", "actual": "Valor actual", "meta": "Meta para el próximo año" }',
+    '  ]',
+    '}',
+    '',
+    'Incluye 2-3 elementos en loQueVaBien, 2-3 en focosDeAtencion, 3 en planDeAccion y 3 en metasSimples.',
+    '',
+    'Datos de la flota (JSON):',
+    JSON.stringify(metrics)
+  ].join('\n');
+}
+
+export function buildLocalFallbackStructured(metrics: ReturnType<typeof buildCompanyAiMetricsContext>): CompanyAiStructuredReport {
+  const nivel: CompanyAiStructuredReport['estadoGeneral']['nivel'] =
+    metrics.promedioGlobal >= 8.0
+      ? 'sobresaliente'
+      : metrics.promedioGlobal >= 7.0
+        ? 'bueno'
+        : metrics.promedioGlobal >= 6.0
+          ? 'atencion'
+          : 'critico';
+
+  const titulo =
+    nivel === 'sobresaliente'
+      ? 'Flota con desempeño sobresaliente y seguro'
+      : nivel === 'bueno'
+        ? 'Buen desempeño general con puntos por pulir'
+        : nivel === 'atencion'
+          ? 'Desempeño regular: requiere refuerzo preventivo'
+          : 'Situación crítica: necesita capacitación urgente';
+
+  const operationalExercises = metrics.ejercicios.filter((ex) => !ex.esConcientizacionIntencional);
+  const sortedEx = [...operationalExercises].sort((a, b) => b.promedio - a.promedio);
+  const bestEx = sortedEx[0];
+  const worstEx = sortedEx[sortedEx.length - 1];
+  const topCrit = metrics.criticalBreakdown[0];
+  const topErrs = metrics.topMistakes.slice(0, 2);
+
+  const trendPhrase =
+    metrics.annualTrend.length >= 2
+      ? ` Entre ${metrics.annualTrend[0].year} y ${metrics.annualTrend[metrics.annualTrend.length - 1].year}, el promedio cambió de ${metrics.annualTrend[0].promedio.toFixed(1)} a ${metrics.annualTrend[metrics.annualTrend.length - 1].promedio.toFixed(1)}.`
+      : '';
+
+  const loQueVaBien: CompanyAiStructuredReport['loQueVaBien'] = [
+    {
+      titulo: `${metrics.distribucionAptitud.sobresalientes + metrics.distribucionAptitud.aprobados} de ${metrics.totalOperadores} operadores aprobaron`,
+      detalle: `El ${metrics.tasaAprobacionPct}% de los evaluados alcanzó al menos 6.0 puntos, y ${metrics.distribucionAptitud.sobresalientes} destacan con nivel sobresaliente (≥ 8.0).`
+    }
+  ];
+
+  if (bestEx) {
+    loQueVaBien.push({
+      titulo: `Mejor resultado en "${bestEx.nombre}"`,
+      detalle: `En esta prueba la flota logró ${bestEx.promedio.toFixed(1)} de 10 en ${bestEx.evaluaciones} evaluaciones.`
+    });
+  } else if (metrics.conductoresRecurrentes > 0) {
+    loQueVaBien.push({
+      titulo: 'Seguimiento continuo',
+      detalle: `${metrics.conductoresRecurrentes} operadores (${metrics.pctRecurrentes}%) ya tienen más de una evaluación registrada.`
+    });
+  }
+
+  const focosDeAtencion: CompanyAiStructuredReport['focosDeAtencion'] = [];
+  if (metrics.distribucionAptitud.requiereRefuerzo > 0) {
+    focosDeAtencion.push({
+      titulo: `${metrics.distribucionAptitud.requiereRefuerzo} operadores requieren refuerzo`,
+      porqueImporta: `Obtuvieron menos de 6.0 puntos (${metrics.distribucionAptitud.requiereRefuerzoPct}% del grupo) y tienen mayor riesgo de cometer errores en ruta.`,
+      nivel: metrics.distribucionAptitud.requiereRefuerzoPct >= 25 ? 'alto' : 'medio'
+    });
+  }
+
+  if (metrics.totalCriticalEvents > 0 && topCrit) {
+    focosDeAtencion.push({
+      titulo: `${metrics.totalCriticalEvents} incidentes graves registrados`,
+      porqueImporta: `El problema más repetido fue "${topCrit.nombre}" (${topCrit.total} veces), lo que representa riesgo directo de accidente en carretera.`,
+      nivel: 'alto'
+    });
+  }
+
+  if (topErrs[0]) {
+    focosDeAtencion.push({
+      titulo: `Hábito repetido: "${topErrs[0].nombre}"`,
+      porqueImporta: `Se detectó ${topErrs[0].repeticiones} veces (en ${topErrs[0].presenciaPct}% de las pruebas), lo que suele aumentar el desgaste mecánico o el consumo de combustible.`,
+      nivel: 'medio'
+    });
+  } else if (worstEx && worstEx.nombre !== bestEx?.nombre) {
+    focosDeAtencion.push({
+      titulo: `Prueba más baja: "${worstEx.nombre}"`,
+      porqueImporta: `Promedió ${worstEx.promedio.toFixed(1)} de 10, por lo que conviene reforzar estas maniobras antes de salir a ruta.`,
+      nivel: 'medio'
+    });
+  }
+
+  if (focosDeAtencion.length === 0) {
+    focosDeAtencion.push({
+      titulo: 'Mantener la prevención en ruta',
+      porqueImporta: 'Aunque no hay alertas graves, conviene practicar escenarios de lluvia, montaña y frenado de emergencia para no perder nivel.',
+      nivel: 'medio'
+    });
+  }
+
+  const metaAprobacion = Math.min(98, Math.max(85, Math.ceil(metrics.tasaAprobacionPct + 10)));
+  const metaPromedio = Math.min(9.2, Number((metrics.promedioGlobal + 0.6).toFixed(1)));
+
+  return {
+    estadoGeneral: {
+      nivel,
+      titulo,
+      resumenSimple: `${metrics.empresa} tiene una calificación promedio de ${metrics.promedioGlobal.toFixed(2)} sobre 10 y una aprobación del ${metrics.tasaAprobacionPct}% en ${metrics.totalEvaluaciones} evaluaciones.${trendPhrase}`
+    },
+    loQueVaBien,
+    focosDeAtencion,
+    planDeAccion: [
+      {
+        plazo: '1er ciclo próximo año',
+        accion:
+          metrics.distribucionAptitud.requiereRefuerzo > 0
+            ? `Priorizar en la primera jornada anual a los ${metrics.distribucionAptitud.requiereRefuerzo} operadores con menos de 6.0 para reforzar sus maniobras base.`
+            : 'Incluir en la primera jornada anual un repaso de los errores más repetidos detectados en este periodo.',
+        impacto: 'Reduce accidentes evitables desde el inicio del año.'
+      },
+      {
+        plazo: '2do ciclo próximo año',
+        accion: worstEx
+          ? `Dedicar mayor tiempo de práctica en simulador a "${worstEx.nombre}"${topErrs[0] ? ` y a corregir "${topErrs[0].nombre}"` : ''}.`
+          : 'Reforzar escenarios de conducción defensiva, frenado preventivo y ahorro de combustible.',
+        impacto: 'Mejora la técnica de manejo y baja el gasto de diésel y frenos.'
+      },
+      {
+        plazo: 'Seguimiento anual',
+        accion: 'Reevaluar en la siguiente ronda anual a los operadores con calificación menor a 7.0 para confirmar su avance.',
+        impacto: 'Consolida hábitos seguros ciclo tras ciclo.'
+      }
+    ],
+    metasSimples: [
+      {
+        indicador: 'Aprobación',
+        actual: `${metrics.tasaAprobacionPct}%`,
+        meta: metrics.tasaAprobacionPct >= 95 ? '≥ 95% próximo año' : `≥ ${metaAprobacion}% próximo año`
+      },
+      {
+        indicador: 'Calificación promedio',
+        actual: `${metrics.promedioGlobal.toFixed(1)} / 10`,
+        meta: `≥ ${metaPromedio.toFixed(1)} próximo año`
+      },
+      {
+        indicador: topErrs[0] ? 'Error principal' : 'Incidentes graves',
+        actual: topErrs[0] ? `${topErrs[0].repeticiones} veces` : `${metrics.totalCriticalEvents}`,
+        meta: '-30% próximo año'
+      }
+    ]
+  };
+}
+
+export function buildLocalFallbackInsight(metrics: ReturnType<typeof buildCompanyAiMetricsContext>): string {
+  return formatStructuredReportAsText(buildLocalFallbackStructured(metrics));
+}
+
+function buildCacheKey(
+  input: CompanyAiInsightRequest,
+  metrics: ReturnType<typeof buildCompanyAiMetricsContext>
+): string {
+  return `${input.comp.nombre}|${input.selectedYear}|${metrics.totalEvaluaciones}|${metrics.promedioGlobal}|${metrics.totalCriticalEvents}`;
+}
+
+export async function generateCompanyAiInsight(input: CompanyAiInsightRequest): Promise<CompanyAiInsightResult> {
+  const metrics = buildCompanyAiMetricsContext(input);
+  const cacheKey = buildCacheKey(input, metrics);
+
+  if (!input.forceRefresh) {
+    const cached = readCachedInsight(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
+
+  const prompt = buildCompanyAiPrompt(metrics);
+
+  try {
+    const { getAI, getGenerativeModel, GoogleAIBackend, ThinkingLevel } = await import('firebase/ai');
+    const ai = getAI(app, { backend: new GoogleAIBackend() });
+
+    let lastError: unknown;
+    for (const modelId of GEMINI_MODEL_CANDIDATES) {
+      try {
+        const model = getGenerativeModel(ai, {
+          model: modelId,
+          generationConfig: {
+            candidateCount: 1,
+            maxOutputTokens: 4096,
+            temperature: 0.35,
+            responseMimeType: 'application/json',
+            thinkingConfig: {
+              thinkingLevel: modelId === 'gemini-3.5-flash-lite' ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW
+            }
+          }
+        });
+
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        const response = await Promise.race([
+          model.generateContent(prompt),
+          new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error('Tiempo de espera agotado al consultar Gemini.')), 25000);
+          })
+        ]).finally(() => {
+          if (timeoutId) clearTimeout(timeoutId);
+        });
+        const text = response.response.text().trim();
+
+        if (!text) {
+          throw new Error('La respuesta de Gemini llegó vacía.');
+        }
+
+        const structured = parseStructuredAiResponse(text) ?? undefined;
+        const formattedSummary = structured ? formatStructuredReportAsText(structured) : text;
+        const now = new Date();
+        const result: CompanyAiInsightResult = {
+          summary: formattedSummary,
+          structured,
+          source: 'gemini',
+          model: modelId,
+          generatedAt: now.toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+          createdAtMs: now.getTime(),
+          fromCache: false
+        };
+        writeCachedInsight(cacheKey, result);
+        return result;
+      } catch (modelErr) {
+        lastError = modelErr;
+        const msg = modelErr instanceof Error ? modelErr.message : String(modelErr);
+        const shouldRetryNextModel = /503|unavailable|overloaded|429|quota|resource.*exhausted|not found|404|timeout|tiempo de espera/i.test(msg);
+        if (!shouldRetryNextModel) {
+          throw modelErr;
+        }
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error('Todos los modelos de Gemini fallaron temporalmente.');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const isQuotaOrSetup =
+      /quota|429|503|unavailable|overloaded|permission|403|api.*not.*enabled|ai logic|ailogic/i.test(message);
+
+    const structuredFallback = buildLocalFallbackStructured(metrics);
+    const fallback: CompanyAiInsightResult = {
+      summary: formatStructuredReportAsText(structuredFallback),
+      structured: structuredFallback,
+      source: 'fallback',
+      model: 'Motor Local (Respaldo)',
+      generatedAt: new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+      warning: isQuotaOrSetup
+        ? 'Gemini Developer API está temporalmente saturado (503/429) o aún no está habilitado; se generó el análisis visual con el motor analítico local.'
+        : 'No se pudo conectar con Gemini Developer API; se generó el análisis visual con el motor analítico local.'
+    };
+    return fallback;
+  }
+}

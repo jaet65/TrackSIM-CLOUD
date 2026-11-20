@@ -122,110 +122,94 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
         </div>
 
         {/* Acciones Ejecutivas: Imprimir / Generar PDF */}
-        <div className="no-print" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          {onOpenDiplomas && (
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm company-diplomas-btn"
-              onClick={onOpenDiplomas}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                padding: '0.5rem 0.95rem',
-                borderRadius: '8px',
-                fontSize: '0.82rem',
-                fontWeight: 600,
-                border: '1px solid rgba(249, 115, 22, 0.4)',
-                background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.18), rgba(234, 88, 12, 0.28))',
-                color: '#fb923c',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                boxShadow: 'var(--shadow-card)'
-              }}
-              title="Generar diplomas oficiales para los operadores de la empresa y año seleccionados"
-            >
-              <span>🎓</span>
-              <span>Diplomas</span>
-            </button>
-          )}
-          {onOpenSinglePageReport && (
-            <button
-              type="button"
-              className="btn btn-primary btn-sm company-single-page-btn"
-              onClick={onOpenSinglePageReport}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                padding: '0.5rem 0.95rem',
-                borderRadius: '8px',
-                fontSize: '0.82rem',
-                fontWeight: 600,
-                border: '1px solid var(--border-glow)',
-                background: 'linear-gradient(135deg, #0284c7, #0369a1)',
-                color: '#ffffff',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                boxShadow: 'var(--shadow-card)'
-              }}
-              title="Generar reporte ejecutivo en formato PDF de 1 sola página con filtro de empresa y año"
-            >
-              <span>📄</span>
-              <span>Single-Page</span>
-            </button>
-          )}
-          {onExportPptx && (
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm company-pptx-btn"
-              onClick={onExportPptx}
-              disabled={isExportingPptx}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                padding: '0.5rem 0.95rem',
-                borderRadius: '8px',
-                fontSize: '0.82rem',
-                fontWeight: 600,
-                border: '1px solid rgba(234, 88, 12, 0.4)',
-                background: 'linear-gradient(135deg, rgba(234, 88, 12, 0.16), rgba(194, 65, 12, 0.24))',
-                color: '#f97316',
-                cursor: isExportingPptx ? 'wait' : 'pointer',
-                opacity: isExportingPptx ? 0.75 : 1,
-                transition: 'all 0.2s ease',
-                boxShadow: 'var(--shadow-card)'
-              }}
-              title="Generar presentación PowerPoint (.pptx) ejecutiva con los resultados filtrados"
-            >
-              <span>📊</span>
-              <span>{isExportingPptx ? 'Generando...' : 'PowerPoint'}</span>
-            </button>
-          )}
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm company-export-btn"
-            onClick={onOpenCompanyReport}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              padding: '0.5rem 0.95rem',
-              borderRadius: '8px',
-              fontSize: '0.82rem',
-              fontWeight: 600,
-              border: '1px solid var(--border-glow)',
-              color: 'var(--primary)',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              boxShadow: 'var(--shadow-card)'
-            }}
-            title="Vista previa del expediente PDF de la flota"
-          >
-            <span>🖨️</span>
-            <span>Expediente</span>
-          </button>
+        <div className="no-print" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {[
+            onOpenDiplomas
+              ? {
+                  key: 'diplomas',
+                  className: 'company-diplomas-btn',
+                  icon: '🎓',
+                  label: 'Diplomas',
+                  title: 'Generar diplomas oficiales para los operadores de la empresa y año seleccionados',
+                  onClick: onOpenDiplomas,
+                  disabled: false
+                }
+              : null,
+            onOpenSinglePageReport
+              ? {
+                  key: 'single-page',
+                  className: 'company-single-page-btn',
+                  icon: '📄',
+                  label: 'Single-Page',
+                  title: 'Generar reporte ejecutivo en formato PDF de 1 sola página con filtro de empresa y año',
+                  onClick: onOpenSinglePageReport,
+                  disabled: false
+                }
+              : null,
+            onExportPptx
+              ? {
+                  key: 'pptx',
+                  className: 'company-pptx-btn',
+                  icon: '📊',
+                  label: isExportingPptx ? 'Generando...' : 'PowerPoint',
+                  title: 'Generar presentación PowerPoint (.pptx) ejecutiva con los resultados filtrados',
+                  onClick: onExportPptx,
+                  disabled: isExportingPptx
+                }
+              : null,
+            onOpenCompanyReport
+              ? {
+                  key: 'expediente',
+                  className: 'company-export-btn',
+                  icon: '🖨️',
+                  label: 'Expediente',
+                  title: 'Vista previa del expediente PDF de la flota',
+                  onClick: onOpenCompanyReport,
+                  disabled: false
+                }
+              : null
+          ]
+            .filter((item): item is NonNullable<typeof item> => item !== null)
+            .map((action) => (
+              <button
+                key={action.key}
+                type="button"
+                className={`btn btn-secondary btn-sm ${action.className}`}
+                onClick={action.onClick}
+                disabled={action.disabled}
+                title={action.title}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  padding: '0.5rem 0.95rem',
+                  borderRadius: '8px',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  background: 'var(--bg-card, #ffffff)',
+                  border: '1px solid var(--border-glow)',
+                  color: 'var(--primary)',
+                  cursor: action.disabled ? 'wait' : 'pointer',
+                  opacity: action.disabled ? 0.75 : 1,
+                  transition: 'all 0.2s ease',
+                  boxShadow: 'var(--shadow-card)'
+                }}
+                onMouseEnter={(e) => {
+                  if (action.disabled) return;
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.borderColor = 'var(--primary)';
+                  e.currentTarget.style.background = 'rgba(56, 189, 248, 0.08)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.borderColor = 'var(--border-glow)';
+                  e.currentTarget.style.background = 'var(--bg-card, #ffffff)';
+                }}
+              >
+                <span>{action.icon}</span>
+                <span>{action.label}</span>
+              </button>
+            ))}
         </div>
       </div>
 

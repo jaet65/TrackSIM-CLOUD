@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from 'react';
 import { collection, getDocs, doc, setDoc, query, where, writeBatch, db } from '../services/firebaseFirestore';
 import { Evaluation, CompanySummary, DriverSummary } from '../types';
-import { processCompanySummaries, processDriverSummaries, createCompanySummaryFromEvaluations } from '../services/analytics';
+import { processCompanySummaries, processDriverSummaries, createCompanySummaryFromEvaluations, getEvaluationYear } from '../services/analytics';
 import { initializeActiveCatalog } from '../services/exerciseCatalog';
 import { DEMO_EVALUATIONS } from '../data/demoEvaluations';
 import { useAuth } from './AuthContext';
@@ -31,6 +31,8 @@ interface DataContextType {
   selectedCompany: string;
   setSelectedCompany: (c: string) => void;
   selectedCompanySummary: CompanySummary | null;
+  selectedYear: string;
+  setSelectedYear: (year: string) => void;
   selectedDriverName: string;
   setSelectedDriverName: (name: string) => void;
   searchFilter: string;
@@ -80,6 +82,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [selectedCompany, setSelectedCompany] = useState<string>('all');
+  const [selectedYear, setSelectedYear] = useState<string>('all');
   const [selectedDriverName, setSelectedDriverName] = useState<string>('');
   const [searchFilter, setSearchFilter] = useState<string>('');
   const isFetchingRef = useRef(false);
@@ -329,6 +332,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return true;
     });
   }, [roleAllowedEvaluations, selectedCompany, searchFilter]);
+
+  // Si cambia la empresa o búsqueda y el año activo no existe en el subconjunto visible, regresar a Todos los Años
+  useEffect(() => {
+    if (selectedYear === 'all' || filteredEvaluations.length === 0) return;
+    const hasYear = filteredEvaluations.some((e) => getEvaluationYear(e) === selectedYear);
+    if (!hasYear) {
+      setSelectedYear('all');
+    }
+  }, [filteredEvaluations, selectedYear]);
 
   const deleteEvaluation = async (id: string) => {
     if (isDemo) throw new Error('No se pueden modificar evaluaciones en modo demostración.');
@@ -651,6 +663,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         selectedCompany,
         setSelectedCompany,
         selectedCompanySummary,
+        selectedYear,
+        setSelectedYear,
         selectedDriverName,
         setSelectedDriverName,
         searchFilter,

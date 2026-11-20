@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useState } from 'react';
 import { DataProvider, useData } from './context/DataContext';
 import { useAuth } from './context/AuthContext';
 import { LobbyScreen } from './components/LobbyScreen';
+import { FloatingAiInsightsButton } from './components/company/FloatingAiInsightsButton';
 import { AppHeader, Navbar } from './components/Navbar';
 import { DashboardTab } from './components/DashboardTab';
 import { TabType } from './types';
@@ -138,6 +139,7 @@ const MainLayout: React.FC = () => {
           </Suspense>
         </main>
       </div>
+      <FloatingAiInsightsButton />
     </div>
   );
 };

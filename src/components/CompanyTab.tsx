@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { createCompanySummaryFromEvaluations } from '../services/analytics';
+import { buildExerciseStatsFromCompany, createCompanySummaryFromEvaluations, getEvaluationYear } from '../services/analytics';
 import { getEvaluationIncidentCounts } from '../services/incidentMetrics';
 import { ReportDetailModal } from './ReportDetailModal';
 import { CompanyOverviewCard } from './company/CompanyOverviewCard';
@@ -30,12 +30,6 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineEleme
 const DRIVERS_PAGE_SIZE = 30;
 const RANKING_PAGE_SIZE = 10;
 
-function getEvaluationYear(evalItem: any): string | null {
-  const date = evalItem?.fechaCapacitacion || evalItem?.fechaReporte || evalItem?.fecha || '';
-  const match = String(date).match(/\b(20\d{2}|19\d{2})\b/);
-  return match ? match[1] : (String(date).match(/\b\d{4}\b/)?.[0] || null);
-}
-
 type SortKey = CompanySortKey;
 
 interface CompanyTabProps {
@@ -48,11 +42,12 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
   const {
     selectedCompany,
     selectedCompanySummary,
+    selectedYear,
+    setSelectedYear,
     setSelectedDriverName,
     filteredEvaluations
   } = useData();
 
-  const [selectedYear, setSelectedYear] = useState<string>('all');
   const [driverSearch, setDriverSearch] = useState('');
   const [rankingPage, setRankingPage] = useState(1);
   const [driversPage, setDriversPage] = useState(1);
@@ -247,66 +242,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
   };
 
   // Cálculo de Rendimiento Promedio por Ejercicio (solo ejercicios realizados por la empresa)
-  const exerciseStats = useMemo(() => {
-    if (!comp?.conductores) return [];
-    const map = new Map<string, { key: string; nombre: string; numero?: number; scores: number[] }>();
-
-    comp.conductores.forEach((c) => {
-      // 1. Extraer desde promediosEjercicios (historial acumulado de cada conductor)
-      if (c.promediosEjercicios) {
-        Object.entries(c.promediosEjercicios).forEach(([key, data]) => {
-          if (!data || typeof data.promedio !== 'number' || isNaN(data.promedio)) return;
-          if (!map.has(key)) {
-            map.set(key, { key, nombre: data.nombre, numero: data.numero, scores: [] });
-          }
-          // Ponderar por las veces realizadas por el conductor
-          const times = data.totalVeces || 1;
-          for (let i = 0; i < times; i++) {
-            map.get(key)!.scores.push(data.promedio);
-          }
-        });
-      } else if (Array.isArray(c.ejercicios)) {
-        // Fallback si no viniera promediosEjercicios
-        c.ejercicios.forEach((ex) => {
-          if (!ex) return;
-          const rawName = (ex.nombre || (ex.numero ? `Ejercicio ${ex.numero}` : '')).trim();
-          if (!rawName) return;
-          const key = rawName.toLowerCase();
-          const score = typeof ex.calificacion === 'number' ? ex.calificacion : parseFloat(String(ex.calificacion || ex.score || ''));
-          if (!isNaN(score)) {
-            if (!map.has(key)) {
-              map.set(key, { key, nombre: rawName, numero: ex.numero, scores: [] });
-            }
-            map.get(key)!.scores.push(score);
-          }
-        });
-      }
-    });
-
-    const result = Array.from(map.values())
-      .map((item) => {
-        const sum = item.scores.reduce((a, b) => a + b, 0);
-        const avg = item.scores.length > 0 ? sum / item.scores.length : 0;
-        return {
-          key: item.key,
-          nombre: item.nombre,
-          numero: item.numero,
-          promedio: parseFloat(avg.toFixed(2)),
-          totalEvaluaciones: item.scores.length
-        };
-      })
-      .filter((item) => item.totalEvaluaciones > 0);
-
-    // Ordenar por número de ejercicio si existe, o por promedio desc
-    result.sort((a, b) => {
-      if (a.numero && b.numero) return a.numero - b.numero;
-      if (a.numero) return -1;
-      if (b.numero) return 1;
-      return b.promedio - a.promedio;
-    });
-
-    return result;
-  }, [comp]);
+  const exerciseStats = useMemo(() => buildExerciseStatsFromCompany(comp), [comp]);
 
   // Configuración del gráfico de barras de Ejercicios
   const exerciseChartData = useMemo(() => {
