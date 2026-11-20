@@ -143,7 +143,7 @@ export const FloatingAiInsightsButton: React.FC = () => {
           padding: '0.75rem 1.2rem',
           borderRadius: '999px',
           border: '1px solid rgba(139, 92, 246, 0.45)',
-          background: 'linear-gradient(135deg, #7c3aed, #2563eb)',
+          background: 'linear-gradient(135deg, #ed853ac2, #2564ebbb)',
           color: '#ffffff',
           fontSize: '0.88rem',
           fontWeight: 700,

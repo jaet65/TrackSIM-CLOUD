@@ -64,7 +64,7 @@ const modelCooldownUntil = new Map<string, number>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const STORAGE_KEY_PREFIX = 'tracksim_ai_insight_v6:';
 
-function isAlcoholAwarenessExercise(nombre: string): boolean {
+export function isAlcoholAwarenessExercise(nombre: string): boolean {
   return /alcohol/i.test(nombre);
 }
 const insightCache = new Map<string, CompanyAiInsightResult>();
@@ -633,24 +633,35 @@ function buildCacheKey(
   return `${input.comp.nombre}|${input.selectedYear}|${metrics.totalEvaluaciones}|${metrics.promedioGlobal}|${metrics.totalCriticalEvents}`;
 }
 
+export function readCachedAiInsight(cacheKey: string): CompanyAiInsightResult | null {
+  return readCachedInsight(cacheKey);
+}
+
 export function getCachedCompanyAiInsight(input: CompanyAiInsightRequest): CompanyAiInsightResult | null {
   const metrics = buildCompanyAiMetricsContext(input);
   const cacheKey = buildCacheKey(input, metrics);
   return readCachedInsight(cacheKey);
 }
 
-export async function generateCompanyAiInsight(input: CompanyAiInsightRequest): Promise<CompanyAiInsightResult> {
-  const metrics = buildCompanyAiMetricsContext(input);
-  const cacheKey = buildCacheKey(input, metrics);
+export interface GeminiStructuredInsightOptions {
+  cacheKey: string;
+  prompt: string;
+  buildFallback: () => CompanyAiStructuredReport;
+  forceRefresh?: boolean;
+}
 
-  if (!input.forceRefresh) {
+export async function invokeGeminiStructuredInsight({
+  cacheKey,
+  prompt,
+  buildFallback,
+  forceRefresh
+}: GeminiStructuredInsightOptions): Promise<CompanyAiInsightResult> {
+  if (!forceRefresh) {
     const cached = readCachedInsight(cacheKey);
     if (cached) {
       return cached;
     }
   }
-
-  const prompt = buildCompanyAiPrompt(metrics);
 
   try {
     const { getAI, getGenerativeModel, GoogleAIBackend, ThinkingLevel } = await import('firebase/ai');
@@ -724,7 +735,7 @@ export async function generateCompanyAiInsight(input: CompanyAiInsightRequest): 
     const isQuotaOrSetup =
       /quota|429|503|unavailable|overloaded|permission|403|api.*not.*enabled|ai logic|ailogic/i.test(message);
 
-    const structuredFallback = buildLocalFallbackStructured(metrics);
+    const structuredFallback = buildFallback();
     const fallback: CompanyAiInsightResult = {
       summary: formatStructuredReportAsText(structuredFallback),
       structured: structuredFallback,
@@ -737,4 +748,17 @@ export async function generateCompanyAiInsight(input: CompanyAiInsightRequest): 
     };
     return fallback;
   }
+}
+
+export async function generateCompanyAiInsight(input: CompanyAiInsightRequest): Promise<CompanyAiInsightResult> {
+  const metrics = buildCompanyAiMetricsContext(input);
+  const cacheKey = buildCacheKey(input, metrics);
+  const prompt = buildCompanyAiPrompt(metrics);
+
+  return invokeGeminiStructuredInsight({
+    cacheKey,
+    prompt,
+    buildFallback: () => buildLocalFallbackStructured(metrics),
+    forceRefresh: input.forceRefresh
+  });
 }

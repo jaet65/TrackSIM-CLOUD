@@ -1,8 +1,10 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Evaluation } from '../types';
 import { logAudit } from '../services/auditLog';
+import type { CompanyAiInsightResult } from '../services/companyAiInsights';
 import { findCatalogExercise } from '../services/exerciseCatalog';
 import { getCriticalMistakes, getEvaluationIncidentCounts } from '../services/incidentMetrics';
+import { CompanyAiInsightsCard } from './company/CompanyAiInsightsCard';
 import { SessionRadarWidget } from './SessionRadarWidget';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 
@@ -16,7 +18,16 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
   const viewedCompany = evaluation?.empresa;
   const viewedLabel = evaluation ? (evaluation.conductor || evaluation.operador || evaluation.folio || evaluation.id) : '';
   const lastLoggedIdRef = useRef<string | undefined>(undefined);
+  const [isAiOpen, setIsAiOpen] = useState(false);
+  const [isLoadingAi, setIsLoadingAi] = useState(false);
+  const [aiInsight, setAiInsight] = useState<CompanyAiInsightResult | null>(null);
   useEscapeKey(Boolean(evaluation), onClose);
+
+  useEffect(() => {
+    void viewedId;
+    setIsAiOpen(false);
+    setAiInsight(null);
+  }, [viewedId]);
 
   useEffect(() => {
     if (!viewedId) {
@@ -61,10 +72,36 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
 
   const isApproved = score >= 6.0;
   const estado = evaluation.estado || (isApproved ? 'Aprobado' : 'No Aprobado');
+  const driverName = evaluation.conductor || evaluation.operador || 'Operador';
+  const sessionDateLabel =
+    evaluation.fechaCapacitacionFormato || evaluation.fechaCapacitacion || evaluation.fechaReporte || evaluation.fecha || 'Sesión';
+  const sessionScopeLabel = `Sesión ${sessionDateLabel}`;
+
+  const handleExplainSessionWithAi = async (forceRefresh = false) => {
+    if (isLoadingAi) return;
+    setIsAiOpen(true);
+    setIsLoadingAi(true);
+    try {
+      const { generateDriverAiInsight } = await import('../services/driverAiInsights');
+      const result = await generateDriverAiInsight({
+        driverName,
+        empresa: evaluation.empresa || 'TrackSIM',
+        evaluations: [evaluation],
+        scopeLabel: sessionScopeLabel,
+        forceRefresh
+      });
+      setAiInsight(result);
+    } catch (error) {
+      console.error('Error al analizar sesión con IA:', error);
+    } finally {
+      setIsLoadingAi(false);
+    }
+  };
 
   return (
-    <div
-      className="modal-overlay active"
+    <>
+      <div
+        className="modal-overlay active"
       style={{
         position: 'fixed',
         inset: 0,
@@ -123,28 +160,54 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              background: 'var(--bg-card-hover)',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-secondary)',
-              fontSize: '1.2rem',
-              width: '36px',
-              height: '36px',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              transition: 'all 0.2s ease'
-            }}
-            title="Cerrar reporte"
-          >
-            ✕
-          </button>
+          <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => void handleExplainSessionWithAi(false)}
+              disabled={isLoadingAi}
+              title={`Analizar esta sesión de ${driverName} con Tracky`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                padding: '0.4rem 0.75rem',
+                borderRadius: '8px',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                background: 'var(--bg-card, #ffffff)',
+                border: '1px solid var(--border-glow)',
+                color: 'var(--primary)',
+                cursor: isLoadingAi ? 'wait' : 'pointer',
+                opacity: isLoadingAi ? 0.75 : 1
+              }}
+            >
+              <span>✨</span>
+              <span>{isLoadingAi ? 'Analizando...' : 'Analizar con Tracky'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                background: 'var(--bg-card-hover)',
+                border: '1px solid var(--border-subtle)',
+                color: 'var(--text-secondary)',
+                fontSize: '1.2rem',
+                width: '36px',
+                height: '36px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                transition: 'all 0.2s ease'
+              }}
+              title="Cerrar reporte"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Metadatos Generales */}
@@ -385,5 +448,17 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
         </div>
       </div>
     </div>
+
+    <CompanyAiInsightsCard
+      isOpen={isAiOpen}
+      isLoading={isLoadingAi}
+      insight={aiInsight}
+      companyName={driverName}
+      periodText={`${evaluation.empresa || 'TrackSIM'} • ${sessionScopeLabel}`}
+      subjectType="driver"
+      onRegenerate={() => void handleExplainSessionWithAi(true)}
+      onClose={() => setIsAiOpen(false)}
+    />
+    </>
   );
 };

@@ -9,6 +9,7 @@ interface CompanyAiInsightsCardProps {
   insight: CompanyAiInsightResult | null;
   companyName: string;
   periodText: string;
+  subjectType?: 'company' | 'driver';
   onRegenerate: () => void;
   onClose: () => void;
 }
@@ -372,6 +373,7 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
   insight,
   companyName,
   periodText,
+  subjectType = 'company',
   onRegenerate,
   onClose
 }) => {
@@ -408,7 +410,10 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
   return (
     <div
       className="no-print"
-      onClick={onClose}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="ai-insights-modal-title"
@@ -457,7 +462,7 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <h3 id="ai-insights-modal-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                  Tracky · Interpretación Ejecutiva con IA
+                  {subjectType === 'driver' ? 'Tracky · Retroalimentación del Operador' : 'Tracky · Interpretación Ejecutiva con IA'}
                 </h3>
                 {insight && (
                   <span
@@ -537,6 +542,7 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
               mode="loading"
               companyName={companyName}
               periodText={periodText}
+              subjectType={subjectType}
               elapsedSeconds={elapsedSeconds}
             />
           ) : insight ? (
@@ -545,6 +551,7 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
                 mode="ready"
                 companyName={companyName}
                 periodText={periodText}
+                subjectType={subjectType}
                 structured={insight.structured}
                 warning={insight.warning}
               />

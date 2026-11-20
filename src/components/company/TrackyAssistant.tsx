@@ -14,12 +14,27 @@ interface TrackyAssistantProps {
   mode: 'loading' | 'ready';
   companyName: string;
   periodText: string;
+  subjectType?: 'company' | 'driver';
   elapsedSeconds?: number;
   structured?: CompanyAiStructuredReport;
   warning?: string;
 }
 
-function getLoadingMessage(elapsedSeconds: number, companyName: string, periodText: string): string {
+function getLoadingMessage(
+  elapsedSeconds: number,
+  companyName: string,
+  periodText: string,
+  subjectType: 'company' | 'driver'
+): string {
+  if (subjectType === 'driver') {
+    if (elapsedSeconds < 4) {
+      return `¡Hola! Soy Tracky. Estoy revisando el historial de ${companyName} (${periodText})...`;
+    }
+    if (elapsedSeconds < 9) {
+      return 'Analizando sus calificaciones, ejercicios y hábitos de manejo...';
+    }
+    return 'Preparando su retroalimentación personalizada y metas prácticas...';
+  }
   if (elapsedSeconds < 4) {
     return `¡Hola! Soy Tracky. Estoy leyendo las evaluaciones de ${companyName} (${periodText})...`;
   }
@@ -32,17 +47,26 @@ function getLoadingMessage(elapsedSeconds: number, companyName: string, periodTe
 function buildReadyTips(
   companyName: string,
   periodText: string,
+  subjectType: 'company' | 'driver',
   structured?: CompanyAiStructuredReport,
   warning?: string
 ): string[] {
   const tips: string[] = [];
 
-  const nivelGreeting: Record<CompanyAiStructuredReport['estadoGeneral']['nivel'], string> = {
-    sobresaliente: `¡Excelente trabajo en ${companyName} (${periodText})! Aquí tienes el resumen listo para compartir.`,
-    bueno: `¡Hola! Revisé los datos de ${companyName} (${periodText}): van por buen camino con oportunidades concretas.`,
-    atencion: `¡Hola! Ya analicé ${companyName} (${periodText}) y detecté varios puntos clave que conviene reforzar.`,
-    critico: `Atención en ${companyName} (${periodText}): preparé las prioridades urgentes para proteger a la flota.`
-  };
+  const nivelGreeting: Record<CompanyAiStructuredReport['estadoGeneral']['nivel'], string> =
+    subjectType === 'driver'
+      ? {
+          sobresaliente: `¡Gran desempeño de ${companyName} (${periodText})! Aquí tienes su retroalimentación lista para revisar juntos.`,
+          bueno: `¡Hola! Revisé el historial de ${companyName} (${periodText}): tiene bases sólidas y detalles fáciles de pulir.`,
+          atencion: `¡Hola! Ya analicé a ${companyName} (${periodText}) y preparé recomendaciones prácticas para reforzar su manejo.`,
+          critico: `Atención con ${companyName} (${periodText}): identifiqué los puntos prioritarios para trabajar en simulador.`
+        }
+      : {
+          sobresaliente: `¡Excelente trabajo en ${companyName} (${periodText})! Aquí tienes el resumen listo para compartir.`,
+          bueno: `¡Hola! Revisé los datos de ${companyName} (${periodText}): van por buen camino con oportunidades concretas.`,
+          atencion: `¡Hola! Ya analicé ${companyName} (${periodText}) y detecté varios puntos clave que conviene reforzar.`,
+          critico: `Atención en ${companyName} (${periodText}): preparé las prioridades urgentes para proteger a la flota.`
+        };
 
   if (structured) {
     tips.push(nivelGreeting[structured.estadoGeneral.nivel]);
@@ -56,7 +80,11 @@ function buildReadyTips(
       tips.push(`🎯 Siguiente paso (${structured.planDeAccion[0].plazo}): ${structured.planDeAccion[0].accion}`);
     }
   } else {
-    tips.push(`¡Listo! Ya preparé la interpretación de ${companyName} (${periodText}).`);
+    tips.push(
+      subjectType === 'driver'
+        ? `¡Listo! Ya preparé la retroalimentación de ${companyName} (${periodText}).`
+        : `¡Listo! Ya preparé la interpretación de ${companyName} (${periodText}).`
+    );
   }
 
   if (warning && tips.length === 1) {
@@ -92,6 +120,7 @@ export const TrackyAssistant: React.FC<TrackyAssistantProps> = ({
   mode,
   companyName,
   periodText,
+  subjectType = 'company',
   elapsedSeconds = 0,
   structured,
   warning
@@ -99,8 +128,8 @@ export const TrackyAssistant: React.FC<TrackyAssistantProps> = ({
   const [tipIndex, setTipIndex] = useState(0);
 
   const tips = useMemo(
-    () => buildReadyTips(companyName, periodText, structured, warning),
-    [companyName, periodText, structured, warning]
+    () => buildReadyTips(companyName, periodText, subjectType, structured, warning),
+    [companyName, periodText, subjectType, structured, warning]
   );
 
   useEffect(() => {
@@ -178,7 +207,7 @@ export const TrackyAssistant: React.FC<TrackyAssistantProps> = ({
                 animation: 'aiPulse 1.8s ease-in-out infinite'
               }}
             >
-              {getLoadingMessage(elapsedSeconds, companyName, periodText)}
+              {getLoadingMessage(elapsedSeconds, companyName, periodText, subjectType)}
             </p>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
               <div

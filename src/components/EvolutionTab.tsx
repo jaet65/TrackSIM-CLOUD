@@ -5,7 +5,9 @@ import { Evaluation } from '../types';
 import { MISTAKE_DIMENSIONS, findCatalogMistake } from '../services/mistakeCatalog';
 import { getEvaluationIncidentCounts } from '../services/incidentMetrics';
 import { processDriverSummaries } from '../services/analytics';
+import type { CompanyAiInsightResult } from '../services/companyAiInsights';
 import { ReportDetailModal } from './ReportDetailModal';
+import { CompanyAiInsightsCard } from './company/CompanyAiInsightsCard';
 import { DriverRadarModal } from './evolution/DriverRadarModal';
 import { DriverExecutiveHeader } from './evolution/DriverExecutiveHeader';
 import { DriverChartsSection } from './evolution/DriverChartsSection';
@@ -56,6 +58,9 @@ export const EvolutionTab: React.FC = () => {
   const [viewReport, setViewReport] = useState<Evaluation | null>(null);
   const [isRadarModalOpen, setIsRadarModalOpen] = useState(false);
   const [selectedRadarAxisId, setSelectedRadarAxisId] = useState<number | 'all'>('all');
+  const [isDriverAiOpen, setIsDriverAiOpen] = useState(false);
+  const [isLoadingDriverAi, setIsLoadingDriverAi] = useState(false);
+  const [driverAiInsight, setDriverAiInsight] = useState<CompanyAiInsightResult | null>(null);
 
   // Asegurar que al entrar a la pestaña o al cambiar de operador, se active la vista de conductor y la página suba al inicio
   useEffect(() => {
@@ -907,6 +912,37 @@ export const EvolutionTab: React.FC = () => {
     });
   }, [currentDriver]);
 
+  useEffect(() => {
+    void currentDriver?.nombre;
+    setIsDriverAiOpen(false);
+    setDriverAiInsight(null);
+  }, [currentDriver?.nombre]);
+
+  const driverScopeLabel = currentDriver
+    ? `${currentDriver.totalEvaluaciones} sesión${currentDriver.totalEvaluaciones > 1 ? 'es' : ''}`
+    : '';
+
+  const handleExplainDriverWithAi = async (forceRefresh = false) => {
+    if (!currentDriver || isLoadingDriverAi || driverEvaluations.length === 0) return;
+    setIsDriverAiOpen(true);
+    setIsLoadingDriverAi(true);
+    try {
+      const { generateDriverAiInsight } = await import('../services/driverAiInsights');
+      const result = await generateDriverAiInsight({
+        driverName: currentDriver.nombre,
+        empresa: currentDriver.empresa || 'TrackSIM',
+        evaluations: driverEvaluations,
+        scopeLabel: driverScopeLabel,
+        forceRefresh
+      });
+      setDriverAiInsight(result);
+    } catch (error) {
+      console.error('Error al generar análisis IA del operador:', error);
+    } finally {
+      setIsLoadingDriverAi(false);
+    }
+  };
+
   // Datos para Gráfico de Evolución de Puntaje del Conductor
   const scoreLabels = driverEvaluations.map((e, idx) => e.fechaCapacitacionFormato || e.fechaCapacitacion || `Sesión ${idx + 1}`);
   const evolutionChartData = {
@@ -1264,7 +1300,22 @@ export const EvolutionTab: React.FC = () => {
           </div>
 
           {/* Tarjeta Ejecutiva de Información del Conductor (3 Niveles de Prioridad) */}
-          <DriverExecutiveHeader currentDriver={currentDriver} />
+          <DriverExecutiveHeader
+            currentDriver={currentDriver}
+            onExplainWithAi={() => void handleExplainDriverWithAi(false)}
+            isLoadingAi={isLoadingDriverAi}
+          />
+
+          <CompanyAiInsightsCard
+            isOpen={isDriverAiOpen}
+            isLoading={isLoadingDriverAi}
+            insight={driverAiInsight}
+            companyName={currentDriver?.nombre || 'Operador'}
+            periodText={`${currentDriver?.empresa || 'TrackSIM'} • ${driverScopeLabel}`}
+            subjectType="driver"
+            onRegenerate={() => void handleExplainDriverWithAi(true)}
+            onClose={() => setIsDriverAiOpen(false)}
+          />
 
           {/* Gráficos de Evolución de Operador */}
           <DriverChartsSection
