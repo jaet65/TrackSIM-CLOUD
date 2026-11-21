@@ -1,16 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import trackyGif from '../../../template/Tracky.gif';
 import trackyWebp from '../../../template/Tracky.webp';
-import trackyWheelGif from '../../../template/TrackyWheel.gif';
+import trackyHappyWebp from '../../../template/TrackyHappy.webp';
+import trackySadWebp from '../../../template/TrackySad.webp';
+import trackyThinkingWebp from '../../../template/TrackyThinking.webp';
 import trackyWheelWebp from '../../../template/TrackyWheel.webp';
 import type { CompanyAiStructuredReport } from '../../services/companyAiInsights';
 
 export const TRACKY_WEBP_PATH = trackyWebp;
-export const TRACKY_GIF_PATH = trackyGif;
+export const TRACKY_HAPPY_WEBP_PATH = trackyHappyWebp;
+export const TRACKY_SAD_WEBP_PATH = trackySadWebp;
+export const TRACKY_THINKING_WEBP_PATH = trackyThinkingWebp;
 export const TRACKY_WHEEL_WEBP_PATH = trackyWheelWebp;
-export const TRACKY_WHEEL_GIF_PATH = trackyWheelGif;
 
 export type TrackySubjectType = 'company' | 'driver' | 'evolution';
+export type TrackyAnimationVariant = 'wheel' | 'happy' | 'tracky' | 'sad' | 'thinking';
 
 interface TrackyAssistantProps {
   mode: 'loading' | 'ready';
@@ -20,6 +23,27 @@ interface TrackyAssistantProps {
   elapsedSeconds?: number;
   structured?: CompanyAiStructuredReport;
   warning?: string;
+  isQuickQuestionActive?: boolean;
+}
+
+const VARIANT_WEBP_MAP: Record<TrackyAnimationVariant, string> = {
+  wheel: TRACKY_WHEEL_WEBP_PATH,
+  happy: TRACKY_HAPPY_WEBP_PATH,
+  tracky: TRACKY_WEBP_PATH,
+  sad: TRACKY_SAD_WEBP_PATH,
+  thinking: TRACKY_THINKING_WEBP_PATH
+};
+
+export function resolveTrackyVariant(
+  mode: 'loading' | 'ready',
+  level?: CompanyAiStructuredReport['estadoGeneral']['nivel'],
+  isQuickQuestionActive = false
+): TrackyAnimationVariant {
+  if (mode === 'loading') return 'wheel';
+  if (isQuickQuestionActive) return 'thinking';
+  if (level === 'sobresaliente') return 'happy';
+  if (level === 'atencion' || level === 'critico') return 'sad';
+  return 'tracky';
 }
 
 function getLoadingMessage(
@@ -114,15 +138,14 @@ function buildReadyTips(
   return tips;
 }
 
-const TrackyPicture: React.FC<{ variant: 'wheel' | 'standing' }> = ({ variant }) => {
-  const webpSrc = variant === 'wheel' ? TRACKY_WHEEL_WEBP_PATH : TRACKY_WEBP_PATH;
-  const gifSrc = variant === 'wheel' ? TRACKY_WHEEL_GIF_PATH : TRACKY_GIF_PATH;
+const TrackyPicture: React.FC<{ variant: TrackyAnimationVariant }> = ({ variant }) => {
+  const webpSrc = VARIANT_WEBP_MAP[variant];
 
   return (
     <picture style={{ display: 'block', width: '100%', height: '100%' }}>
       <source srcSet={webpSrc} type="image/webp" />
       <img
-        src={gifSrc}
+        src={webpSrc}
         alt="Tracky, asistente IA de TrackSIM"
         style={{
           width: '100%',
@@ -143,7 +166,8 @@ export const TrackyAssistant: React.FC<TrackyAssistantProps> = ({
   subjectType = 'company',
   elapsedSeconds = 0,
   structured,
-  warning
+  warning,
+  isQuickQuestionActive = false
 }) => {
   const [tipIndex, setTipIndex] = useState(0);
 
@@ -160,6 +184,8 @@ export const TrackyAssistant: React.FC<TrackyAssistantProps> = ({
   }, [companyName, periodText, structured]);
 
   const activeTip = tips[tipIndex % tips.length] || tips[0];
+  const activeVariant = resolveTrackyVariant(mode, structured?.estadoGeneral.nivel, isQuickQuestionActive);
+
   const handleNextTip = () => {
     if (tips.length <= 1) return;
     setTipIndex((prev) => (prev + 1) % tips.length);
@@ -316,7 +342,7 @@ export const TrackyAssistant: React.FC<TrackyAssistantProps> = ({
               cursor: tips.length > 1 ? 'pointer' : 'default'
             }}
           >
-            <TrackyPicture variant="standing" />
+            <TrackyPicture variant={activeVariant} />
           </button>
         </div>
       )}

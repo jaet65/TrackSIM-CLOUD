@@ -644,6 +644,7 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
                 subjectType={subjectType}
                 structured={insight.structured}
                 warning={insight.warning}
+                isQuickQuestionActive={Boolean(activeQuestionId) || isLoadingQuick}
               />
 
               <div

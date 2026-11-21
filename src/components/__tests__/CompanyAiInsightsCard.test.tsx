@@ -1,9 +1,16 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CompanyAiInsightResult } from '../../services/companyAiInsights';
+import type { CompanyAiInsightResult, CompanyAiStructuredReport } from '../../services/companyAiInsights';
 import { askTrackyQuickQuestion } from '../../services/trackyQuickQuestions';
 import { CompanyAiInsightsCard } from '../company/CompanyAiInsightsCard';
+import {
+  TRACKY_HAPPY_WEBP_PATH,
+  TRACKY_SAD_WEBP_PATH,
+  TRACKY_THINKING_WEBP_PATH,
+  TRACKY_WEBP_PATH,
+  TRACKY_WHEEL_WEBP_PATH
+} from '../company/TrackyAssistant';
 
 vi.mock('../../services/trackyQuickQuestions', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../services/trackyQuickQuestions')>();
@@ -14,14 +21,10 @@ vi.mock('../../services/trackyQuickQuestions', async (importOriginal) => {
 });
 
 const askTrackyQuickQuestionMock = vi.mocked(askTrackyQuickQuestion);
-import {
-  TRACKY_GIF_PATH,
-  TRACKY_WEBP_PATH,
-  TRACKY_WHEEL_GIF_PATH,
-  TRACKY_WHEEL_WEBP_PATH
-} from '../company/TrackyAssistant';
 
-function createStructuredInsight(): CompanyAiInsightResult {
+function createStructuredInsight(
+  nivel: CompanyAiStructuredReport['estadoGeneral']['nivel'] = 'bueno'
+): CompanyAiInsightResult {
   return {
     source: 'gemini',
     model: 'gemini-3.8-flash',
@@ -29,7 +32,7 @@ function createStructuredInsight(): CompanyAiInsightResult {
     summary: 'Resumen general de prueba',
     structured: {
       estadoGeneral: {
-        nivel: 'bueno',
+        nivel,
         titulo: 'Buen desempeño con puntos por pulir',
         resumenSimple: 'La flota mantiene una tendencia favorable.'
       },
@@ -80,7 +83,7 @@ describe('CompanyAiInsightsCard', () => {
     expect(screen.queryByAltText('Tracky, asistente IA de TrackSIM')).toBeNull();
   });
 
-  it('muestra a TrackyWheel animado en modo carga con WebP y respaldo GIF', () => {
+  it('muestra a TrackyWheel animado en modo carga en WebP', () => {
     const { container } = render(
       <CompanyAiInsightsCard
         isOpen={true}
@@ -94,21 +97,20 @@ describe('CompanyAiInsightsCard', () => {
     );
 
     const img = screen.getByAltText('Tracky, asistente IA de TrackSIM');
-    expect(img).toHaveAttribute('src', TRACKY_WHEEL_GIF_PATH);
-    expect(img.getAttribute('src')).toContain('TrackyWheel.gif');
+    expect(img).toHaveAttribute('src', TRACKY_WHEEL_WEBP_PATH);
+    expect(img.getAttribute('src')).toContain('TrackyWheel.webp');
     const source = container.querySelector('picture source');
     expect(source).not.toBeNull();
     expect(source).toHaveAttribute('srcSet', TRACKY_WHEEL_WEBP_PATH);
-    expect(source?.getAttribute('srcSet')).toContain('TrackyWheel.webp');
     expect(screen.getByText(/Estoy leyendo las evaluaciones de Transcooler \(Año 2026\)/)).toBeInTheDocument();
   });
 
-  it('muestra a Tracky a la derecha de los consejos en modo listo y cambia al siguiente consejo al hacer clic', () => {
-    const { container } = render(
+  it('muestra TrackyHappy para sobresaliente, Tracky para bueno y TrackySad para atencion y critico', () => {
+    const { rerender } = render(
       <CompanyAiInsightsCard
         isOpen={true}
         isLoading={false}
-        insight={createStructuredInsight()}
+        insight={createStructuredInsight('bueno')}
         companyName="Transcooler"
         periodText="Año 2026"
         onRegenerate={vi.fn()}
@@ -117,24 +119,67 @@ describe('CompanyAiInsightsCard', () => {
     );
 
     const img = screen.getByAltText('Tracky, asistente IA de TrackSIM');
-    expect(img).toHaveAttribute('src', TRACKY_GIF_PATH);
-    expect(img.getAttribute('src')).toContain('Tracky.gif');
-    const source = container.querySelector('picture source');
-    expect(source).not.toBeNull();
-    expect(source).toHaveAttribute('srcSet', TRACKY_WEBP_PATH);
-    expect(source?.getAttribute('srcSet')).toContain('Tracky.webp');
+    expect(img).toHaveAttribute('src', TRACKY_WEBP_PATH);
+    expect(img.getAttribute('src')).toContain('Tracky.webp');
 
     const tipText = screen.getByText(/Revisé los datos de Transcooler \(Año 2026\)/);
     expect(tipText.compareDocumentPosition(img) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     const nextBtn = screen.getByRole('button', { name: /Siguiente consejo \(1\/4\)/ });
     fireEvent.click(nextBtn);
-
     expect(screen.getByText(/Lo más positivo: Alta aprobación en montaña/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Siguiente consejo \(2\/4\)/ })).toBeInTheDocument();
+
+    rerender(
+      <CompanyAiInsightsCard
+        isOpen={true}
+        isLoading={false}
+        insight={createStructuredInsight('sobresaliente')}
+        companyName="Transcooler"
+        periodText="Año 2026"
+        onRegenerate={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+    expect(screen.getByAltText('Tracky, asistente IA de TrackSIM')).toHaveAttribute(
+      'src',
+      TRACKY_HAPPY_WEBP_PATH
+    );
+
+    rerender(
+      <CompanyAiInsightsCard
+        isOpen={true}
+        isLoading={false}
+        insight={createStructuredInsight('atencion')}
+        companyName="Transcooler"
+        periodText="Año 2026"
+        onRegenerate={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+    expect(screen.getByAltText('Tracky, asistente IA de TrackSIM')).toHaveAttribute(
+      'src',
+      TRACKY_SAD_WEBP_PATH
+    );
+
+    rerender(
+      <CompanyAiInsightsCard
+        isOpen={true}
+        isLoading={false}
+        insight={createStructuredInsight('critico')}
+        companyName="Transcooler"
+        periodText="Año 2026"
+        onRegenerate={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+    expect(screen.getByAltText('Tracky, asistente IA de TrackSIM')).toHaveAttribute(
+      'src',
+      TRACKY_SAD_WEBP_PATH
+    );
   });
 
-  it('adapta las preguntas rápidas por contexto, consulta a Tracky al hacer clic y permite cerrar el panel', async () => {
+  it('cambia a TrackyThinking en las preguntas rápidas y adapta los botones por contexto', async () => {
     askTrackyQuickQuestionMock.mockResolvedValueOnce({
       answer: '📊 *Resumen TrackSIM — Transcooler (Año 2026)*\n✅ Alta aprobación en montaña.',
       source: 'gemini',
@@ -146,7 +191,7 @@ describe('CompanyAiInsightsCard', () => {
       <CompanyAiInsightsCard
         isOpen={true}
         isLoading={false}
-        insight={createStructuredInsight()}
+        insight={createStructuredInsight('bueno')}
         companyName="Transcooler"
         periodText="Año 2026"
         subjectType="company"
@@ -165,6 +210,11 @@ describe('CompanyAiInsightsCard', () => {
       expect(screen.getByText(/Resumen TrackSIM — Transcooler \(Año 2026\)/)).toBeInTheDocument();
     });
 
+    expect(screen.getByAltText('Tracky, asistente IA de TrackSIM')).toHaveAttribute(
+      'src',
+      TRACKY_THINKING_WEBP_PATH
+    );
+
     expect(askTrackyQuickQuestionMock).toHaveBeenCalledWith(
       expect.objectContaining({
         questionId: 'whatsapp',
@@ -177,12 +227,13 @@ describe('CompanyAiInsightsCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar respuesta rápida' }));
     expect(screen.queryByRole('region', { name: /Respuesta rápida/ })).toBeNull();
+    expect(screen.getByAltText('Tracky, asistente IA de TrackSIM')).toHaveAttribute('src', TRACKY_WEBP_PATH);
 
     rerender(
       <CompanyAiInsightsCard
         isOpen={true}
         isLoading={false}
-        insight={createStructuredInsight()}
+        insight={createStructuredInsight('bueno')}
         companyName="Juan Pérez"
         periodText="Transcooler • 2 sesiones"
         subjectType="driver"
@@ -198,7 +249,7 @@ describe('CompanyAiInsightsCard', () => {
       <CompanyAiInsightsCard
         isOpen={true}
         isLoading={false}
-        insight={createStructuredInsight()}
+        insight={createStructuredInsight('bueno')}
         companyName="Transcooler"
         periodText="2 años (2024 - 2025)"
         subjectType="evolution"

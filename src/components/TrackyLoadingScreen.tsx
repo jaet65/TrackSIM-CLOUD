@@ -1,9 +1,7 @@
 import React from 'react';
-import trackyReadingGif from '../../template/TrackyReading.gif';
 import trackyReadingWebp from '../../template/TrackyReading.webp';
 
 export const TRACKY_READING_WEBP_PATH = trackyReadingWebp;
-export const TRACKY_READING_GIF_PATH = trackyReadingGif;
 
 interface TrackyLoadingScreenProps {
   message?: string;
@@ -41,7 +39,7 @@ export const TrackyLoadingScreen: React.FC<TrackyLoadingScreenProps> = ({
       <picture style={{ display: 'block', width: '100%', height: '100%' }}>
         <source srcSet={TRACKY_READING_WEBP_PATH} type="image/webp" />
         <img
-          src={TRACKY_READING_GIF_PATH}
+          src={TRACKY_READING_WEBP_PATH}
           alt="Tracky cargando TrackSIM CLOUD"
           style={{
             width: '100%',
