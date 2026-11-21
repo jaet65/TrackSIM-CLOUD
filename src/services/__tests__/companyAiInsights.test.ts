@@ -5,7 +5,8 @@ import {
   buildCompanyAiPrompt,
   buildLocalFallbackInsight,
   generateCompanyAiInsight,
-  getCachedCompanyAiInsight
+  getCachedCompanyAiInsight,
+  validateStructuredAiResponse
 } from '../companyAiInsights';
 
 const generateContentMock = vi.fn();
@@ -69,6 +70,50 @@ function createSummary(): CompanySummary {
 }
 
 describe('companyAiInsights', () => {
+  it('valida el nivel y limpia contenido incompatible con las métricas locales', () => {
+    const metrics = buildCompanyAiMetricsContext({
+      comp: createSummary(),
+      periodText: 'Año 2026',
+      selectedYear: '2026',
+      conductoresRecurrentes: 0,
+      pctRecurrentes: '0.0',
+      exerciseStats: [
+        { nombre: '02 - Montaña', promedio: 8.3, totalEvaluaciones: 2 },
+        { nombre: 'Efectos del alcohol', promedio: 4.1, totalEvaluaciones: 2 }
+      ],
+      allEvaluations: []
+    });
+
+    const validated = validateStructuredAiResponse(
+      {
+        estadoGeneral: {
+          nivel: 'critico',
+          titulo: 'Diagnóstico con desviación estándar',
+          resumenSimple: 'Resumen de prueba.'
+        },
+        loQueVaBien: [
+          { titulo: 'Efectos del alcohol', detalle: 'No debe recomendarse como falla técnica.' }
+        ],
+        focosDeAtencion: [
+          { titulo: 'V2', porqueImporta: 'La telemetría agregada indica riesgo.', nivel: 'alto' }
+        ],
+        planDeAccion: [
+          { plazo: 'Esta semana', accion: 'Reforzar maniobras.', impacto: 'Mejorar pronto.' }
+        ],
+        metasSimples: [
+          { indicador: 'Aprobación', actual: '100%', meta: '≥ 95% próximo año' }
+        ]
+      },
+      metrics
+    );
+
+    expect(validated.estadoGeneral.nivel).toBe('sobresaliente');
+    expect(validated.estadoGeneral.titulo).not.toContain('desviación estándar');
+    expect(validated.loQueVaBien.every((item) => !/alcohol/i.test(`${item.titulo} ${item.detalle}`))).toBe(true);
+    expect(validated.focosDeAtencion.every((item) => !/V2|telemetría agregada/i.test(`${item.titulo} ${item.porqueImporta}`))).toBe(true);
+    expect(validated.planDeAccion[0]?.plazo).toBe('Seguimiento anual');
+  });
+
   it('construye contexto de métricas agregadas y prompt ejecutivo con incidencias críticas V2', () => {
     const evaluations: Evaluation[] = [
       {

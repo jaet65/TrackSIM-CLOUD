@@ -484,6 +484,68 @@ export function parseStructuredAiResponse(rawText: string): CompanyAiStructuredR
   }
 }
 
+export function validateStructuredAiResponse(
+  report: CompanyAiStructuredReport,
+  metrics: ReturnType<typeof buildCompanyAiMetricsContext>
+): CompanyAiStructuredReport {
+  const fallback = buildLocalFallbackStructured(metrics);
+  const fallbackLevel = fallback.estadoGeneral.nivel;
+  const forbiddenText = /desviaci[oó]n est[aá]ndar|mediana|sigma|telemetr[ií]a agregada|V2/i;
+  const alcoholText = /efectos del alcohol|alcohol/i;
+  const cleanText = (value: string, fallbackValue = ''): string => {
+    const cleaned = String(value || fallbackValue).replace(/\s+/g, ' ').trim();
+    return forbiddenText.test(cleaned) ? fallbackValue : cleaned;
+  };
+
+  const loQueVaBien = report.loQueVaBien
+    .filter((item) => !alcoholText.test(`${item.titulo} ${item.detalle}`))
+    .slice(0, 3)
+    .map((item) => ({
+      titulo: cleanText(item.titulo, 'Fortaleza detectada'),
+      detalle: cleanText(item.detalle, 'Sin detalle disponible.')
+    }));
+
+  const focosDeAtencion = report.focosDeAtencion
+    .filter((item) => !alcoholText.test(`${item.titulo} ${item.porqueImporta}`))
+    .slice(0, 3)
+    .map((item) => ({
+      titulo: cleanText(item.titulo, 'Área de mejora'),
+      porqueImporta: cleanText(item.porqueImporta, 'Conviene reforzar este punto en el siguiente ciclo.'),
+      nivel: item.nivel === 'alto' ? 'alto' as const : 'medio' as const
+    }));
+
+  const planDeAccion = report.planDeAccion
+    .slice(0, 3)
+    .map((item) => ({
+      plazo: /pr[oó]ximo año|siguiente ciclo|seguimiento anual/i.test(item.plazo)
+        ? item.plazo
+        : 'Seguimiento anual',
+      accion: cleanText(item.accion, 'Mantener el seguimiento preventivo.'),
+      impacto: cleanText(item.impacto, 'Reducir riesgos y mejorar la continuidad operativa.')
+    }));
+
+  const metasSimples = report.metasSimples
+    .filter((item) => !alcoholText.test(`${item.indicador} ${item.actual} ${item.meta}`))
+    .slice(0, 3)
+    .map((item) => ({
+      indicador: cleanText(item.indicador, 'Rendimiento general'),
+      actual: cleanText(item.actual, 'Sin dato disponible'),
+      meta: cleanText(item.meta, 'Mantener mejora en el próximo año')
+    }));
+
+  return {
+    estadoGeneral: {
+      nivel: fallbackLevel,
+      titulo: cleanText(report.estadoGeneral.titulo, fallback.estadoGeneral.titulo).slice(0, 100),
+      resumenSimple: cleanText(report.estadoGeneral.resumenSimple, fallback.estadoGeneral.resumenSimple)
+    },
+    loQueVaBien: loQueVaBien.length > 0 ? loQueVaBien : fallback.loQueVaBien,
+    focosDeAtencion: focosDeAtencion.length > 0 ? focosDeAtencion : fallback.focosDeAtencion,
+    planDeAccion: planDeAccion.length > 0 ? planDeAccion : fallback.planDeAccion,
+    metasSimples: metasSimples.length > 0 ? metasSimples : fallback.metasSimples
+  };
+}
+
 export function buildCompanyAiPrompt(metrics: ReturnType<typeof buildCompanyAiMetricsContext>): string {
   return [
     'Eres un asesor de seguridad vial y capacitación de conductores que explica resultados a gerentes y público general.',
@@ -694,6 +756,7 @@ export interface GeminiStructuredInsightOptions {
   cacheKey: string;
   prompt: string;
   buildFallback: () => CompanyAiStructuredReport;
+  validateResult?: (structured: CompanyAiStructuredReport) => CompanyAiStructuredReport;
   forceRefresh?: boolean;
 }
 
@@ -708,11 +771,13 @@ export interface GeminiTextAnswerOptions {
 async function runGeminiPromptWithFallback({
   prompt,
   maxOutputTokens = 4096,
-  responseMimeType
+  responseMimeType,
+  responseJsonSchema
 }: {
   prompt: string;
   maxOutputTokens?: number;
   responseMimeType?: string;
+  responseJsonSchema?: Record<string, unknown>;
 }): Promise<{ text: string; model: string }> {
   const { getAI, getGenerativeModel, GoogleAIBackend, ThinkingLevel } = await import('firebase/ai');
   const ai = getAI(app, { backend: new GoogleAIBackend() });
@@ -731,6 +796,7 @@ async function runGeminiPromptWithFallback({
           maxOutputTokens,
           temperature: 0.35,
           ...(responseMimeType ? { responseMimeType } : {}),
+          ...(responseJsonSchema ? { responseJsonSchema } : {}),
           thinkingConfig: {
             thinkingLevel: modelId === 'gemini-3.5-flash-lite' ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW
           }
@@ -778,10 +844,90 @@ function buildGeminiFallbackWarning(err: unknown): string {
     : 'No se pudo conectar con Gemini Developer API; se generó el análisis visual con el motor analítico local.';
 }
 
+function buildStructuredResponseJsonSchema(): Record<string, unknown> {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['estadoGeneral', 'loQueVaBien', 'focosDeAtencion', 'planDeAccion', 'metasSimples'],
+    properties: {
+      estadoGeneral: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['nivel', 'titulo', 'resumenSimple'],
+        properties: {
+          nivel: { type: 'string', enum: ['sobresaliente', 'bueno', 'atencion', 'critico'] },
+          titulo: { type: 'string', minLength: 1, maxLength: 100 },
+          resumenSimple: { type: 'string', minLength: 1, maxLength: 500 }
+        }
+      },
+      loQueVaBien: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 3,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['titulo', 'detalle'],
+          properties: {
+            titulo: { type: 'string', maxLength: 100 },
+            detalle: { type: 'string', maxLength: 300 }
+          }
+        }
+      },
+      focosDeAtencion: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 3,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['titulo', 'porqueImporta', 'nivel'],
+          properties: {
+            titulo: { type: 'string', maxLength: 100 },
+            porqueImporta: { type: 'string', maxLength: 300 },
+            nivel: { type: 'string', enum: ['alto', 'medio'] }
+          }
+        }
+      },
+      planDeAccion: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 3,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['plazo', 'accion', 'impacto'],
+          properties: {
+            plazo: { type: 'string', enum: ['1er ciclo próximo año', '2do ciclo próximo año', 'Seguimiento anual'] },
+            accion: { type: 'string', maxLength: 300 },
+            impacto: { type: 'string', maxLength: 300 }
+          }
+        }
+      },
+      metasSimples: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 3,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['indicador', 'actual', 'meta'],
+          properties: {
+            indicador: { type: 'string', maxLength: 100 },
+            actual: { type: 'string', maxLength: 100 },
+            meta: { type: 'string', maxLength: 150 }
+          }
+        }
+      }
+    }
+  };
+}
+
 export async function invokeGeminiStructuredInsight({
   cacheKey,
   prompt,
   buildFallback,
+  validateResult,
   forceRefresh
 }: GeminiStructuredInsightOptions): Promise<CompanyAiInsightResult> {
   if (!forceRefresh) {
@@ -795,10 +941,16 @@ export async function invokeGeminiStructuredInsight({
     const { text, model: modelId } = await runGeminiPromptWithFallback({
       prompt,
       maxOutputTokens: 4096,
-      responseMimeType: 'application/json'
+      responseMimeType: 'application/json',
+      responseJsonSchema: buildStructuredResponseJsonSchema()
     });
 
-    const structured = parseStructuredAiResponse(text) ?? undefined;
+    const parsed = parseStructuredAiResponse(text);
+    const structured = parsed
+      ? validateResult
+        ? validateResult(parsed)
+        : parsed
+      : undefined;
     const formattedSummary = structured ? formatStructuredReportAsText(structured) : text;
     const now = new Date();
     const result: CompanyAiInsightResult = {
@@ -877,6 +1029,7 @@ export async function generateCompanyAiInsight(input: CompanyAiInsightRequest): 
     cacheKey,
     prompt,
     buildFallback: () => buildLocalFallbackStructured(metrics),
+    validateResult: (structured) => validateStructuredAiResponse(structured, metrics),
     forceRefresh: input.forceRefresh
   });
 }
