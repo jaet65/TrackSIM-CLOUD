@@ -116,6 +116,7 @@ describe('companyPresentationGenerator', () => {
     expect(data.topMistakes[0]).toEqual({ error: 'Exceso de velocidad', repeticiones: 7 });
     expect(data.exercises[0].descripcion.length).toBeGreaterThan(10);
     expect(data.exercises[0].descripcion).not.toBe('Escenario de evaluación práctica en simulador TrackSIM.');
+    expect(data.exercises[0].lecturaIA).toContain('Desempeño sólido');
   });
 
   it('genera el archivo .pptx con nombre sanitizado y ejecuta writeFile', async () => {

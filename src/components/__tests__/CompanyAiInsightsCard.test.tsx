@@ -105,6 +105,23 @@ describe('CompanyAiInsightsCard', () => {
     expect(screen.getByText(/Estoy leyendo las evaluaciones de Transcooler \(Año 2026\)/)).toBeInTheDocument();
   });
 
+  it('no muestra badges del modelo ni de caché en la cabecera', () => {
+    render(
+      <CompanyAiInsightsCard
+        isOpen={true}
+        isLoading={false}
+        insight={{ ...createStructuredInsight('bueno'), fromCache: true }}
+        companyName="Transcooler"
+        periodText="Año 2026"
+        onRegenerate={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText(/gemini/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/guardado/i)).not.toBeInTheDocument();
+  });
+
   it('muestra Tracky fuera del modal como neutro, happy, sad segun el estado', () => {
     const { rerender } = render(
       <CompanyAiInsightsCard

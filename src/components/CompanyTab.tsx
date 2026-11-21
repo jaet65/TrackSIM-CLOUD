@@ -684,7 +684,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         aiSourceLabel:
           usableAiResult?.source === 'gemini'
             ? usableAiResult.fromCache
-              ? 'Análisis Ejecutivo IA · Caché TrackSIM'
+              ? 'Análisis Ejecutivo IA · TrackSIM'
               : 'Análisis Ejecutivo con IA · TrackSIM'
             : 'Síntesis Ejecutiva Automática · Motor Local',
         aiQuality: usableAiResult?.quality,

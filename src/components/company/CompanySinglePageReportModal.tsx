@@ -352,26 +352,6 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-            {aiInsight?.structured && (
-              <span
-                style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  padding: '0.22rem 0.55rem',
-                  borderRadius: '999px',
-                  background: 'rgba(139, 92, 246, 0.12)',
-                  color: '#6d28d9',
-                  border: '1px solid rgba(139, 92, 246, 0.3)'
-                }}
-                title={aiInsight.warning || `Modelo: ${aiInsight.model}`}
-              >
-                {aiInsight.source === 'fallback'
-                  ? '⚙️ Motor local'
-                  : aiInsight.fromCache
-                    ? `✨ IA · Caché · ${aiInsight.quality?.score ?? 70}/100`
-                    : `✨ IA · ${aiInsight.quality?.score ?? 70}/100`}
-              </span>
-            )}
             <button
               type="button"
               className="btn btn-secondary btn-sm"

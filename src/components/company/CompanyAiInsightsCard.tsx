@@ -574,37 +574,6 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
                       ? 'Tracky · Evolución Histórica de la Flota'
                       : 'Tracky · Interpretación Ejecutiva con IA'}
                 </h3>
-                {insight && (
-                  <span
-                    style={{
-                      fontSize: '0.7rem',
-                      fontWeight: 700,
-                      padding: '0.15rem 0.55rem',
-                      borderRadius: '999px',
-                      background: insight.source === 'gemini' ? 'rgba(139, 92, 246, 0.14)' : 'rgba(14, 165, 233, 0.14)',
-                      color: insight.source === 'gemini' ? '#6d28d9' : '#0369a1',
-                      border: `1px solid ${insight.source === 'gemini' ? 'rgba(139, 92, 246, 0.35)' : 'rgba(14, 165, 233, 0.35)'}`
-                    }}
-                  >
-                    {insight.source === 'gemini' ? `${insight.model}` : insight.model}
-                  </span>
-                )}
-                {insight?.fromCache && (
-                  <span
-                    style={{
-                      fontSize: '0.68rem',
-                      fontWeight: 600,
-                      padding: '0.15rem 0.5rem',
-                      borderRadius: '999px',
-                      background: 'rgba(16, 185, 129, 0.12)',
-                      color: '#047857',
-                      border: '1px solid rgba(16, 185, 129, 0.32)'
-                    }}
-                    title="Análisis guardado en las últimas 24 horas"
-                  >
-                    ⚡ Guardado (&lt; 24h)
-                  </span>
-                )}
               </div>
               <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                 {companyName} • {periodText}
@@ -757,37 +726,6 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
                         <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-main)' }}>
                           {activeQuestion.label}
                         </span>
-                        {quickAnswer && !isLoadingQuick && (
-                          <span
-                            style={{
-                              fontSize: '0.66rem',
-                              fontWeight: 700,
-                              padding: '0.12rem 0.45rem',
-                              borderRadius: '999px',
-                              background:
-                                quickAnswer.source === 'gemini'
-                                  ? 'rgba(139, 92, 246, 0.12)'
-                                  : 'rgba(14, 165, 233, 0.12)',
-                              color: quickAnswer.source === 'gemini' ? '#6d28d9' : '#0369a1'
-                            }}
-                          >
-                            {quickAnswer.model}
-                          </span>
-                        )}
-                        {quickAnswer?.fromCache && !isLoadingQuick && (
-                          <span
-                            style={{
-                              fontSize: '0.65rem',
-                              fontWeight: 600,
-                              padding: '0.12rem 0.42rem',
-                              borderRadius: '999px',
-                              background: 'rgba(16, 185, 129, 0.12)',
-                              color: '#047857'
-                            }}
-                          >
-                            ⚡ Guardado (&lt; 24h)
-                          </span>
-                        )}
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>

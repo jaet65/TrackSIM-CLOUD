@@ -65,6 +65,7 @@ export interface CompanyPresentationData {
     totalEvaluaciones: number;
     promedio: number;
     nivel: string;
+    lecturaIA: string;
   }>;
   exercisesByYear: Array<{
     year: string;
@@ -292,7 +293,8 @@ export function buildCompanyPresentationData(input: CompanyPresentationInput): C
     pctRecurrentes,
     operadoresConHistorialPrevio,
     exerciseStats,
-    allEvaluations
+    allEvaluations,
+    aiReport
   } = input;
 
   const conductores = comp.conductores || [];
@@ -401,12 +403,27 @@ export function buildCompanyPresentationData(input: CompanyPresentationInput): C
 
   const exercises = exerciseStats.map((ex) => {
     const catalogItem = findCatalogExercise(ex.nombre);
+    const nivel =
+      ex.promedio >= 8.0 ? 'Sobresaliente' : ex.promedio >= 6.0 ? 'Aprobado' : 'Requiere Refuerzo';
+    const matchingPlan = aiReport?.planDeAccion.find((step) =>
+      `${step.accion} ${step.impacto}`.toLowerCase().includes(ex.nombre.toLowerCase())
+    );
+    const baseLectura =
+      ex.promedio < 6
+        ? `Refuerzo prioritario: ${ex.promedio.toFixed(1)} / 10 en ${ex.totalEvaluaciones} evaluaciones.`
+        : ex.promedio < 8
+          ? `Consolidar nivel: ${ex.promedio.toFixed(1)} / 10. Mantener práctica guiada.`
+          : `Desempeño sólido: ${ex.promedio.toFixed(1)} / 10. Conservar el nivel.`;
+    const lecturaIA = matchingPlan
+      ? `${baseLectura} Plan IA: ${matchingPlan.accion.slice(0, 105)}${matchingPlan.accion.length > 105 ? '…' : ''}`
+      : baseLectura;
     return {
       nombre: ex.nombre,
       descripcion: catalogItem?.descripcion?.trim() || 'Escenario de evaluación práctica en simulador TrackSIM.',
       totalEvaluaciones: ex.totalEvaluaciones,
       promedio: ex.promedio,
-      nivel: ex.promedio >= 8.0 ? 'Sobresaliente' : ex.promedio >= 6.0 ? 'Aprobado' : 'Requiere Refuerzo'
+      nivel,
+      lecturaIA
     };
   });
 
@@ -860,10 +877,14 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
   // SLIDE 2: CATÁLOGO DE EJERCICIOS REALIZADOS Y DESCRIPCIÓN
   // =========================================================================
   const sDesc = pres.addSlide();
+  const lowestExercises = data.exercises
+    .filter((ex) => ex.nivel === 'Requiere Refuerzo')
+    .sort((a, b) => a.promedio - b.promedio)
+    .slice(0, 2);
   addSlideHeader(
     sDesc,
     'Catálogo de Ejercicios Realizados',
-    `Escenarios evaluados y su descripción oficial en ${data.companyName} (${data.periodText})`,
+    `${data.companyName} (${data.periodText})`,
     slidePage++,
     totalSlides
   );
@@ -885,6 +906,10 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
           options: { bold: true, fontSize: 9.5, color: COLORS.white, fill: { color: COLORS.navy }, align: 'left' }
         },
         {
+          text: 'Lectura Operativa',
+          options: { bold: true, fontSize: 9.5, color: COLORS.white, fill: { color: COLORS.purple }, align: 'left' }
+        },
+        {
           text: 'Evs.',
           options: { bold: true, fontSize: 9.5, color: COLORS.white, fill: { color: COLORS.navy }, align: 'center' }
         }
@@ -897,6 +922,7 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
         { text: String(idx + 1), options: { fill: { color: bg }, fontSize: 9, bold: true, color: COLORS.slate, align: 'center' } },
         { text: ex.nombre, options: { fill: { color: bg }, fontSize: 9.5, bold: true, color: COLORS.navy, align: 'left' } },
         { text: ex.descripcion, options: { fill: { color: bg }, fontSize: 9, color: COLORS.slate, align: 'left' } },
+        { text: ex.lecturaIA, options: { fill: { color: idx % 2 === 0 ? 'F5F3FF' : 'EDE9FE' }, fontSize: 8.5, bold: ex.nivel === 'Requiere Refuerzo', color: ex.nivel === 'Requiere Refuerzo' ? COLORS.red : COLORS.navy, align: 'left' } },
         { text: String(ex.totalEvaluaciones), options: { fill: { color: bg }, fontSize: 9, bold: true, color: COLORS.sky, align: 'center' } }
       ]);
     });
@@ -906,7 +932,7 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
       x: 0.6,
       y: 1.25,
       w: 12.133,
-      colW: [0.55, 3.25, 7.433, 0.9],
+      colW: [0.55, 2.8, 5.45, 2.43, 0.9],
       rowH: rowHeight,
       border: { pt: 0.5, color: COLORS.border },
       valign: 'middle'
@@ -1777,17 +1803,11 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
   // =========================================================================
   if (input.aiReport) {
     const ai = input.aiReport;
-    const qualityLabel =
-      typeof input.aiQuality?.score === 'number'
-        ? ` • Calidad ${input.aiQuality.score}/100`
-        : '';
-    const cacheLabel = input.aiCached ? ' • Caché' : '';
-    const warningLabel = input.aiWarning ? ' • Motor local / Corrección aplicada' : '';
     const sAi = pres.addSlide();
     addSlideHeader(
       sAi,
       'Conclusiones Ejecutivas y Plan Anual',
-      `${input.aiSourceLabel || 'Síntesis Ejecutiva con IA'}${qualityLabel}${cacheLabel}${warningLabel} • ${data.companyName} (${data.periodText})`,
+      `${input.aiSourceLabel || 'Síntesis Ejecutiva con IA'} • ${data.companyName} (${data.periodText})`,
       slidePage++,
       totalSlides
     );
@@ -1872,24 +1892,23 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
       color: COLORS.purple,
       fontFace: 'Segoe UI'
     });
-    const metaRuns: any[] = [];
     ai.metasSimples.slice(0, 3).forEach((m, idx) => {
-      if (idx > 0) metaRuns.push({ text: '\n' });
-      metaRuns.push({ text: `${m.indicador}: `, options: { bold: true, color: COLORS.navy, fontSize: 8.5 } });
-      metaRuns.push({ text: `${m.actual} → `, options: { color: COLORS.slate, fontSize: 8.5 } });
-      metaRuns.push({ text: m.meta, options: { bold: true, color: COLORS.green, fontSize: 8.5 } });
-    });
-    if (metaRuns.length > 0) {
-      sAi.addText(metaRuns, {
+      const indicator = m.indicador.length > 24 ? `${m.indicador.slice(0, 23)}…` : m.indicador;
+      const actual = m.actual.length > 18 ? `${m.actual.slice(0, 17)}…` : m.actual;
+      const target = m.meta.length > 28 ? `${m.meta.slice(0, 27)}…` : m.meta;
+      sAi.addText(`${indicator}: ${actual} → ${target}`, {
         x: 8.38,
-        y: 1.44,
+        y: 1.43 + idx * 0.24,
         w: 4.2,
-        h: 0.8,
+        h: 0.2,
+        fontSize: 7.2,
+        bold: idx === 0,
+        color: idx === 0 ? COLORS.navy : COLORS.slateDark,
         fontFace: 'Segoe UI',
-        valign: 'top',
-        paraSpaceAfter: 2
+        valign: 'middle',
+        fit: 'shrink'
       });
-    }
+    });
 
     // Fila media izquierda: Lo que está funcionando bien
     sAi.addShape('roundRect', {
@@ -2057,18 +2076,21 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
         color: COLORS.sky,
         fontFace: 'Segoe UI'
       });
-      sAi.addText(step.accion, {
+      const actionText = step.accion.length > 150 ? `${step.accion.slice(0, 149)}…` : step.accion;
+      sAi.addText(actionText, {
         x: cardX + 0.12,
         y: 5.82,
         w: 3.54,
         h: 0.58,
-        fontSize: 8.5,
+        fontSize: 8,
         bold: true,
         color: COLORS.navy,
         fontFace: 'Segoe UI',
-        valign: 'top'
+        valign: 'top',
+        fit: 'shrink'
       });
-      sAi.addText(`Impacto: ${step.impacto}`, {
+      const impactText = step.impacto.length > 95 ? `${step.impacto.slice(0, 94)}…` : step.impacto;
+      sAi.addText(`Impacto: ${impactText}`, {
         x: cardX + 0.12,
         y: 6.42,
         w: 3.54,
@@ -2076,7 +2098,8 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
         fontSize: 7.8,
         color: COLORS.muted,
         fontFace: 'Segoe UI',
-        valign: 'top'
+        valign: 'top',
+        fit: 'shrink'
       });
     });
   }
