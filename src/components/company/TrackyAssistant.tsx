@@ -23,7 +23,6 @@ interface TrackyAssistantProps {
   elapsedSeconds?: number;
   structured?: CompanyAiStructuredReport;
   warning?: string;
-  isQuickQuestionActive?: boolean;
 }
 
 const VARIANT_WEBP_MAP: Record<TrackyAnimationVariant, string> = {
@@ -159,6 +158,35 @@ const TrackyPicture: React.FC<{ variant: TrackyAnimationVariant }> = ({ variant 
   );
 };
 
+export const TrackyFloating: React.FC<{
+  mode: 'loading' | 'ready';
+  level?: CompanyAiStructuredReport['estadoGeneral']['nivel'];
+  isQuickQuestionActive?: boolean;
+}> = ({ mode, level, isQuickQuestionActive = false }) => {
+  if (mode === 'loading') return null;
+
+  const activeVariant = resolveTrackyVariant(mode, level, isQuickQuestionActive);
+
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'fixed',
+        left: 'calc(50% + min(440px, 48vw) + 0.75rem)',
+        top: '50%',
+        transform: 'translateY(-50%)',
+        width: '311.04px',
+        aspectRatio: '16 / 9',
+        zIndex: 1201,
+        pointerEvents: 'none',
+        animation: 'trackyEnter 0.3s ease-out'
+      }}
+    >
+      <TrackyPicture variant={activeVariant} />
+    </div>
+  );
+};
+
 export const TrackyAssistant: React.FC<TrackyAssistantProps> = ({
   mode,
   companyName,
@@ -166,8 +194,7 @@ export const TrackyAssistant: React.FC<TrackyAssistantProps> = ({
   subjectType = 'company',
   elapsedSeconds = 0,
   structured,
-  warning,
-  isQuickQuestionActive = false
+  warning
 }) => {
   const [tipIndex, setTipIndex] = useState(0);
 
@@ -184,8 +211,6 @@ export const TrackyAssistant: React.FC<TrackyAssistantProps> = ({
   }, [companyName, periodText, structured]);
 
   const activeTip = tips[tipIndex % tips.length] || tips[0];
-  const activeVariant = resolveTrackyVariant(mode, structured?.estadoGeneral.nivel, isQuickQuestionActive);
-
   const handleNextTip = () => {
     if (tips.length <= 1) return;
     setTipIndex((prev) => (prev + 1) % tips.length);
@@ -218,7 +243,7 @@ export const TrackyAssistant: React.FC<TrackyAssistantProps> = ({
         >
           <div
             style={{
-              width: 'min(240px, 68vw)',
+              width: 'min(345.6px, 68vw)',
               aspectRatio: '16 / 9'
             }}
           >
@@ -327,25 +352,9 @@ export const TrackyAssistant: React.FC<TrackyAssistantProps> = ({
               {activeTip}
             </p>
           </div>
-
-          <button
-            type="button"
-            onClick={handleNextTip}
-            title={tips.length > 1 ? 'Haz clic para ver otro consejo de Tracky' : 'Tracky, asistente IA de TrackSIM'}
-            style={{
-              width: '150px',
-              aspectRatio: '16 / 9',
-              flexShrink: 0,
-              padding: 0,
-              border: 'none',
-              background: 'transparent',
-              cursor: tips.length > 1 ? 'pointer' : 'default'
-            }}
-          >
-            <TrackyPicture variant={activeVariant} />
-          </button>
         </div>
       )}
+
     </>
   );
 };

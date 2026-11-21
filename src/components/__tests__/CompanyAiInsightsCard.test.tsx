@@ -105,7 +105,7 @@ describe('CompanyAiInsightsCard', () => {
     expect(screen.getByText(/Estoy leyendo las evaluaciones de Transcooler \(Año 2026\)/)).toBeInTheDocument();
   });
 
-  it('muestra TrackyHappy para sobresaliente, Tracky para bueno y TrackySad para atencion y critico', () => {
+  it('muestra Tracky fuera del modal como neutro, happy, sad segun el estado', () => {
     const { rerender } = render(
       <CompanyAiInsightsCard
         isOpen={true}
@@ -120,10 +120,8 @@ describe('CompanyAiInsightsCard', () => {
 
     const img = screen.getByAltText('Tracky, asistente IA de TrackSIM');
     expect(img).toHaveAttribute('src', TRACKY_WEBP_PATH);
-    expect(img.getAttribute('src')).toContain('Tracky.webp');
 
-    const tipText = screen.getByText(/Revisé los datos de Transcooler \(Año 2026\)/);
-    expect(tipText.compareDocumentPosition(img) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText(/Revisé los datos de Transcooler \(Año 2026\)/)).toBeInTheDocument();
 
     const nextBtn = screen.getByRole('button', { name: /Siguiente consejo \(1\/4\)/ });
     fireEvent.click(nextBtn);
@@ -179,7 +177,7 @@ describe('CompanyAiInsightsCard', () => {
     );
   });
 
-  it('cambia a TrackyThinking en las preguntas rápidas y adapta los botones por contexto', async () => {
+  it('muestra TrackyThinking flotante en las preguntas rápidas y adapta los botones por contexto', async () => {
     askTrackyQuickQuestionMock.mockResolvedValueOnce({
       answer: '📊 *Resumen TrackSIM — Transcooler (Año 2026)*\n✅ Alta aprobación en montaña.',
       source: 'gemini',
@@ -227,7 +225,10 @@ describe('CompanyAiInsightsCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar respuesta rápida' }));
     expect(screen.queryByRole('region', { name: /Respuesta rápida/ })).toBeNull();
-    expect(screen.getByAltText('Tracky, asistente IA de TrackSIM')).toHaveAttribute('src', TRACKY_WEBP_PATH);
+    expect(screen.getByAltText('Tracky, asistente IA de TrackSIM')).toHaveAttribute(
+      'src',
+      TRACKY_WEBP_PATH
+    );
 
     rerender(
       <CompanyAiInsightsCard

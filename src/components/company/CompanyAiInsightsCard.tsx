@@ -7,7 +7,7 @@ import {
   type TrackyQuickQuestionId
 } from '../../services/trackyQuickQuestions';
 import type { Evaluation } from '../../types';
-import { TrackyAssistant, type TrackySubjectType } from './TrackyAssistant';
+import { TrackyAssistant, TrackyFloating, type TrackySubjectType } from './TrackyAssistant';
 
 interface CompanyAiInsightsCardProps {
   isOpen: boolean;
@@ -644,7 +644,6 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
                 subjectType={subjectType}
                 structured={insight.structured}
                 warning={insight.warning}
-                isQuickQuestionActive={Boolean(activeQuestionId) || isLoadingQuick}
               />
 
               <div
@@ -873,6 +872,11 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
           ) : null}
         </div>
       </div>
+      <TrackyFloating
+        mode={isLoading ? 'loading' : 'ready'}
+        level={insight?.structured?.estadoGeneral.nivel}
+        isQuickQuestionActive={Boolean(activeQuestionId) || isLoadingQuick}
+      />
     </div>
   );
 };
