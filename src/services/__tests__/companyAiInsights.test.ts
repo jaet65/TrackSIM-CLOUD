@@ -6,7 +6,8 @@ import {
   buildLocalFallbackInsight,
   generateCompanyAiInsight,
   getCachedCompanyAiInsight,
-  validateStructuredAiResponse
+  validateStructuredAiResponse,
+  assessStructuredAiQuality
 } from '../companyAiInsights';
 
 const generateContentMock = vi.fn();
@@ -70,6 +71,42 @@ function createSummary(): CompanySummary {
 }
 
 describe('companyAiInsights', () => {
+  it('calcula una calidad visible para respuestas incompatibles', () => {
+    const metrics = buildCompanyAiMetricsContext({
+      comp: createSummary(),
+      periodText: 'Año 2026',
+      selectedYear: '2026',
+      conductoresRecurrentes: 0,
+      pctRecurrentes: '0.0',
+      exerciseStats: [],
+      allEvaluations: []
+    });
+
+    const quality = assessStructuredAiQuality(
+      {
+        estadoGeneral: {
+          nivel: 'critico',
+          titulo: 'Diagnóstico con desviación estándar',
+          resumenSimple: 'Resumen compatible.'
+        },
+        loQueVaBien: [],
+        focosDeAtencion: [
+          { titulo: 'Efectos del alcohol', porqueImporta: 'Debe ser concientización.', nivel: 'alto' }
+        ],
+        planDeAccion: [
+          { plazo: 'Esta semana', accion: 'Reforzar.', impacto: 'Mejorar.' }
+        ],
+        metasSimples: []
+      },
+      metrics
+    );
+
+    expect(quality.score).toBeLessThan(70);
+    expect(quality.issues).toContain('Incluyó jerga técnica prohibida');
+    expect(quality.issues).toContain('Incluyó el ejercicio de concientización');
+    expect(quality.issues).toContain('Incluyó un plazo distinto al horizonte anual');
+  });
+
   it('invalida la caché cuando cambian las métricas relevantes', async () => {
     const baseInput = {
       comp: createSummary(),

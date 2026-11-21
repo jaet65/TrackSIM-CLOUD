@@ -56,6 +56,12 @@ export interface CompanyAiInsightResult {
   createdAtMs?: number;
   fromCache?: boolean;
   warning?: string;
+  quality?: AiResponseQuality;
+}
+
+export interface AiResponseQuality {
+  score: number;
+  issues: string[];
 }
 
 export interface AiQuickAnswerResult {
@@ -547,6 +553,51 @@ export function validateStructuredAiResponse(
   };
 }
 
+export function assessStructuredAiQuality(
+  report: CompanyAiStructuredReport,
+  metrics: ReturnType<typeof buildCompanyAiMetricsContext>
+): AiResponseQuality {
+  const issues: string[] = [];
+  const fullText = [
+    report.estadoGeneral.titulo,
+    report.estadoGeneral.resumenSimple,
+    ...report.loQueVaBien.map((item) => `${item.titulo} ${item.detalle}`),
+    ...report.focosDeAtencion.map((item) => `${item.titulo} ${item.porqueImporta}`),
+    ...report.planDeAccion.map((item) => `${item.plazo} ${item.accion} ${item.impacto}`),
+    ...report.metasSimples.map((item) => `${item.indicador} ${item.actual} ${item.meta}`)
+  ].join(' ');
+
+  if (/desviaci[oó]n est[aá]ndar|mediana|sigma|telemetr[ií]a agregada|V2/i.test(fullText)) {
+    issues.push('Incluyó jerga técnica prohibida');
+  }
+  if (/efectos del alcohol|alcohol/i.test(fullText)) {
+    issues.push('Incluyó el ejercicio de concientización');
+  }
+  if (report.planDeAccion.some((item) => !/pr[oó]ximo año|siguiente ciclo|seguimiento anual/i.test(item.plazo))) {
+    issues.push('Incluyó un plazo distinto al horizonte anual');
+  }
+
+  const fallbackLevel = buildLocalFallbackStructured(metrics).estadoGeneral.nivel;
+  if (report.estadoGeneral.nivel !== fallbackLevel) {
+    issues.push('El nivel general no coincide con las métricas locales');
+  }
+
+  const emptySections = [
+    report.loQueVaBien,
+    report.focosDeAtencion,
+    report.planDeAccion,
+    report.metasSimples
+  ].filter((section) => section.length === 0).length;
+  if (emptySections > 0) {
+    issues.push('Una o más secciones quedaron vacías');
+  }
+
+  return {
+    score: Math.max(0, 100 - issues.length * 15),
+    issues
+  };
+}
+
 export function buildCompanyAiPrompt(metrics: ReturnType<typeof buildCompanyAiMetricsContext>): string {
   return [
     'Eres un asesor de seguridad vial y capacitación de conductores que explica resultados a gerentes y público general.',
@@ -776,6 +827,7 @@ export interface GeminiStructuredInsightOptions {
   prompt: string;
   buildFallback: () => CompanyAiStructuredReport;
   validateResult?: (structured: CompanyAiStructuredReport) => CompanyAiStructuredReport;
+  assessResult?: (structured: CompanyAiStructuredReport) => AiResponseQuality;
   forceRefresh?: boolean;
 }
 
@@ -942,16 +994,31 @@ function buildStructuredResponseJsonSchema(): Record<string, unknown> {
   };
 }
 
+function logTrackyAiQuality(result: CompanyAiInsightResult): void {
+  const quality = result.quality ?? { score: result.source === 'gemini' ? 70 : 100, issues: [] };
+  console.info('[Tracky IA][Calidad]', {
+    puntuacion: `${quality.score}/100`,
+    fuente: result.source,
+    modelo: result.model,
+    cache: result.fromCache ? 'sí' : 'no',
+    incidencias: quality.issues.length,
+    detalle: quality.issues,
+    advertencia: result.warning ?? null
+  });
+}
+
 export async function invokeGeminiStructuredInsight({
   cacheKey,
   prompt,
   buildFallback,
   validateResult,
+  assessResult,
   forceRefresh
 }: GeminiStructuredInsightOptions): Promise<CompanyAiInsightResult> {
   if (!forceRefresh) {
     const cached = readCachedInsight(cacheKey);
     if (cached) {
+      logTrackyAiQuality(cached);
       return cached;
     }
   }
@@ -970,6 +1037,9 @@ export async function invokeGeminiStructuredInsight({
         ? validateResult(parsed)
         : parsed
       : undefined;
+    const quality = parsed && assessResult
+      ? assessResult(parsed)
+      : { score: 0, issues: ['No se pudo interpretar la respuesta estructurada'] };
     const formattedSummary = structured ? formatStructuredReportAsText(structured) : text;
     const now = new Date();
     const result: CompanyAiInsightResult = {
@@ -979,9 +1049,14 @@ export async function invokeGeminiStructuredInsight({
       model: modelId,
       generatedAt: now.toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
       createdAtMs: now.getTime(),
-      fromCache: false
+      fromCache: false,
+      quality,
+      ...(quality.score < 70
+        ? { warning: 'La respuesta fue corregida parcialmente con las métricas locales antes de mostrarse.' }
+        : {})
     };
     writeCachedInsight(cacheKey, result);
+    logTrackyAiQuality(result);
     return result;
   } catch (err) {
     const structuredFallback = buildFallback();
@@ -993,6 +1068,7 @@ export async function invokeGeminiStructuredInsight({
       generatedAt: new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
       warning: buildGeminiFallbackWarning(err)
     };
+    logTrackyAiQuality(fallback);
     return fallback;
   }
 }
@@ -1049,6 +1125,7 @@ export async function generateCompanyAiInsight(input: CompanyAiInsightRequest): 
     prompt,
     buildFallback: () => buildLocalFallbackStructured(metrics),
     validateResult: (structured) => validateStructuredAiResponse(structured, metrics),
+    assessResult: (structured) => assessStructuredAiQuality(structured, metrics),
     forceRefresh: input.forceRefresh
   });
 }
