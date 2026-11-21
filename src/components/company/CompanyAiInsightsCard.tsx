@@ -333,41 +333,61 @@ function renderStructuredVisualReport(report: CompanyAiStructuredReport): React.
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 700, fontSize: '0.92rem', color: '#0369a1' }}>
             <span>🎯</span>
-            <span>Qué hacer ahora (Plan paso a paso)</span>
+            <span>Qué hacer en las próximas capacitaciones</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.7rem' }}>
-            {report.planDeAccion.map((step, idx) => (
+          {(() => {
+            const recommendations = report.planDeAccion
+              .filter((step) => step.accion.trim().length > 0)
+              .filter((step, index, steps) => steps.findIndex((candidate) => candidate.accion.trim() === step.accion.trim()) === index)
+              .slice(0, 3);
+            return (
               <div
-                key={idx}
                 style={{
-                  padding: '0.8rem 0.9rem',
-                  borderRadius: '10px',
-                  background: 'var(--bg-card, #ffffff)',
-                  border: '1px solid rgba(14, 165, 233, 0.24)',
-                  boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.35rem'
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: '0.7rem'
                 }}
               >
-                <span
-                  style={{
-                    alignSelf: 'flex-start',
-                    fontSize: '0.7rem',
-                    fontWeight: 700,
-                    padding: '0.14rem 0.55rem',
-                    borderRadius: '999px',
-                    background: 'rgba(14, 165, 233, 0.12)',
-                    color: '#0369a1'
-                  }}
-                >
-                  {idx + 1}. {step.plazo}
-                </span>
-                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1.45 }}>{step.accion}</div>
-                <div style={{ fontSize: '0.79rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>💡 {step.impacto}</div>
+                {recommendations.map((step, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      padding: '0.8rem 0.9rem',
+                      borderRadius: '10px',
+                      background: 'var(--bg-card, #ffffff)',
+                      border: '1px solid rgba(14, 165, 233, 0.24)',
+                      boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.35rem'
+                    }}
+                  >
+                    <span
+                      style={{
+                        alignSelf: 'flex-start',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        padding: '0.14rem 0.55rem',
+                        borderRadius: '999px',
+                        background: 'rgba(14, 165, 233, 0.12)',
+                        color: '#0369a1'
+                      }}
+                    >
+                      Recomendación {idx + 1}
+                    </span>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1.45 }}>
+                      {step.accion}
+                    </div>
+                    {step.impacto && (
+                      <div style={{ fontSize: '0.79rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                        💡 {step.impacto}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            );
+          })()}
         </div>
       )}
     </div>

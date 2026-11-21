@@ -4,10 +4,12 @@ import {
   buildCompanyAiMetricsContext,
   buildCompanyAiPrompt,
   buildLocalFallbackInsight,
+  buildLocalFallbackStructured,
   generateCompanyAiInsight,
   getCachedCompanyAiInsight,
   validateStructuredAiResponse,
-  assessStructuredAiQuality
+  assessStructuredAiQuality,
+  isUsableCompanyAiResult
 } from '../companyAiInsights';
 
 const generateContentMock = vi.fn();
@@ -71,6 +73,71 @@ function createSummary(): CompanySummary {
 }
 
 describe('companyAiInsights', () => {
+  it('separa una respuesta combinada con Además en recomendaciones independientes', () => {
+    const metrics = buildCompanyAiMetricsContext({
+      comp: createSummary(),
+      periodText: 'Año 2026',
+      selectedYear: '2026',
+      conductoresRecurrentes: 0,
+      pctRecurrentes: '0.0',
+      exerciseStats: [],
+      allEvaluations: []
+    });
+    const validated = validateStructuredAiResponse(
+      {
+        estadoGeneral: {
+          nivel: 'bueno',
+          titulo: 'Flota estable',
+          resumenSimple: 'Desempeño estable.'
+        },
+        loQueVaBien: [{ titulo: 'Control', detalle: 'Buen control general.' }],
+        focosDeAtencion: [{ titulo: 'Frenado', porqueImporta: 'Evitar desgaste.', nivel: 'medio' }],
+        planDeAccion: [
+          {
+            plazo: 'Próximas capacitaciones',
+            accion: 'Reforzar frenos auxiliares. Además, Practicar técnicas de manejo en zona verde. Además, Reducir el uso incorrecto del retarder.',
+            impacto: 'Mejorar seguridad. Además, Reducir consumo.'
+          }
+        ],
+        metasSimples: [{ indicador: 'Promedio', actual: '8.1', meta: '≥ 8.5' }]
+      },
+      metrics
+    );
+
+    expect(validated.planDeAccion.length).toBeGreaterThanOrEqual(2);
+    expect(validated.planDeAccion.every((item) => !/además/i.test(item.accion))).toBe(true);
+  });
+
+  it('solo permite exportar resultados Gemini con calidad mínima y acepta respaldo local', () => {
+    const structured = buildLocalFallbackStructured(
+      buildCompanyAiMetricsContext({
+        comp: createSummary(),
+        periodText: 'Año 2026',
+        selectedYear: '2026',
+        conductoresRecurrentes: 0,
+        pctRecurrentes: '0.0',
+        exerciseStats: [],
+        allEvaluations: []
+      })
+    );
+    expect(isUsableCompanyAiResult({
+      summary: 'Respuesta',
+      structured,
+      source: 'gemini',
+      model: 'gemini-3.5-flash-lite',
+      generatedAt: 'ahora',
+      quality: { score: 69, issues: ['Jerga técnica'] }
+    })).toBe(false);
+    expect(isUsableCompanyAiResult({
+      summary: 'Respuesta',
+      structured,
+      source: 'fallback',
+      model: 'Motor Local',
+      generatedAt: 'ahora',
+      quality: { score: 100, issues: [] }
+    })).toBe(true);
+  });
+
   it('calcula una calidad visible para respuestas incompatibles', () => {
     const metrics = buildCompanyAiMetricsContext({
       comp: createSummary(),
@@ -190,7 +257,7 @@ describe('companyAiInsights', () => {
     expect(validated.estadoGeneral.titulo).not.toContain('desviación estándar');
     expect(validated.loQueVaBien.every((item) => !/alcohol/i.test(`${item.titulo} ${item.detalle}`))).toBe(true);
     expect(validated.focosDeAtencion.every((item) => !/V2|telemetría agregada/i.test(`${item.titulo} ${item.porqueImporta}`))).toBe(true);
-    expect(validated.planDeAccion[0]?.plazo).toBe('Seguimiento anual');
+    expect(validated.planDeAccion[0]?.plazo).toBe('Próximas capacitaciones');
   });
 
   it('construye contexto de métricas agregadas y prompt ejecutivo con incidencias críticas V2', () => {
@@ -244,6 +311,8 @@ describe('companyAiInsights', () => {
     expect(fallback).toContain('RESUMEN GENERAL:');
     expect(fallback).toContain('Transcooler');
     expect(fallback).not.toContain('Reforzar la prueba "Efectos del alcohol"');
+    expect(buildLocalFallbackStructured(context).planDeAccion).toHaveLength(3);
+    expect(buildLocalFallbackStructured(context).planDeAccion[0].plazo).toBe('Próximas capacitaciones');
   });
 
   it('prioriza Gemini 3.5 Flash-Lite cuando la respuesta es exitosa, respalda con 3.8 Flash y usa motor local si ambos fallan', async () => {
@@ -304,7 +373,7 @@ describe('companyAiInsights', () => {
             },
             loQueVaBien: [{ titulo: 'Continuidad', detalle: 'Buen desempeño histórico.' }],
             focosDeAtencion: [{ titulo: 'Seguimiento', porqueImporta: 'Reforzar bases.', nivel: 'medio' }],
-            planDeAccion: [{ plazo: '1er ciclo próximo año', accion: 'Consolidar', impacto: 'Menor riesgo' }],
+            planDeAccion: [{ plazo: 'Próximas capacitaciones', accion: 'Consolidar', impacto: 'Menor riesgo' }],
             metasSimples: [{ indicador: 'Aprobación', actual: '100%', meta: '≥ 95% próximo año' }]
           })
       }

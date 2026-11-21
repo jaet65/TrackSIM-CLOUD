@@ -51,7 +51,7 @@ function createStructuredInsight(
       ],
       planDeAccion: [
         {
-          plazo: '1er ciclo próximo año',
+          plazo: 'Próximas capacitaciones',
           accion: 'Reforzar manejo en zona verde',
           impacto: 'Menor consumo de combustible.'
         }

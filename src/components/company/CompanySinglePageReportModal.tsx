@@ -47,8 +47,10 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
   useEscapeKey(isOpen, onClose);
   const [aiInsight, setAiInsight] = React.useState<CompanyAiInsightResult | null>(null);
   const [isLoadingAi, setIsLoadingAi] = React.useState(false);
+  const aiRequestIdRef = React.useRef(0);
 
   React.useEffect(() => {
+    aiRequestIdRef.current += 1;
     if (!isOpen || !comp) {
       setAiInsight(null);
       return;
@@ -67,6 +69,7 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
 
   const handleLoadOrRefreshAi = async (forceRefresh = false) => {
     if (!comp || isLoadingAi) return;
+    const requestId = ++aiRequestIdRef.current;
     setIsLoadingAi(true);
     try {
       const res = await generateCompanyAiInsight({
@@ -79,11 +82,15 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
         allEvaluations,
         forceRefresh
       });
-      setAiInsight(res);
+      if (requestId === aiRequestIdRef.current && isOpen) {
+        setAiInsight(res);
+      }
     } catch (err) {
       console.error('Error al cargar análisis IA para Single-Page:', err);
     } finally {
-      setIsLoadingAi(false);
+      if (requestId === aiRequestIdRef.current) {
+        setIsLoadingAi(false);
+      }
     }
   };
 
@@ -356,8 +363,13 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
                   color: '#6d28d9',
                   border: '1px solid rgba(139, 92, 246, 0.3)'
                 }}
+                title={aiInsight.warning || `Modelo: ${aiInsight.model}`}
               >
-                ✨ IA aplicada
+                {aiInsight.source === 'fallback'
+                  ? '⚙️ Motor local'
+                  : aiInsight.fromCache
+                    ? `✨ IA · Caché · ${aiInsight.quality?.score ?? 70}/100`
+                    : `✨ IA · ${aiInsight.quality?.score ?? 70}/100`}
               </span>
             )}
             <button
@@ -921,11 +933,44 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
               </div>
               {aiInsight?.structured ? (
                 <div style={{ fontSize: '7.6pt', color: '#1e3a8a', lineHeight: 1.45 }}>
-                  {aiInsight.structured.planDeAccion.slice(0, 2).map((step, idx) => (
-                    <p key={idx} style={{ margin: '0 0 0.25rem 0' }}>
-                      • <strong>{step.plazo}:</strong> {step.accion} <em>({step.impacto})</em>
+                  {(() => {
+                    const recommendations = aiInsight.structured.planDeAccion
+                      .filter((step) => step.accion.trim().length > 0)
+                      .filter((step, index, steps) => steps.findIndex((candidate) => candidate.accion.trim() === step.accion.trim()) === index)
+                      .slice(0, 3);
+                    return (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.45rem' }}>
+                        {recommendations.map((step, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              border: '1px solid #bfdbfe',
+                              borderRadius: '6px',
+                              background: '#ffffff',
+                              padding: '0.45rem',
+                              minHeight: '42px'
+                            }}
+                          >
+                            <div style={{ fontWeight: 700, color: '#0369a1', marginBottom: '0.15rem', fontSize: '6.8pt' }}>
+                              Recomendación {idx + 1}
+                            </div>
+                            <div>{step.accion}</div>
+                            {step.impacto && <div style={{ marginTop: '0.15rem', color: '#475569' }}><em>{step.impacto}</em></div>}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  {topConductores.length > 0 && (
+                    <p style={{ margin: '0 0 0.25rem 0' }}>
+                      • <strong>Prioridad operativa:</strong>{' '}
+                      {[...topConductores]
+                        .sort((a, b) => (b.incidentes || 0) - (a.incidentes || 0) || (a.promedioScore || 10) - (b.promedioScore || 10))
+                        .slice(0, 3)
+                        .map((driver) => driver.nombre)
+                        .join(', ') || 'Seguimiento preventivo para toda la flota'}.
                     </p>
-                  ))}
+                  )}
                   {aiInsight.structured.metasSimples.length > 0 && (
                     <p style={{ margin: 0 }}>
                       • <strong>Metas Próximo Año:</strong>{' '}

@@ -192,7 +192,7 @@ export function buildDriverAiPrompt(metrics: ReturnType<typeof buildDriverAiMetr
     'REGLAS ESTRICTAS:',
     '- Usa un español claro, cercano y motivador, SIN jerga estadística (nada de desviación estándar, mediana, sigma ni siglas V2).',
     '- Destaca si mejoró o retrocedió respecto a sesiones previas cuando totalSesiones >= 2.',
-    '- En focosDeAtencion y planDeAccion enfócate en 2 o 3 hábitos concretos que el operador pueda aplicar en su ruta diaria (ahorro de diésel, cuidado de frenos, distancia de seguridad, carril) y en su próxima práctica en simulador (los cursos suelen ser 1 o 2 veces al año).',
+    '- En focosDeAtencion y planDeAccion enfócate en 2 o 3 hábitos concretos para las próximas capacitaciones y para aplicar en ruta (ahorro de diésel, cuidado de frenos, distancia de seguridad y carril). Todas las acciones deben agruparse bajo el plazo "Próximas capacitaciones"; no uses ciclos separados.',
     '- REGLA SOBRE "Efectos del alcohol" (esConcientizacionIntencional: true): es un ejercicio de CONCIENTIZACIÓN planeado intencionalmente para salir mal y evidenciar riesgos de conducir alcoholizado. Es completamente natural tener calificación baja y accidentes ahí; NO lo pongas como error del operador ni recomiendes reforzar ese ejercicio.',
     '- Responde ÚNICAMENTE con un objeto JSON válido con esta estructura exacta (sin markdown ni texto extra):',
     '{',
@@ -208,7 +208,7 @@ export function buildDriverAiPrompt(metrics: ReturnType<typeof buildDriverAiMetr
     '    { "titulo": "Hábito a corregir", "porqueImporta": "Impacto práctico en ruta, combustible, frenos o seguridad.", "nivel": "alto | medio" }',
     '  ],',
     '  "planDeAccion": [',
-    '    { "plazo": "En ruta diaria | Próxima sesión en simulador | Siguiente ciclo anual", "accion": "Acción práctica y específica para el operador", "impacto": "Beneficio esperado" }',
+    '    { "plazo": "Próximas capacitaciones", "accion": "Acción práctica y específica para el operador", "impacto": "Beneficio esperado" }',
     '  ],',
     '  "metasSimples": [',
     '    { "indicador": "Nombre corto", "actual": "Valor actual", "meta": "Meta siguiente evaluación" }',
@@ -325,23 +325,20 @@ export function buildLocalDriverFallbackStructured(
     focosDeAtencion,
     planDeAccion: [
       {
-        plazo: 'En ruta diaria',
+        plazo: 'Próximas capacitaciones',
         accion: topMistakes[0]
-          ? `Cuidar de forma consciente el hábito "${topMistakes[0].nombre}" durante cada jornada.`
+          ? `Cuidar el hábito "${topMistakes[0].nombre}" durante las próximas jornadas.`
           : 'Mantener anticipación visual, uso adecuado de frenos auxiliares y respeto a límites de velocidad.',
         impacto: 'Menor consumo de diésel y menor desgaste de frenos y motor.'
       },
       {
-        plazo: 'Próxima sesión en simulador',
-        accion:
-          worstEx && worstEx.nombre !== bestEx?.nombre
-            ? `Practicar el escenario "${worstEx.nombre}" repasando maniobras preventivas paso a paso.`
-            : 'Realizar práctica de manejo defensivo y respuesta ante frenado de emergencia.',
+        plazo: 'Próximas capacitaciones',
+        accion: `Practicar ${worstEx && worstEx.nombre !== bestEx?.nombre ? `"${worstEx.nombre}"` : 'manejo defensivo'} en simulador.`,
         impacto: 'Mayor seguridad y soltura ante situaciones críticas.'
       },
       {
-        plazo: 'Siguiente ciclo anual',
-        accion: `Confirmar que su calificación se ubique en ≥ ${targetScore.toFixed(1)} puntos y con cero incidentes graves.`,
+        plazo: 'Próximas capacitaciones',
+        accion: `Confirmar una calificación objetivo de ≥ ${targetScore.toFixed(1)} puntos y cero incidentes graves.`,
         impacto: 'Consolidar conducción segura y consistente.'
       }
     ],

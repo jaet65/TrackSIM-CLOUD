@@ -1,6 +1,7 @@
 import { CompanySummary, Evaluation } from '../types';
 import { logAudit } from './auditLog';
 import type { CompanyAiStructuredReport } from './companyAiInsights';
+import type { AiResponseQuality } from './companyAiInsights';
 import { findCatalogExercise } from './exerciseCatalog';
 import { getCriticalMistakes, getEvaluationIncidentCounts } from './incidentMetrics';
 
@@ -23,6 +24,9 @@ export interface CompanyPresentationInput {
   allEvaluations: Evaluation[];
   aiReport?: CompanyAiStructuredReport;
   aiSourceLabel?: string;
+  aiQuality?: AiResponseQuality;
+  aiCached?: boolean;
+  aiWarning?: string;
 }
 
 export interface DriverRowSummary {
@@ -1773,11 +1777,17 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
   // =========================================================================
   if (input.aiReport) {
     const ai = input.aiReport;
+    const qualityLabel =
+      typeof input.aiQuality?.score === 'number'
+        ? ` • Calidad ${input.aiQuality.score}/100`
+        : '';
+    const cacheLabel = input.aiCached ? ' • Caché' : '';
+    const warningLabel = input.aiWarning ? ' • Motor local / Corrección aplicada' : '';
     const sAi = pres.addSlide();
     addSlideHeader(
       sAi,
       'Conclusiones Ejecutivas y Plan Anual',
-      `${input.aiSourceLabel || 'Síntesis Ejecutiva con IA'} • ${data.companyName} (${data.periodText})`,
+      `${input.aiSourceLabel || 'Síntesis Ejecutiva con IA'}${qualityLabel}${cacheLabel}${warningLabel} • ${data.companyName} (${data.periodText})`,
       slidePage++,
       totalSlides
     );
@@ -1964,6 +1974,23 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
       riskRuns.push({ text: `${item.titulo}: `, options: { bold: true, color: COLORS.navy, fontSize: 8.8 } });
       riskRuns.push({ text: item.porqueImporta, options: { color: COLORS.slateDark, fontSize: 8.5 } });
     });
+    const priorityDrivers = data.top10Worst.slice(0, 3).map((driver) => driver.nombre);
+    const worstExercise = data.exercises.find((exercise) => exercise.nivel === 'Reforzar') || data.exercises[0];
+    if (priorityDrivers.length > 0 || worstExercise) {
+      riskRuns.push({ text: '\nPrioridad operativa: ', options: { bold: true, color: COLORS.red, fontSize: 8 } });
+      if (priorityDrivers.length > 0) {
+        riskRuns.push({
+          text: priorityDrivers.join(', '),
+          options: { bold: true, color: COLORS.navy, fontSize: 8.2 }
+        });
+      }
+      if (worstExercise) {
+        riskRuns.push({
+          text: `${priorityDrivers.length > 0 ? ' • ' : ''}Reforzar ${worstExercise.nombre} (${worstExercise.promedio.toFixed(1)}/10)`,
+          options: { color: COLORS.slateDark, fontSize: 8.2 }
+        });
+      }
+    }
     if (riskRuns.length > 0) {
       sAi.addText(riskRuns, {
         x: 6.94,
@@ -2005,33 +2032,26 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
       fontFace: 'Segoe UI'
     });
 
-    ai.planDeAccion.slice(0, 3).forEach((step, idx) => {
+    const recommendations = ai.planDeAccion
+      .filter((step) => step.accion.trim().length > 0)
+      .filter((step, index, steps) => steps.findIndex((candidate) => candidate.accion.trim() === step.accion.trim()) === index)
+      .slice(0, 3);
+    recommendations.forEach((step, idx) => {
       const cardX = 0.76 + idx * 4.01;
-      const cardY = 5.44;
-      const cardW = 3.78;
-      const cardH = 1.42;
       sAi.addShape('roundRect', {
         x: cardX,
-        y: cardY,
-        w: cardW,
-        h: cardH,
+        y: 5.44,
+        w: 3.78,
+        h: 1.42,
         rectRadius: 0.07,
         fill: { color: COLORS.white },
         line: { color: 'BAE6FD', width: 0.75 }
       });
-      sAi.addShape('roundRect', {
+      sAi.addText(`Recomendación ${idx + 1}`, {
         x: cardX + 0.12,
-        y: cardY + 0.1,
-        w: cardW - 0.24,
-        h: 0.24,
-        rectRadius: 0.05,
-        fill: { color: COLORS.skyLight }
-      });
-      sAi.addText(`${idx + 1}. ${step.plazo}`, {
-        x: cardX + 0.18,
-        y: cardY + 0.12,
-        w: cardW - 0.36,
-        h: 0.2,
+        y: 5.54,
+        w: 3.54,
+        h: 0.22,
         fontSize: 8,
         bold: true,
         color: COLORS.sky,
@@ -2039,9 +2059,9 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
       });
       sAi.addText(step.accion, {
         x: cardX + 0.12,
-        y: cardY + 0.38,
-        w: cardW - 0.24,
-        h: 0.56,
+        y: 5.82,
+        w: 3.54,
+        h: 0.58,
         fontSize: 8.5,
         bold: true,
         color: COLORS.navy,
@@ -2050,9 +2070,9 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
       });
       sAi.addText(`Impacto: ${step.impacto}`, {
         x: cardX + 0.12,
-        y: cardY + 0.96,
-        w: cardW - 0.24,
-        h: 0.4,
+        y: 6.42,
+        w: 3.54,
+        h: 0.34,
         fontSize: 7.8,
         color: COLORS.muted,
         fontFace: 'Segoe UI',

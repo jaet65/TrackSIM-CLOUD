@@ -65,6 +65,14 @@ export interface AiResponseQuality {
   issues: string[];
 }
 
+export function isUsableCompanyAiResult(
+  result: CompanyAiInsightResult | null | undefined
+): result is CompanyAiInsightResult & { structured: CompanyAiStructuredReport } {
+  if (!result?.structured) return false;
+  if (result.source === 'fallback') return true;
+  return (result.quality?.score ?? 70) >= 70;
+}
+
 export interface AiQuickAnswerResult {
   answer: string;
   source: 'gemini' | 'fallback';
@@ -80,9 +88,9 @@ const GEMINI_MODEL_CANDIDATES = ['gemini-3.5-flash-lite', 'gemini-3.8-flash'] as
 const MODEL_COOLDOWN_MS = 5 * 60 * 1000;
 const modelCooldownUntil = new Map<string, number>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const STORAGE_KEY_PREFIX = 'tracksim_ai_insight_v7:';
-const TEXT_STORAGE_KEY_PREFIX = 'tracksim_ai_qa_v2:';
-const AI_PROMPT_VERSION = 'v2';
+const STORAGE_KEY_PREFIX = 'tracksim_ai_insight_v8:';
+const TEXT_STORAGE_KEY_PREFIX = 'tracksim_ai_qa_v3:';
+const AI_PROMPT_VERSION = 'v3';
 
 export const TRACKY_AI_QUALITY_COLLECTION = 'tracky_ai_quality';
 
@@ -477,7 +485,7 @@ export function parseStructuredAiResponse(rawText: string): CompanyAiStructuredR
         : [],
       planDeAccion: Array.isArray(parsed.planDeAccion)
         ? parsed.planDeAccion.slice(0, 4).map((x) => ({
-            plazo: String(x?.plazo || 'Próximo paso'),
+            plazo: 'Próximas capacitaciones',
             accion: String(x?.accion || ''),
             impacto: String(x?.impacto || '')
           }))
@@ -525,15 +533,27 @@ export function validateStructuredAiResponse(
       nivel: item.nivel === 'alto' ? 'alto' as const : 'medio' as const
     }));
 
-  const planDeAccion = report.planDeAccion
+  const splitRecommendationText = (value: string): string[] =>
+    value
+      .split(/\s+(?:Además|También)[,.]?\s+/i)
+      .map((part) => part.replace(/^\s*(?:Además|También)[,.]?\s*/i, '').replace(/\s+/g, ' ').trim())
+      .filter((part, index, parts) => part.length > 0 && parts.indexOf(part) === index);
+
+  const normalizedPlanActions = report.planDeAccion
     .slice(0, 3)
-    .map((item) => ({
-      plazo: /pr[oó]ximo año|siguiente ciclo|seguimiento anual/i.test(item.plazo)
-        ? item.plazo
-        : 'Seguimiento anual',
-      accion: cleanText(item.accion, 'Mantener el seguimiento preventivo.'),
-      impacto: cleanText(item.impacto, 'Reducir riesgos y mejorar la continuidad operativa.')
-    }));
+    .flatMap((item) => splitRecommendationText(cleanText(item.accion, 'Mantener el seguimiento preventivo.')))
+    .filter((action, index, actions) => actions.indexOf(action) === index)
+    .slice(0, 3);
+  const normalizedPlanImpacts = report.planDeAccion
+    .slice(0, 3)
+    .flatMap((item) => splitRecommendationText(cleanText(item.impacto, 'Reducir riesgos y mejorar la continuidad operativa.')))
+    .filter((impact, index, impacts) => impacts.indexOf(impact) === index)
+    .slice(0, 3);
+  const planDeAccion = normalizedPlanActions.map((action, index) => ({
+    plazo: 'Próximas capacitaciones',
+    accion: action,
+    impacto: normalizedPlanImpacts[index] || 'Reducir riesgos y mejorar la seguridad operativa.'
+  }));
 
   const metasSimples = report.metasSimples
     .filter((item) => !alcoholText.test(`${item.indicador} ${item.actual} ${item.meta}`))
@@ -577,7 +597,7 @@ export function assessStructuredAiQuality(
   if (/efectos del alcohol|alcohol/i.test(fullText)) {
     issues.push('Incluyó el ejercicio de concientización');
   }
-  if (report.planDeAccion.some((item) => !/pr[oó]ximo año|siguiente ciclo|seguimiento anual/i.test(item.plazo))) {
+  if (report.planDeAccion.some((item) => !/pr[oó]ximas capacitaciones/i.test(item.plazo))) {
     issues.push('Incluyó un plazo distinto al horizonte anual');
   }
 
@@ -608,7 +628,7 @@ export function buildCompanyAiPrompt(metrics: ReturnType<typeof buildCompanyAiMe
     'Tu objetivo es que CUALQUIER persona entienda en segundos cómo está la flota, qué va bien, qué riesgos hay en la vida diaria (accidentes, gasto de diésel, desgaste de frenos) y qué hacer.',
     'REGLAS ESTRICTAS:',
     '- Usa un español claro, cercano y natural. PROHIBIDO usar jerga estadística (nada de "desviación estándar", "mediana", "sigma", "V2", "telemetría agregada").',
-    '- Los cursos en simulador se toman 1 o 2 veces al año; por ello, el plan y las metas deben plantearse para el PRÓXIMO AÑO o los próximos ciclos semestrales (PROHIBIDO proponer plazos de "esta semana", "este mes" o "90 días").',
+    '- Los cursos en simulador se toman 1 o 2 veces al año. Devuelve 2 o 3 elementos independientes en planDeAccion bajo el plazo "Próximas capacitaciones". NUNCA uses "Además" para unir varias acciones dentro de un mismo elemento.',
     '- REGLA SOBRE "Efectos del alcohol" (esConcientizacionIntencional: true): es un ejercicio de CONCIENTIZACIÓN planeado intencionalmente para salir mal y mostrar el riesgo de manejar alcoholizado. Es completamente natural tener calificación baja y accidentes en ese ejercicio; NO lo marques como falla técnica ni recomiendes reforzar o mejorar su calificación.',
     '- Si filtroAnioActivo es un año específico (por ejemplo "2026"), analiza únicamente ese año sin mencionar tendencias de varios años; si es "Todos los años", incluye la evolución anual cuando haya 2 o más años.',
     '- No inventes números ni nombres; usa solo los datos del JSON.',
@@ -627,7 +647,7 @@ export function buildCompanyAiPrompt(metrics: ReturnType<typeof buildCompanyAiMe
     '    { "titulo": "Ej. Exceso de aceleración o choques", "porqueImporta": "Qué riesgo real provoca (más diésel, desgaste o accidentes) y el dato.", "nivel": "alto | medio" }',
     '  ],',
     '  "planDeAccion": [',
-    '    { "plazo": "1er ciclo próximo año | 2do ciclo próximo año | Seguimiento anual", "accion": "Qué enfoque dar a la próxima jornada de simulador", "impacto": "Beneficio esperado" }',
+    '    { "plazo": "Próximas capacitaciones", "accion": "Qué enfoque dar a las próximas jornadas de simulador", "impacto": "Beneficio esperado" }',
     '  ],',
     '  "metasSimples": [',
     '    { "indicador": "Nombre corto", "actual": "Valor actual", "meta": "Meta para el próximo año" }',
@@ -743,24 +763,26 @@ export function buildLocalFallbackStructured(metrics: ReturnType<typeof buildCom
     focosDeAtencion,
     planDeAccion: [
       {
-        plazo: '1er ciclo próximo año',
+        plazo: 'Próximas capacitaciones',
         accion:
           metrics.distribucionAptitud.requiereRefuerzo > 0
-            ? `Priorizar en la primera jornada anual a los ${metrics.distribucionAptitud.requiereRefuerzo} operadores con menos de 6.0 para reforzar sus maniobras base.`
-            : 'Incluir en la primera jornada anual un repaso de los errores más repetidos detectados en este periodo.',
-        impacto: 'Reduce accidentes evitables desde el inicio del año.'
+            ? `Priorizar en las próximas capacitaciones a los ${metrics.distribucionAptitud.requiereRefuerzo} operadores con menos de 6.0 para reforzar sus maniobras base.`
+            : worstEx
+              ? `Incluir en las próximas capacitaciones un repaso de "${worstEx.nombre}"${topErrs[0] ? ` y corregir "${topErrs[0].nombre}"` : ''}.`
+              : 'Incluir en las próximas capacitaciones escenarios de conducción defensiva, frenado preventivo y ahorro de combustible.',
+        impacto: 'Reduce accidentes evitables, mejora la técnica de manejo y baja el gasto de diésel y frenos.'
       },
       {
-        plazo: '2do ciclo próximo año',
-        accion: worstEx
-          ? `Dedicar mayor tiempo de práctica en simulador a "${worstEx.nombre}"${topErrs[0] ? ` y a corregir "${topErrs[0].nombre}"` : ''}.`
-          : 'Reforzar escenarios de conducción defensiva, frenado preventivo y ahorro de combustible.',
-        impacto: 'Mejora la técnica de manejo y baja el gasto de diésel y frenos.'
+        plazo: 'Próximas capacitaciones',
+        accion: topErrs[0]
+          ? `Reforzar de forma práctica el hábito "${topErrs[0].nombre}" con ejercicios guiados.`
+          : 'Practicar anticipación visual, modulación de freno y distancia de seguimiento.',
+        impacto: 'Consolida hábitos seguros y disminuye el desgaste de frenos y componentes.'
       },
       {
-        plazo: 'Seguimiento anual',
-        accion: 'Reevaluar en la siguiente ronda anual a los operadores con calificación menor a 7.0 para confirmar su avance.',
-        impacto: 'Consolida hábitos seguros ciclo tras ciclo.'
+        plazo: 'Próximas capacitaciones',
+        accion: 'Reevaluar los avances y confirmar las metas antes de cerrar el próximo ciclo de capacitación.',
+        impacto: 'Permite medir el progreso y ajustar el plan de seguimiento.'
       }
     ],
     metasSimples: [
@@ -974,7 +996,7 @@ function buildStructuredResponseJsonSchema(): Record<string, unknown> {
           additionalProperties: false,
           required: ['plazo', 'accion', 'impacto'],
           properties: {
-            plazo: { type: 'string', enum: ['1er ciclo próximo año', '2do ciclo próximo año', 'Seguimiento anual'] },
+            plazo: { type: 'string', enum: ['Próximas capacitaciones'] },
             accion: { type: 'string', maxLength: 300 },
             impacto: { type: 'string', maxLength: 300 }
           }
@@ -1145,7 +1167,8 @@ export async function invokeGeminiStructuredInsight({
       source: 'fallback',
       model: 'Motor Local (Respaldo)',
       generatedAt: new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
-      warning: buildGeminiFallbackWarning(err)
+      warning: buildGeminiFallbackWarning(err),
+      quality: { score: 100, issues: ['Síntesis generada con métricas locales verificadas'] }
     };
     logTrackyAiQuality(fallback);
     return fallback;

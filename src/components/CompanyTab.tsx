@@ -649,7 +649,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
     if (!comp || isExportingPptx) return;
     setIsExportingPptx(true);
     try {
-      const [{ generateCompanyPresentationPptx }, { generateCompanyAiInsight }] = await Promise.all([
+      const [{ generateCompanyPresentationPptx }, { generateCompanyAiInsight, isUsableCompanyAiResult }] = await Promise.all([
         import('../services/companyPresentationGenerator'),
         import('../services/companyAiInsights')
       ]);
@@ -669,6 +669,8 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         // Si falla la síntesis IA, continuar generando el PPTX normalmente
       }
 
+      const usableAiResult = isUsableCompanyAiResult(aiResult) ? aiResult : null;
+
       await generateCompanyPresentationPptx({
         comp,
         selectedYear,
@@ -678,9 +680,16 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         operadoresConHistorialPrevio,
         exerciseStats,
         allEvaluations: evaluationsByYear,
-        aiReport: aiResult?.structured,
+        aiReport: usableAiResult?.structured,
         aiSourceLabel:
-          aiResult?.source === 'gemini' ? 'Análisis Ejecutivo con IA (TrackSIM)' : 'Síntesis Ejecutiva Automática'
+          usableAiResult?.source === 'gemini'
+            ? usableAiResult.fromCache
+              ? 'Análisis Ejecutivo IA · Caché TrackSIM'
+              : 'Análisis Ejecutivo con IA · TrackSIM'
+            : 'Síntesis Ejecutiva Automática · Motor Local',
+        aiQuality: usableAiResult?.quality,
+        aiCached: usableAiResult?.fromCache,
+        aiWarning: usableAiResult?.warning
       });
     } catch (error) {
       console.error('Error al generar presentación PowerPoint:', error);

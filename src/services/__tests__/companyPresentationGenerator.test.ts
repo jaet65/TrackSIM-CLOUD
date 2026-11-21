@@ -223,6 +223,8 @@ describe('companyPresentationGenerator', () => {
       exerciseStats: [{ key: 'e1', nombre: 'Autopista', promedio: 7.5, totalEvaluaciones: 5 }],
       allEvaluations: [],
       aiSourceLabel: 'Análisis Ejecutivo con IA (TrackSIM)',
+      aiQuality: { score: 85, issues: [] },
+      aiCached: true,
       aiReport: {
         estadoGeneral: {
           nivel: 'bueno',
@@ -235,7 +237,7 @@ describe('companyPresentationGenerator', () => {
         ],
         planDeAccion: [
           {
-            plazo: '1er ciclo próximo año',
+            plazo: 'Próximas capacitaciones',
             accion: 'Reforzar uso de freno auxiliar',
             impacto: 'Menor fatiga térmica.'
           }
@@ -252,6 +254,9 @@ describe('companyPresentationGenerator', () => {
     expect(aiSlideTexts).toContain('Velocidad en pendiente');
     expect(aiSlideTexts).toContain('Reforzar uso de freno auxiliar');
     expect(aiSlideTexts).toContain('≥ 7.8 próximo año');
+    expect(aiSlideTexts).toContain('Calidad 85/100');
+    expect(aiSlideTexts).toContain('Caché');
+    expect(aiSlideTexts).toContain('Prioridad operativa');
     expect(createdSlides[createdSlides.length - 1].texts.join(' ')).toContain('¡Gracias por su atención!');
   });
 });

@@ -315,7 +315,7 @@ export function buildFleetEvolutionAiPrompt(
     '- Si existen operadores recurrentes (total > 0), destaca el impacto real de las re-capacitaciones (cuántos mejoraron y su avance promedio).',
     '- Analiza qué ejercicios operativos mejoraron o retrocedieron con el tiempo.',
     '- REGLA CRÍTICA SOBRE "Efectos del alcohol" (esConcientizacionIntencional: true): es un ejercicio de CONCIENTIZACIÓN planeado intencionalmente para obtener mala calificación y choques para sensibilizar al operador. NO lo reportes como retroceso operativo ni recomiendes reentrenar ese escenario.',
-    '- En planDeAccion toma en cuenta que los programas anuales ocurren 1 o 2 veces al año; propone acciones para el siguiente ciclo anual o jornadas de refuerzo.',
+    '- En planDeAccion agrupa todas las acciones bajo el plazo "Próximas capacitaciones"; no distingas primera, segunda jornada ni ciclos separados.',
     '- Responde ÚNICAMENTE con un objeto JSON válido con esta estructura exacta (sin markdown ni texto adicional):',
     '{',
     '  "estadoGeneral": {',
@@ -330,7 +330,7 @@ export function buildFleetEvolutionAiPrompt(
     '    { "titulo": "Retroceso o riesgo persistente", "porqueImporta": "Impacto operativo, financiero o de seguridad si continúa.", "nivel": "alto | medio" }',
     '  ],',
     '  "planDeAccion": [',
-    '    { "plazo": "Próxima jornada anual | Siguiente ciclo de capacitación | Seguimiento en ruta", "accion": "Medida estratégica concreta para la flota", "impacto": "Resultado esperado" }',
+    '    { "plazo": "Próximas capacitaciones", "accion": "Medida estratégica concreta para la flota", "impacto": "Resultado esperado" }',
     '  ],',
     '  "metasSimples": [',
     '    { "indicador": "Nombre corto", "actual": "Valor último año", "meta": "Meta siguiente ciclo anual" }',
@@ -460,23 +460,23 @@ export function buildLocalFleetEvolutionFallbackStructured(
     focosDeAtencion: focosDeAtencion.slice(0, 3),
     planDeAccion: [
       {
-        plazo: 'Próxima jornada anual',
+        plazo: 'Próximas capacitaciones',
         accion: regressedEx
-          ? `Priorizar práctica guiada en "${regressedEx.nombre}" y reforzar retroalimentación al cierre de cada sesión.`
-          : 'Reforzar escenarios de manejo preventivo y frenado anticipado para toda la flota.',
-        impacto: 'Recuperar consistencia técnica y evitar retrocesos en el siguiente año.'
+          ? `Priorizar práctica guiada en "${regressedEx.nombre}".`
+          : 'Reforzar manejo preventivo y frenado anticipado.',
+        impacto: 'Recuperar consistencia técnica y reducir incidentes.'
       },
       {
-        plazo: 'Seguimiento en ruta',
+        plazo: 'Próximas capacitaciones',
         accion: topMistake
-          ? `Monitorear en campo el hábito "${topMistake.nombre}" mediante charlas breves de seguridad operativa.`
-          : 'Dar seguimiento a operadores con menor calificación o historial de incidentes entre ciclos.',
-        impacto: 'Reducir incidentes prevenibles y consumo innecesario de diésel.'
+          ? `Monitorear en campo el hábito "${topMistake.nombre}".`
+          : 'Monitorear operadores con menor calificación o incidentes.',
+        impacto: 'Reducir consumo innecesario de diésel y desgaste de frenos.'
       },
       {
-        plazo: 'Siguiente ciclo de capacitación',
-        accion: `Programar seguimiento comparativo para operadores recurrentes buscando alcanzar ≥ ${scoreTarget.toFixed(1)} puntos promedio.`,
-        impacto: 'Consolidar la mejora continua año contra año.'
+        plazo: 'Próximas capacitaciones',
+        accion: `Buscar una meta promedio de ≥ ${scoreTarget.toFixed(1)} puntos para operadores recurrentes.`,
+        impacto: 'Consolidar la mejora continua de la flota.'
       }
     ],
     metasSimples: [
