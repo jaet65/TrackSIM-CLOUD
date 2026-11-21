@@ -72,6 +72,7 @@ export interface AiQuickAnswerResult {
   createdAtMs?: number;
   fromCache?: boolean;
   warning?: string;
+  quality?: AiResponseQuality;
 }
 
 const GEMINI_MODEL_CANDIDATES = ['gemini-3.5-flash-lite', 'gemini-3.8-flash'] as const;
@@ -835,6 +836,7 @@ export interface GeminiTextAnswerOptions {
   cacheKey: string;
   prompt: string;
   buildFallback: () => string;
+  validateAnswer?: (answer: string) => string;
   forceRefresh?: boolean;
   maxOutputTokens?: number;
 }
@@ -1007,6 +1009,31 @@ function logTrackyAiQuality(result: CompanyAiInsightResult): void {
   });
 }
 
+function assessAndLogTrackyQuickAnswer(result: AiQuickAnswerResult): void {
+  const forbidden = /desviaci[oó]n est[aá]ndar|mediana|sigma|telemetr[ií]a agregada|V2/i;
+  const alcohol = /efectos del alcohol|alcohol/i;
+  const issues: string[] = [];
+
+  if (forbidden.test(result.answer)) issues.push('Incluyó jerga técnica prohibida');
+  if (alcohol.test(result.answer)) issues.push('Incluyó el ejercicio de concientización');
+  if (result.answer.trim().length < 30) issues.push('La respuesta quedó demasiado corta');
+
+  const quality: AiResponseQuality = {
+    score: Math.max(0, 100 - issues.length * 20),
+    issues
+  };
+  result.quality = quality;
+
+  console.info('[Tracky IA][Respuesta rápida][Calidad]', {
+    puntuacion: `${quality.score}/100`,
+    fuente: result.source,
+    modelo: result.model,
+    cache: result.fromCache ? 'sí' : 'no',
+    incidencias: issues.length,
+    detalle: issues
+  });
+}
+
 export async function invokeGeminiStructuredInsight({
   cacheKey,
   prompt,
@@ -1077,12 +1104,14 @@ export async function invokeGeminiTextAnswer({
   cacheKey,
   prompt,
   buildFallback,
+  validateAnswer,
   forceRefresh,
   maxOutputTokens = 1024
 }: GeminiTextAnswerOptions): Promise<AiQuickAnswerResult> {
   if (!forceRefresh) {
     const cached = readCachedTextAnswer(cacheKey);
     if (cached) {
+      assessAndLogTrackyQuickAnswer(cached);
       return cached;
     }
   }
@@ -1094,8 +1123,9 @@ export async function invokeGeminiTextAnswer({
     });
 
     const now = new Date();
+    const validatedAnswer = validateAnswer ? validateAnswer(text) : text;
     const result: AiQuickAnswerResult = {
-      answer: text,
+      answer: validatedAnswer,
       source: 'gemini',
       model: modelId,
       generatedAt: now.toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
@@ -1103,15 +1133,18 @@ export async function invokeGeminiTextAnswer({
       fromCache: false
     };
     writeCachedTextAnswer(cacheKey, result);
+    assessAndLogTrackyQuickAnswer(result);
     return result;
   } catch (err) {
-    return {
+    const fallback: AiQuickAnswerResult = {
       answer: buildFallback(),
       source: 'fallback',
       model: 'Motor Local (Respaldo)',
       generatedAt: new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
       warning: buildGeminiFallbackWarning(err)
     };
+    assessAndLogTrackyQuickAnswer(fallback);
+    return fallback;
   }
 }
 

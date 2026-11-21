@@ -464,6 +464,46 @@ export function buildLocalQuickQuestionFallback(
   }
 }
 
+export function validateTrackyQuickAnswer(
+  answer: string,
+  questionId: TrackyQuickQuestionId,
+  ctx: QuickQuestionContextData
+): string {
+  const forbidden =
+    /desviaci[oó]n est[aá]ndar|mediana|sigma|telemetr[ií]a agregada|V2|efectos del alcohol|alcohol/i;
+  const hasInvalidText = forbidden.test(answer);
+  const tooShort = answer.trim().length < 45;
+  let lacksRequiredContext = false;
+
+  if (questionId === 'priority_drivers') {
+    lacksRequiredContext =
+      ctx.operadoresPrioritarios.length > 0
+        ? !ctx.operadoresPrioritarios.some((driver) => answer.includes(driver.nombre))
+        : !/no se detectaron|no hay operadores|mantenimiento preventivo|seguimiento preventivo/i.test(answer);
+  }
+  if (questionId === 'diesel') {
+    lacksRequiredContext =
+      ctx.habitosDieselYFrenos.length > 0
+        ? !ctx.habitosDieselYFrenos.slice(0, 3).some((habit) => answer.includes(habit.nombre))
+        : !/di[eé]sel|freno|combustible/i.test(answer);
+  }
+  if (questionId === 'next_session' && ctx.ejerciciosOperativosBajos[0]) {
+    lacksRequiredContext = !answer.includes(ctx.ejerciciosOperativosBajos[0].nombre);
+  }
+  if (questionId === 'roi_training') {
+    lacksRequiredContext =
+      ctx.recurrentesResumen.total > 0
+        ? !/mejor|retroced|estable|pts/i.test(answer)
+        : !/no hay|insuficient|múltiples evaluaciones|recurren/i.test(answer);
+  }
+
+  if (hasInvalidText || tooShort || lacksRequiredContext) {
+    return buildLocalQuickQuestionFallback(questionId, ctx);
+  }
+
+  return answer.trim();
+}
+
 function buildQuickQuestionCacheKey(input: TrackyQuickQuestionRequest): string {
   const insightStamp = input.insight.createdAtMs ?? input.insight.generatedAt;
   const evaluationFingerprint = JSON.stringify(
@@ -499,6 +539,7 @@ export async function askTrackyQuickQuestion(input: TrackyQuickQuestionRequest):
     cacheKey,
     prompt,
     buildFallback: () => buildLocalQuickQuestionFallback(question.id, contextData),
+    validateAnswer: (answer) => validateTrackyQuickAnswer(answer, question.id, contextData),
     forceRefresh: input.forceRefresh,
     maxOutputTokens: question.id === 'whatsapp' ? 600 : 1024
   });

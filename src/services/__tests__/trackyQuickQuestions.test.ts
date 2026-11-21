@@ -7,7 +7,8 @@ import {
   buildQuickQuestionContextData,
   buildTrackyQuickQuestionPrompt,
   getCachedTrackyQuickAnswer,
-  getQuickQuestionsForSubject
+  getQuickQuestionsForSubject,
+  validateTrackyQuickAnswer
 } from '../trackyQuickQuestions';
 
 const generateContentMock = vi.fn();
@@ -119,6 +120,38 @@ function createSampleEvaluations(): Evaluation[] {
 }
 
 describe('trackyQuickQuestions', () => {
+  it('reemplaza respuestas rápidas incompatibles por el respaldo local', () => {
+    const ctx = buildQuickQuestionContextData({
+      questionId: 'diesel',
+      subjectType: 'company',
+      companyName: 'Transcooler',
+      periodText: 'Año 2025',
+      insight: createSampleInsight(),
+      evaluations: createSampleEvaluations()
+    });
+
+    const fallbackWithAlcohol = validateTrackyQuickAnswer(
+      'Debes reforzar el ejercicio de Efectos del alcohol porque tuvo una calificación baja.',
+      'diesel',
+      ctx
+    );
+    expect(fallbackWithAlcohol).toContain('Frenado brusco');
+
+    const fallbackForPriority = validateTrackyQuickAnswer(
+      'Carlos Ruiz es el operador prioritario.',
+      'priority_drivers',
+      ctx
+    );
+    expect(fallbackForPriority).toContain('Carlos Ruiz');
+
+    const fallbackForWrongSession = validateTrackyQuickAnswer(
+      'Practica frenado y conducción defensiva buscando 8.0/10.',
+      'next_session',
+      ctx
+    );
+    expect(fallbackForWrongSession).toContain('Frenado de Emergencia');
+  });
+
   it('ofrece 4 preguntas rápidas diferenciadas según el contexto (company, driver, evolution)', () => {
     const companyQs = getQuickQuestionsForSubject('company');
     const driverQs = getQuickQuestionsForSubject('driver');
