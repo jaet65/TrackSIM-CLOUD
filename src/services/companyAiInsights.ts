@@ -2,6 +2,7 @@ import type { CompanySummary, Evaluation } from '../types';
 import { getEvaluationYear } from './analytics';
 import { app } from './firebaseApp';
 import { getCriticalMistakes, getEvaluationIncidentCounts } from './incidentMetrics';
+import { addDoc, collection, db, serverTimestamp } from './firebaseFirestore';
 
 export interface AiExerciseInput {
   nombre: string;
@@ -82,6 +83,8 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const STORAGE_KEY_PREFIX = 'tracksim_ai_insight_v7:';
 const TEXT_STORAGE_KEY_PREFIX = 'tracksim_ai_qa_v2:';
 const AI_PROMPT_VERSION = 'v2';
+
+export const TRACKY_AI_QUALITY_COLLECTION = 'tracky_ai_quality';
 
 export function isAlcoholAwarenessExercise(nombre: string): boolean {
   return /alcohol/i.test(nombre);
@@ -996,9 +999,41 @@ function buildStructuredResponseJsonSchema(): Record<string, unknown> {
   };
 }
 
+export interface TrackyAiQualityMetricInput {
+  kind: 'analysis' | 'quick_answer';
+  source: 'gemini' | 'fallback';
+  model: string;
+  score: number;
+  issues: string[];
+  cacheHit: boolean;
+}
+
+export async function persistTrackyAiQualityMetric(input: TrackyAiQualityMetricInput): Promise<void> {
+  const score = Math.max(0, Math.min(100, Math.round(input.score)));
+  const issues = input.issues
+    .map((issue) => issue.trim())
+    .filter(Boolean)
+    .slice(0, 10);
+
+  try {
+    await addDoc(collection(db, TRACKY_AI_QUALITY_COLLECTION), {
+      kind: input.kind,
+      source: input.source,
+      model: input.model.slice(0, 80),
+      score,
+      issues,
+      cacheHit: input.cacheHit,
+      promptVersion: AI_PROMPT_VERSION,
+      createdAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.warn('[Tracky IA][Calidad] No se pudo guardar la métrica:', error);
+  }
+}
+
 function logTrackyAiQuality(result: CompanyAiInsightResult): void {
   const quality = result.quality ?? { score: result.source === 'gemini' ? 70 : 100, issues: [] };
-  console.info('[Tracky IA][Calidad]', {
+  const metric = {
     puntuacion: `${quality.score}/100`,
     fuente: result.source,
     modelo: result.model,
@@ -1006,6 +1041,15 @@ function logTrackyAiQuality(result: CompanyAiInsightResult): void {
     incidencias: quality.issues.length,
     detalle: quality.issues,
     advertencia: result.warning ?? null
+  };
+  console.info('[Tracky IA][Calidad]', metric);
+  void persistTrackyAiQualityMetric({
+    kind: 'analysis',
+    source: result.source,
+    model: result.model,
+    score: quality.score,
+    issues: quality.issues,
+    cacheHit: Boolean(result.fromCache)
   });
 }
 
@@ -1031,6 +1075,14 @@ function assessAndLogTrackyQuickAnswer(result: AiQuickAnswerResult): void {
     cache: result.fromCache ? 'sí' : 'no',
     incidencias: issues.length,
     detalle: issues
+  });
+  void persistTrackyAiQualityMetric({
+    kind: 'quick_answer',
+    source: result.source,
+    model: result.model,
+    score: quality.score,
+    issues,
+    cacheHit: Boolean(result.fromCache)
   });
 }
 

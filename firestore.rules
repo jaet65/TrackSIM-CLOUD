@@ -147,6 +147,29 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Métricas técnicas de calidad de Tracky: solo datos agregados, sin respuestas ni datos personales.
+    function trackyQualityShapeOk() {
+      let d = request.resource.data;
+      return d.keys().hasOnly([
+               'kind', 'source', 'model', 'score', 'issues', 'cacheHit', 'promptVersion', 'createdAt'
+             ]) &&
+             d.keys().hasAll(['kind', 'source', 'model', 'score', 'issues', 'cacheHit', 'promptVersion', 'createdAt']) &&
+             d.kind in ['analysis', 'quick_answer'] &&
+             d.source in ['gemini', 'fallback'] &&
+             d.model is string && d.model.size() <= 80 &&
+             d.score is int && d.score >= 0 && d.score <= 100 &&
+             d.issues is list && d.issues.size() <= 10 &&
+             d.cacheHit is bool &&
+             d.promptVersion is string && d.promptVersion.size() <= 20 &&
+             d.createdAt == request.time;
+    }
+
+    match /tracky_ai_quality/{metricId} {
+      allow read: if isAdmin();
+      allow create: if signedIn() && trackyQualityShapeOk();
+      allow update, delete: if false;
+    }
+
     // Tombstones de sincronización incremental, limitados a las empresas permitidas
     match /_eliminaciones/{delId} {
       allow read: if canReadEmpresa(resource.data.empresa);

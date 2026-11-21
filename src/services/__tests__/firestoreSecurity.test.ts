@@ -306,4 +306,37 @@ describe('Firestore Security Rules', () => {
       categoria: 'seguridad', accion: 'intento', critico: true, cantidad: 10
     }));
   });
+
+  it('permite registrar métricas técnicas de Tracky sin datos personales y limita lectura a admin', async () => {
+    const viewer = testEnv.authenticatedContext('domain-user', {
+      email: 'viewer@lacostena.com.mx',
+      email_verified: true
+    }).firestore();
+    const admin = testEnv.authenticatedContext('admin-user', {
+      email: 'admin@corporativomaf.com',
+      email_verified: true
+    }).firestore();
+    const metric = {
+      kind: 'analysis',
+      source: 'gemini',
+      model: 'gemini-3.5-flash-lite',
+      score: 85,
+      issues: ['Incluyó jerga técnica'],
+      cacheHit: false,
+      promptVersion: 'v2',
+      createdAt: serverTimestamp()
+    };
+
+    await assertSucceeds(addDoc(collection(viewer, 'tracky_ai_quality'), metric));
+    await assertFails(addDoc(collection(viewer, 'tracky_ai_quality'), {
+      ...metric,
+      score: 101
+    }));
+    await assertFails(addDoc(collection(viewer, 'tracky_ai_quality'), {
+      ...metric,
+      answer: 'contenido prohibido'
+    }));
+    await assertFails(getDocs(collection(viewer, 'tracky_ai_quality')));
+    await assertSucceeds(getDocs(collection(admin, 'tracky_ai_quality')));
+  });
 });
