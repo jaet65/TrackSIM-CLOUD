@@ -466,7 +466,22 @@ export function buildLocalQuickQuestionFallback(
 
 function buildQuickQuestionCacheKey(input: TrackyQuickQuestionRequest): string {
   const insightStamp = input.insight.createdAtMs ?? input.insight.generatedAt;
-  return `qa|${input.subjectType}|${input.questionId}|${input.companyName}|${input.periodText}|${(input.evaluations || []).length}|${insightStamp}`;
+  const evaluationFingerprint = JSON.stringify(
+    (input.evaluations || []).map((ev) => ({
+      id: ev.id,
+      fecha: ev.fechaCapacitacion || ev.fechaReporte || ev.fecha,
+      conductor: ev.conductor || ev.operador,
+      score: ev.evaluacionFinalPuntos ?? ev.calificacionExacta ?? ev.promedioScore,
+      sede: ev.sede || ev.ciudad,
+      incidentes: getEvalIncidents(ev)
+    }))
+  );
+  let hash = 2166136261;
+  for (let i = 0; i < evaluationFingerprint.length; i += 1) {
+    hash ^= evaluationFingerprint.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `qa-v2|${input.subjectType}|${input.questionId}|${input.companyName}|${input.periodText}|${hash >>> 0}|${insightStamp}`;
 }
 
 export function getCachedTrackyQuickAnswer(input: TrackyQuickQuestionRequest): AiQuickAnswerResult | null {

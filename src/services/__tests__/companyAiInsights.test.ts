@@ -70,6 +70,48 @@ function createSummary(): CompanySummary {
 }
 
 describe('companyAiInsights', () => {
+  it('invalida la caché cuando cambian las métricas relevantes', async () => {
+    const baseInput = {
+      comp: createSummary(),
+      periodText: 'Año 2026',
+      selectedYear: '2026',
+      conductoresRecurrentes: 0,
+      pctRecurrentes: '0.0',
+      exerciseStats: [] as Array<{ nombre: string; promedio: number; totalEvaluaciones: number }>,
+      allEvaluations: [] as Evaluation[]
+    };
+
+    generateContentMock.mockResolvedValueOnce({
+      response: {
+        text: () =>
+          JSON.stringify({
+            estadoGeneral: {
+              nivel: 'bueno',
+              titulo: 'Flota estable',
+              resumenSimple: 'Desempeño estable.'
+            },
+            loQueVaBien: [{ titulo: 'Continuidad', detalle: 'Base estable.' }],
+            focosDeAtencion: [{ titulo: 'Seguimiento', porqueImporta: 'Mantener prevención.', nivel: 'medio' }],
+            planDeAccion: [{ plazo: 'Seguimiento anual', accion: 'Mantener capacitación.', impacto: 'Evitar retrocesos.' }],
+            metasSimples: [{ indicador: 'Aprobación', actual: '100%', meta: 'Mantener ≥ 95%' }]
+          })
+      }
+    });
+
+    await generateCompanyAiInsight({ ...baseInput, forceRefresh: true });
+    expect(getCachedCompanyAiInsight(baseInput)?.fromCache).toBe(true);
+
+    const changedEvaluations: Evaluation[] = [{
+      id: 'cache-change',
+      empresa: 'Transcooler',
+      fechaCapacitacion: '2026-11-21',
+      evaluacionFinalPuntos: 4.2,
+      colisiones: 3
+    }];
+
+    expect(getCachedCompanyAiInsight({ ...baseInput, allEvaluations: changedEvaluations })).toBeNull();
+  });
+
   it('valida el nivel y limpia contenido incompatible con las métricas locales', () => {
     const metrics = buildCompanyAiMetricsContext({
       comp: createSummary(),

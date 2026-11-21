@@ -72,8 +72,9 @@ const GEMINI_MODEL_CANDIDATES = ['gemini-3.5-flash-lite', 'gemini-3.8-flash'] as
 const MODEL_COOLDOWN_MS = 5 * 60 * 1000;
 const modelCooldownUntil = new Map<string, number>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const STORAGE_KEY_PREFIX = 'tracksim_ai_insight_v6:';
-const TEXT_STORAGE_KEY_PREFIX = 'tracksim_ai_qa_v1:';
+const STORAGE_KEY_PREFIX = 'tracksim_ai_insight_v7:';
+const TEXT_STORAGE_KEY_PREFIX = 'tracksim_ai_qa_v2:';
+const AI_PROMPT_VERSION = 'v2';
 
 export function isAlcoholAwarenessExercise(nombre: string): boolean {
   return /alcohol/i.test(nombre);
@@ -735,7 +736,25 @@ function buildCacheKey(
   input: CompanyAiInsightRequest,
   metrics: ReturnType<typeof buildCompanyAiMetricsContext>
 ): string {
-  return `${input.comp.nombre}|${input.selectedYear}|${metrics.totalEvaluaciones}|${metrics.promedioGlobal}|${metrics.totalCriticalEvents}`;
+  const metricsFingerprint = JSON.stringify({
+    totalEvaluaciones: metrics.totalEvaluaciones,
+    promedioGlobal: metrics.promedioGlobal,
+    tasaAprobacionPct: metrics.tasaAprobacionPct,
+    totalCriticalEvents: metrics.totalCriticalEvents,
+    operadoresConIncidentes: metrics.operadoresConIncidentes,
+    distribucionAptitud: metrics.distribucionAptitud,
+    ejercicios: metrics.ejercicios,
+    sedeBreakdown: metrics.sedeBreakdown,
+    annualTrend: metrics.annualTrend,
+    criticalBreakdown: metrics.criticalBreakdown,
+    topMistakes: metrics.topMistakes
+  });
+  let hash = 2166136261;
+  for (let i = 0; i < metricsFingerprint.length; i += 1) {
+    hash ^= metricsFingerprint.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${AI_PROMPT_VERSION}|${input.comp.nombre}|${input.selectedYear}|${hash >>> 0}`;
 }
 
 export function readCachedAiInsight(cacheKey: string): CompanyAiInsightResult | null {
