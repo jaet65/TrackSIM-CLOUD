@@ -54,15 +54,18 @@ export const CompanyReportModal: React.FC<CompanyReportModalProps> = ({
       .replace(/'/g, '&#039;');
 
     const incidentSummary = getHybridIncidentSummary(allEvaluations);
+    const largestIncidentCount = Math.max(0, ...incidentSummary.details.map((item) => item.count));
     const criticalIncidentRows = incidentSummary.details
-      .map((item) => `<tr><td>${escapeHtml(item.name)}</td><td class="number">${item.count}</td></tr>`)
+      .map((item) => `<tr><td>${escapeHtml(item.name)}<div class="incident-bar" aria-hidden="true"><div style="width:${largestIncidentCount ? (item.count / largestIncidentCount) * 100 : 0}%"></div></div></td><td class="number incident-count">${item.count}</td></tr>`)
       .join('');
 
     const operators = createCompanySummaryFromEvaluations(comp.nombre, comp.slug, allEvaluations).conductores
       .sort((a, b) => b.promedioScore - a.promedioScore);
     const recurrentOperators = operators.filter((operator) => operator.totalEvaluaciones > 1);
-    const operatorRows = operators.map((operator, index) => `
-      <tr>
+    const operatorRows = operators.map((operator, index) => {
+      const state = operator.estado || (operator.promedioScore >= 6 ? 'Aprobado' : 'No Aprobado');
+      const stateClass = state === 'Sobresaliente' ? 'status-good' : state === 'Aprobado' ? 'status-neutral' : 'status-attention';
+      return `<tr>
         <td>${index + 1}</td>
         <td><strong>${escapeHtml(operator.nombre)}</strong></td>
         <td>${escapeHtml(operator.sede || 'Sede Principal')}</td>
@@ -70,8 +73,9 @@ export const CompanyReportModal: React.FC<CompanyReportModalProps> = ({
         <td class="number">${operator.promedioScore.toFixed(2)} / 10</td>
         <td class="number">${operator.ultimoScore.toFixed(2)} / 10</td>
         <td>${escapeHtml(operator.ultimaFecha)}</td>
-        <td>${escapeHtml(operator.estado || (operator.promedioScore >= 6 ? 'Aprobado' : 'No Aprobado'))}</td>
-      </tr>`).join('');
+        <td><span class="status-pill ${stateClass}">${escapeHtml(state)}</span></td>
+      </tr>`;
+    }).join('');
     const exerciseRows = exerciseStats.map((exercise, index) => {
       const level = exercise.promedio >= 8 ? 'Sobresaliente' : exercise.promedio >= 6 ? 'Aprobado' : 'Requiere Refuerzo';
       return `
@@ -80,7 +84,7 @@ export const CompanyReportModal: React.FC<CompanyReportModalProps> = ({
           <td><strong>${escapeHtml(exercise.nombre)}</strong></td>
           <td class="number">${exercise.totalEvaluaciones}</td>
           <td class="number">${exercise.promedio.toFixed(2)} / 10</td>
-          <td>${level}</td>
+          <td><span class="status-pill ${exercise.promedio >= 8 ? 'status-good' : exercise.promedio >= 6 ? 'status-neutral' : 'status-attention'}">${level}</span></td>
         </tr>`;
     }).join('');
 
@@ -130,7 +134,7 @@ export const CompanyReportModal: React.FC<CompanyReportModalProps> = ({
         <td class="number">${first === null ? '—' : first.toFixed(2)}</td>
         <td class="number">${last === null ? '—' : last.toFixed(2)}</td>
         <td class="number">${change}</td>
-        <td>${trend}</td>
+        <td><span class="status-pill ${difference === null ? 'status-muted' : difference > 0.2 ? 'status-good' : difference < -0.2 ? 'status-attention' : 'status-neutral'}">${trend}</span></td>
       </tr>`;
     }).join('');
     const annualData = new Map<string, { score: number; count: number; incidents: number; missing: number; operators: Set<string> }>();
@@ -163,17 +167,19 @@ export const CompanyReportModal: React.FC<CompanyReportModalProps> = ({
       const top = 25;
       const bottom = 175;
       const points = rows.map((row, index) => ({
-        x: rows.length === 1 ? (left + right) / 2 : left + index * (right - left) / (rows.length - 1),
+        x: rows.length === 1 ? (left + right) / 2 : left + 24 + index * (right - left - 48) / (rows.length - 1),
         y: bottom - (row.value / maximum) * (bottom - top),
         value: row.value
       }));
       return `<svg viewBox="0 0 810 215" role="img" aria-label="${label}" class="annual-chart">
+        <line x1="${left}" y1="${top}" x2="${right}" y2="${top}" stroke="#e2e8f0" stroke-dasharray="4 5"/>
+        <line x1="${left}" y1="${(top + bottom) / 2}" x2="${right}" y2="${(top + bottom) / 2}" stroke="#e2e8f0" stroke-dasharray="4 5"/>
         <line x1="${left}" y1="${top}" x2="${left}" y2="${bottom}" stroke="#94a3b8"/>
         <line x1="${left}" y1="${bottom}" x2="${right}" y2="${bottom}" stroke="#94a3b8"/>
         <text x="45" y="${top + 4}" text-anchor="end">${maximum.toFixed(2)}</text>
         <text x="45" y="${bottom + 4}" text-anchor="end">0</text>
         <polyline fill="none" stroke="${color}" stroke-width="3" points="${points.map((point) => `${point.x},${point.y}`).join(' ')}"/>
-        ${points.map((point, index) => `<g><title>${rows[index].year}: ${point.value.toFixed(2)}</title><circle cx="${point.x}" cy="${point.y}" r="4" fill="${color}"/><text x="${point.x}" y="${point.y - 9}" text-anchor="middle">${point.value.toFixed(2)}</text><text x="${point.x}" y="198" text-anchor="middle">${rows[index].year}</text></g>`).join('')}
+        ${points.map((point, index) => `<g><title>${rows[index].year}: ${point.value.toFixed(2)}</title><circle cx="${point.x}" cy="${point.y}" r="6" fill="white" stroke="${color}" stroke-width="3"/><text x="${point.x}" y="${point.y - 10}" text-anchor="middle">${point.value.toFixed(2)}</text><text x="${point.x}" y="198" text-anchor="middle">${rows[index].year}</text></g>`).join('')}
       </svg>`;
     };
     const rateRows = annualRows.flatMap((row) => row.rate === null ? [] : [{ year: row.year, value: row.rate }]);
@@ -191,10 +197,11 @@ export const CompanyReportModal: React.FC<CompanyReportModalProps> = ({
     const report = `
       <main class="company-report-document">
         <header class="company-report-masthead">
-          <div class="company-report-brand">TRACKSIM CLOUD</div>
+          <div class="company-report-brand"><span class="brand-mark" aria-hidden="true">T</span> TRACKSIM <span>CLOUD</span></div>
+          <div class="report-eyebrow">INTELIGENCIA DE FLOTA &nbsp; / &nbsp; REPORTE EJECUTIVO</div>
           <h1>Expediente ejecutivo de flota</h1>
+          <div class="company-report-name">${escapeHtml(comp.nombre)}</div>
           <div class="company-report-metadata">
-            <span>${escapeHtml(comp.nombre)}</span>
             <span>${escapeHtml(periodText)}</span>
             <span>Emitido el ${escapeHtml(new Date().toLocaleDateString('es-MX'))}</span>
           </div>
@@ -202,12 +209,12 @@ export const CompanyReportModal: React.FC<CompanyReportModalProps> = ({
         <section class="report-section">
           <h2>Resumen ejecutivo</h2>
           <div class="kpi-grid">
-            <div><span>Operadores</span><strong>${comp.totalConductores}</strong></div>
-            <div><span>Operadores con más de una evaluación</span><strong>${recurrentOperators.length}</strong></div>
-            <div><span>Promedio de flota</span><strong>${comp.promedioFinal.toFixed(2)} / 10</strong></div>
-            <div><span>Tasa de aprobación</span><strong>${comp.tasaAprobacion.toFixed(1)}%</strong></div>
-            <div><span>${incidentSummary.label}</span><strong>${incidentSummary.unavailable === allEvaluations.length && allEvaluations.length > 0 ? 'Sin datos' : incidentSummary.total}</strong></div>
-            <div><span>Sedes</span><strong>${comp.sedes?.length || 0}</strong></div>
+            <div class="kpi-card"><span>Operadores</span><strong>${comp.totalConductores}</strong></div>
+            <div class="kpi-card"><span>Operadores con más de una evaluación</span><strong>${recurrentOperators.length}</strong></div>
+            <div class="kpi-card kpi-blue"><span>Promedio de flota</span><strong>${comp.promedioFinal.toFixed(2)} / 10</strong></div>
+            <div class="kpi-card kpi-green"><span>Tasa de aprobación</span><strong>${comp.tasaAprobacion.toFixed(1)}%</strong></div>
+            <div class="kpi-card kpi-rose"><span>${incidentSummary.label}</span><strong>${incidentSummary.unavailable === allEvaluations.length && allEvaluations.length > 0 ? 'Sin datos' : incidentSummary.total}</strong></div>
+            <div class="kpi-card"><span>Sedes</span><strong>${comp.sedes?.length || 0}</strong></div>
           </div>
         </section>
         <section class="report-section">
@@ -224,12 +231,12 @@ export const CompanyReportModal: React.FC<CompanyReportModalProps> = ({
         ${recurrentOperatorRows ? `<section class="report-section"><h2>Evolución por operador recurrente</h2><p>Comparación entre la primera y la última evaluación del periodo. Cambio en puntos sobre 10.</p><table><thead><tr><th>#</th><th>Operador</th><th class="number">Evaluaciones</th><th class="number">Primera</th><th class="number">Última</th><th class="number">Cambio</th><th>Tendencia</th></tr></thead><tbody>${recurrentOperatorRows}</tbody></table><p>Sin fechas o calificaciones completas, o con varias evaluaciones en la primera o última fecha, la evolución no es comparable.</p></section>` : ''}
         <section class="report-section">
           <h2>Evolución anual de la flota</h2>
-          ${annualRows.length ? `<p>Calificación promedio por evaluación (0 a 10).</p>${chart(annualRows.map((row) => ({ year: row.year, value: row.average })), 10, '#0284c7', 'Calificación promedio anual de la flota')}` : '<p>No hay evaluaciones con año disponible para generar la gráfica.</p>'}
+          ${annualRows.length ? `<p>Calificación promedio por evaluación (0 a 10).</p><div class="chart-panel">${chart(annualRows.map((row) => ({ year: row.year, value: row.average })), 10, '#0284c7', 'Calificación promedio anual de la flota')}</div>` : '<p>No hay evaluaciones con año disponible para generar la gráfica.</p>'}
           ${undatedEvaluations ? `<p>${undatedEvaluations} ${undatedEvaluations === 1 ? 'evaluación sin año se excluyó' : 'evaluaciones sin año se excluyeron'} de las gráficas.</p>` : ''}
         </section>
         <section class="report-section">
           <h2>Tasa anual de siniestralidad</h2>
-          ${rateRows.length ? `<p>Incidencias por operador evaluado en cada año, según el criterio del cliente en el periodo filtrado.</p>${chart(rateRows, Math.max(1, ...rateRows.map((row) => row.value)), '#e11d48', 'Incidencias anuales por operador evaluado')}<p>${rateTrend}</p>` : '<p>No hay datos de incidencias completos para generar la gráfica.</p>'}
+          ${rateRows.length ? `<p>Incidencias por operador evaluado en cada año, según el criterio del cliente en el periodo filtrado.</p><div class="chart-panel chart-panel-rose">${chart(rateRows, Math.max(1, ...rateRows.map((row) => row.value)), '#e11d48', 'Incidencias anuales por operador evaluado')}</div><p class="trend-note">${rateTrend}</p>` : '<p>No hay datos de incidencias completos para generar la gráfica.</p>'}
           ${rateRows.length < annualRows.length ? '<p>Se excluyeron los años con datos de incidencias incompletos.</p>' : ''}
         </section>
       </main>`;
@@ -256,57 +263,63 @@ export const CompanyReportModal: React.FC<CompanyReportModalProps> = ({
             html, body { width: 100%; min-height: 100%; margin: 0; padding: 0; background: #f1f5f9 !important; color: #172033 !important; font: 9pt/1.45 "Segoe UI", Arial, sans-serif !important; overflow: visible !important; }
             .no-print, .navbar, .subnav-tabs, button, .badge-info, .screen-only { display: none !important; }
             .print-only { display: block !important; }
-            .company-report-document { width: 100%; max-width: 1100px; margin: 0 auto; padding: 28px 34px 40px; background: #fff; }
-            .company-report-masthead { position: relative; margin-bottom: 22px; padding: 2px 0 17px; border-bottom: 2px solid #dce5ef; }
-            .company-report-masthead::after { position: absolute; bottom: -2px; left: 0; width: 74px; height: 3px; background: #0284c7; content: ""; }
-            .company-report-brand { color: #0284c7; font-size: 8pt; font-weight: 800; letter-spacing: .16em; }
-            .company-report-masthead h1 { margin: 7px 0 10px; color: #10233f; font-size: 22pt; font-weight: 750; letter-spacing: -.035em; line-height: 1.15; }
-            .company-report-metadata { display: flex; flex-wrap: wrap; gap: 7px; color: #53647a; font-size: 8.5pt; }
-            .company-report-metadata span { padding: 4px 9px; border: 1px solid #dbe5ef; border-radius: 999px; background: #f8fafc; }
-            .report-section { margin: 0 0 18px; break-inside: avoid; }
-            .report-section h2 { margin: 0 0 9px; color: #17314f; font-size: 12pt; border-bottom: 1px solid #dce5ef; padding-bottom: 6px; }
-            .kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-            .kpi-grid div { display: flex; flex-direction: column; gap: 3px; padding: 10px; border: 1px solid #dce5ef; border-radius: 8px; background: #f8fafc; }
-            .kpi-grid span { color: #64748b; font-size: 7pt; text-transform: uppercase; }
-            .kpi-grid strong { color: #10233f; font-size: 11pt; }
+            .company-report-document { width: 100%; max-width: 1100px; margin: 0 auto; padding: 30px 34px 40px; background: #fff; }
+            .company-report-masthead { position: relative; overflow: hidden; margin-bottom: 26px; padding: 24px 28px 26px; border-radius: 14px; background: linear-gradient(120deg, #10243d, #174968) !important; color: #fff; break-inside: avoid; }
+            .company-report-masthead::after { position: absolute; right: -40px; top: -90px; width: 240px; height: 240px; border: 35px solid rgba(125, 211, 252, .10); border-radius: 50%; content: ""; pointer-events: none; }
+            .company-report-brand { display: flex; align-items: center; gap: 5px; color: #fff; font-size: 9pt; font-weight: 800; letter-spacing: .12em; }
+            .company-report-brand > span:last-child { color: #7dd3fc; }
+            .brand-mark { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-right: 4px; border-radius: 6px; background: #0ea5e9; color: #fff; font-size: 12pt; letter-spacing: 0; }
+            .report-eyebrow { margin-top: 21px; color: #a7d7ec; font-size: 7pt; font-weight: 700; letter-spacing: .12em; }
+            .company-report-masthead h1 { margin: 6px 0; color: #fff !important; font-size: 22pt; font-weight: 750; letter-spacing: -.035em; line-height: 1.15; }
+            .company-report-name { color: #e0f2fe; font-size: 12pt; font-weight: 600; overflow-wrap: anywhere; }
+            .company-report-metadata { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; color: #e0f2fe; font-size: 8pt; }
+            .company-report-metadata span { padding: 4px 9px; border: 1px solid rgba(186, 230, 253, .28); border-radius: 999px; background: rgba(255,255,255,.08); }
+            .report-section { margin: 0 0 23px; }
+            .report-section h2 { display: flex; align-items: center; gap: 9px; margin: 0 0 11px; padding: 0 0 9px; border-bottom: 1px solid #dce5ef; color: #17314f; font-size: 12pt; break-after: avoid; }
+            .report-section h2::before { width: 4px; height: 19px; border-radius: 4px; background: #0ea5e9; content: ""; }
+            .report-section p { margin: 8px 0; color: #52657a; font-size: 8.5pt; }
+            .kpi-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; break-inside: avoid; }
+            .kpi-grid .kpi-card { display: flex; flex-direction: column; justify-content: space-between; gap: 10px; min-height: 79px; padding: 12px 14px; border: 1px solid #dce7f0; border-top: 3px solid #94a3b8; border-radius: 9px; background: #f8fafc; }
+            .kpi-grid .kpi-blue { border-top-color: #0ea5e9; background: #f0f9ff; }
+            .kpi-grid .kpi-green { border-top-color: #10b981; background: #f0fdf7; }
+            .kpi-grid .kpi-rose { border-top-color: #f43f5e; background: #fff5f6; }
+            .kpi-grid span { color: #5b6d82; font-size: 7.2pt; font-weight: 700; letter-spacing: .025em; }
+            .kpi-grid strong { color: #10233f; font-size: 16pt; line-height: 1.1; }
             table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 7.5pt; }
-            th { padding: 7px 6px; border-bottom: 2px solid #bfcddd; background: #edf4fa; color: #314760; text-align: left; text-transform: uppercase; }
-            td { padding: 6px; border-bottom: 1px solid #e8edf3; color: #34445a; vertical-align: middle; }
+            th { padding: 9px 6px; border-bottom: 1px solid #cad9e7; background: #edf4fa; color: #435c75; text-align: left; text-transform: uppercase; font-size: 7pt; overflow-wrap: anywhere; }
+            td { padding: 8px 6px; border-bottom: 1px solid #e8edf3; color: #34445a; vertical-align: middle; overflow-wrap: anywhere; }
             tbody tr:nth-child(even) { background: #f8fafc; }
             tbody tr { break-inside: avoid; }
+            thead { display: table-header-group; }
             .number { text-align: right; }
+            .incident-bar { height: 5px; margin-top: 6px; overflow: hidden; border-radius: 5px; background: #e8eff5; }
+            .incident-bar > div { height: 100%; border-radius: inherit; background: #38a5d6; }
+            .incident-count { color: #17314f; font-weight: 750; font-size: 10pt; }
+            .status-pill { display: inline-block; padding: 3px 6px; border-radius: 5px; font-size: 7pt; font-weight: 700; }
+            .status-good { color: #087653; background: #dcfce7; }
+            .status-neutral { color: #036b9b; background: #e0f2fe; }
+            .status-attention { color: #b42338; background: #ffe4e6; }
+            .status-muted { color: #64748b; background: #eaf0f5; }
+            .chart-panel { padding: 12px 14px 4px; border: 1px solid #dceaf3; border-radius: 10px; background: #f8fcff; break-inside: avoid; }
+            .chart-panel-rose { border-color: #f5dfe3; background: #fffafb; }
             .annual-chart { display: block; width: 100%; height: auto; font-size: 11px; fill: #334155; }
-            .continuation { color: #64748b; font-size: 8pt; }
-            .company-report-document .view-section { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; }
-            .company-report-document .company-executive-card { margin: 0 0 18px !important; padding: 15px 17px !important; border: 1px solid #d8e3ee !important; border-left: 4px solid #0284c7 !important; border-radius: 11px !important; background: linear-gradient(135deg, #f8fbff, #fff 72%) !important; box-shadow: 0 3px 12px rgba(16, 35, 63, .05) !important; }
-            .company-report-document .company-executive-heading { padding-bottom: 12px !important; border-bottom: 1px solid #dce5ef !important; }
-            .company-report-document .company-executive-heading h2 { color: #10233f !important; font-size: 15pt !important; }
-            .company-report-document .company-executive-card > div:last-child { display: grid !important; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px !important; }
-            .company-report-document .company-executive-card > div:last-child > div { min-width: 0; padding: 9px 10px !important; border: 1px solid #e0e8f0; border-radius: 8px; background: #fff; }
-            .company-report-document .company-executive-card > div:last-child > div > div:first-child { margin-bottom: 3px; color: #718096 !important; font-size: 7pt !important; letter-spacing: .055em; }
-            .company-report-document .card { width: 100% !important; max-width: 100% !important; margin: 0 0 16px !important; padding: 0 !important; overflow: visible !important; border: 1px solid #dce5ef !important; border-radius: 10px !important; background: #fff !important; box-shadow: 0 2px 8px rgba(16, 35, 63, .035) !important; }
-            .company-report-document .card > div:first-child, .company-report-document .card > summary { padding: 12px 15px !important; border-bottom: 1px solid #e7edf4 !important; background: #f8fafc !important; }
-            .company-report-document .card h3, .company-report-document .card summary { color: #17314f !important; font-size: 10pt !important; font-weight: 750 !important; }
-            .company-report-document .card > div:not(:first-child) { padding: 12px 15px !important; }
-            .company-report-document .table-responsive { width: 100% !important; max-width: 100% !important; overflow: visible !important; }
-            .company-report-document table.print-table { width: 100% !important; max-width: 100% !important; table-layout: fixed !important; border-collapse: separate !important; border-spacing: 0 !important; font-size: 7.5pt !important; }
-            .company-report-document table.print-table th { padding: 7px 6px !important; border-bottom: 1px solid #d5e0eb !important; background: #edf4fa !important; color: #314760 !important; font-size: 7pt !important; font-weight: 750 !important; letter-spacing: .035em; text-align: left; text-transform: uppercase; }
-            .company-report-document table.print-table td { padding: 6px !important; border-bottom: 1px solid #e8edf3 !important; color: #34445a !important; vertical-align: middle; }
-            .company-report-document table.print-table tbody tr:nth-child(even) { background: #f8fafc !important; }
-            .company-report-document .print-avoid-break, .company-report-document table.print-table tr { break-inside: avoid; }
-            .company-report-document img { display: block; max-width: 100% !important; height: auto !important; }
+            .trend-note { padding: 9px 12px; border-left: 3px solid #38a5d6; border-radius: 0 6px 6px 0; background: #f0f9ff; font-weight: 600; }
             @media (max-width: 700px) {
               .company-report-document { padding: 18px 14px 28px; }
-              .company-report-document .company-executive-card > div:last-child { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+              .company-report-masthead { padding: 20px; }
+              .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
               .company-report-masthead h1 { font-size: 18pt; }
+              table { font-size: 7pt; }
+              th, td { padding: 6px 3px; }
             }
             @page { size: letter portrait; margin: 12mm 10mm; }
             @media print {
-              html, body { background: #fff !important; }
+              html, body { background: #fff !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
               .company-report-document { width: 100%; max-width: none; margin: 0; padding: 0; }
-              .company-report-document .card { box-shadow: none !important; }
-              .company-report-document .company-executive-card { box-shadow: none !important; }
-              .company-report-document .card > div:first-child, .company-report-document .card > summary { break-after: avoid; }
+              .kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+              .company-report-masthead { padding: 18px 24px; }
+              .report-eyebrow { margin-top: 12px; }
+              .chart-panel { break-inside: avoid; }
             }
           </style>
         </head>

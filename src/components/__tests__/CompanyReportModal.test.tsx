@@ -98,6 +98,10 @@ describe('CompanyReportModal', () => {
       ['Salirse de la vía', '1']
     ]));
     expect(getRows()).toHaveLength(6);
+    const bars = Array.from(getBreakdown().querySelectorAll<HTMLElement>('.incident-bar > div'));
+    expect(bars).toHaveLength(6);
+    expect(bars[0].style.width).toBe('100%');
+    expect(getBreakdown().querySelector('.incident-bar')?.getAttribute('aria-hidden')).toBe('true');
     expect(getBreakdown().textContent).toContain('Datos de incidencias incompletos o inconsistentes para 3 evaluaciones');
     expect(getBreakdown().querySelector('script')).toBeNull();
 
@@ -140,6 +144,11 @@ describe('CompanyReportModal', () => {
       .map((cell) => cell.textContent);
     expect(evolutionCells).toEqual(['1', 'Ana', '2', '6.00', '8.00', '+2.00 pts', 'Mejora']);
     expect(section('Detalle de evolución por operador')).toBeUndefined();
+    const anaRow = Array.from(metrics.querySelectorAll('tbody tr')).find((row) => row.textContent?.includes('Ana'))!;
+    expect(anaRow.querySelector('.status-pill')?.textContent).toBe('Sobresaliente');
+    expect(anaRow.querySelector('.status-pill')?.classList.contains('status-good')).toBe(true);
+    expect(section('Evolución por operador recurrente')?.querySelector('.status-good')?.textContent).toBe('Mejora');
+    expect(section('Resumen ejecutivo')?.querySelectorAll('.kpi-card')).toHaveLength(6);
 
     rerender(<CompanyReportModal {...props} allEvaluations={[evaluations[2]]} />);
     expect(cards()[1].querySelector('strong')?.textContent).toBe('0');
