@@ -1823,11 +1823,11 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     };
     const pal = nivelPalette[ai.estadoGeneral.nivel] || nivelPalette.atencion;
 
-    // Fila superior izquierda: Semáforo de Estado General
+    // Fila superior: Semáforo de Estado General
     sAi.addShape('roundRect', {
       x: 0.6,
       y: 1.15,
-      w: 7.45,
+      w: 12.13,
       h: 1.14,
       rectRadius: 0.08,
       fill: { color: pal.bg },
@@ -1844,7 +1844,7 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     sAi.addText(pal.label, {
       x: 0.9,
       y: 1.22,
-      w: 6.95,
+      w: 11.53,
       h: 0.2,
       fontSize: 7.5,
       bold: true,
@@ -1854,7 +1854,7 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     sAi.addText(ai.estadoGeneral.titulo, {
       x: 0.9,
       y: 1.42,
-      w: 6.95,
+      w: 11.53,
       h: 0.28,
       fontSize: 12,
       bold: true,
@@ -1864,50 +1864,12 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     sAi.addText(ai.estadoGeneral.resumenSimple, {
       x: 0.9,
       y: 1.7,
-      w: 6.95,
+      w: 11.53,
       h: 0.54,
       fontSize: 9,
       color: COLORS.slateDark,
       fontFace: 'Segoe UI',
       valign: 'top'
-    });
-
-    // Fila superior derecha: Metas para el Próximo Año
-    sAi.addShape('roundRect', {
-      x: 8.23,
-      y: 1.15,
-      w: 4.5,
-      h: 1.14,
-      rectRadius: 0.08,
-      fill: { color: COLORS.white },
-      line: { color: COLORS.border, width: 1 }
-    });
-    sAi.addText('METAS PARA EL PRÓXIMO AÑO', {
-      x: 8.38,
-      y: 1.22,
-      w: 4.2,
-      h: 0.2,
-      fontSize: 8,
-      bold: true,
-      color: COLORS.purple,
-      fontFace: 'Segoe UI'
-    });
-    ai.metasSimples.slice(0, 3).forEach((m, idx) => {
-      const indicator = m.indicador.length > 24 ? `${m.indicador.slice(0, 23)}…` : m.indicador;
-      const actual = m.actual.length > 18 ? `${m.actual.slice(0, 17)}…` : m.actual;
-      const target = m.meta.length > 28 ? `${m.meta.slice(0, 27)}…` : m.meta;
-      sAi.addText(`${indicator}: ${actual} → ${target}`, {
-        x: 8.38,
-        y: 1.43 + idx * 0.24,
-        w: 4.2,
-        h: 0.2,
-        fontSize: 7.2,
-        bold: idx === 0,
-        color: idx === 0 ? COLORS.navy : COLORS.slateDark,
-        fontFace: 'Segoe UI',
-        valign: 'middle',
-        fit: 'shrink'
-      });
     });
 
     // Fila media izquierda: Lo que está funcionando bien

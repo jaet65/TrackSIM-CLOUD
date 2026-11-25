@@ -57,7 +57,6 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
   const [isSinglePageReportOpen, setIsSinglePageReportOpen] = useState(false);
   const [isCompanyReportOpen, setIsCompanyReportOpen] = useState(false);
   const [isDiplomasOpen, setIsDiplomasOpen] = useState(false);
-  const [isExportingPptx, setIsExportingPptx] = useState(false);
   const [selectedDiplomaDriver, setSelectedDiplomaDriver] = useState<string | undefined>(undefined);
   const [expandedExercises, setExpandedExercises] = useState<Set<string>>(new Set());
 
@@ -645,59 +644,6 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
     );
   }
 
-  const handleExportPptx = async () => {
-    if (!comp || isExportingPptx) return;
-    setIsExportingPptx(true);
-    try {
-      const [{ generateCompanyPresentationPptx }, { generateCompanyAiInsight, isUsableCompanyAiResult }] = await Promise.all([
-        import('../services/companyPresentationGenerator'),
-        import('../services/companyAiInsights')
-      ]);
-
-      let aiResult: Awaited<ReturnType<typeof generateCompanyAiInsight>> | null = null;
-      try {
-        aiResult = await generateCompanyAiInsight({
-          comp,
-          periodText,
-          selectedYear,
-          conductoresRecurrentes,
-          pctRecurrentes,
-          exerciseStats,
-          allEvaluations: evaluationsByYear
-        });
-      } catch {
-        // Si falla la síntesis IA, continuar generando el PPTX normalmente
-      }
-
-      const usableAiResult = isUsableCompanyAiResult(aiResult) ? aiResult : null;
-
-      await generateCompanyPresentationPptx({
-        comp,
-        selectedYear,
-        periodText,
-        conductoresRecurrentes,
-        pctRecurrentes,
-        operadoresConHistorialPrevio,
-        exerciseStats,
-        allEvaluations: evaluationsByYear,
-        aiReport: usableAiResult?.structured,
-        aiSourceLabel:
-          usableAiResult?.source === 'gemini'
-            ? usableAiResult.fromCache
-              ? 'Análisis Ejecutivo IA · TrackSIM'
-              : 'Análisis Ejecutivo con IA · TrackSIM'
-            : 'Síntesis Ejecutiva Automática · Motor Local',
-        aiQuality: usableAiResult?.quality,
-        aiCached: usableAiResult?.fromCache,
-        aiWarning: usableAiResult?.warning
-      });
-    } catch (error) {
-      console.error('Error al generar presentación PowerPoint:', error);
-    } finally {
-      setIsExportingPptx(false);
-    }
-  };
-
   return (
     <div className="view-section active">
       {/* Filtro de Año para la flota seleccionada globalmente */}
@@ -761,14 +707,6 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         selectedYear={selectedYear}
         availableYears={availableYears}
         operadoresConHistorialPrevio={operadoresConHistorialPrevio}
-        onOpenSinglePageReport={() => setIsSinglePageReportOpen(true)}
-        onOpenCompanyReport={() => setIsCompanyReportOpen(true)}
-        onOpenDiplomas={() => {
-          setSelectedDiplomaDriver(undefined);
-          setIsDiplomasOpen(true);
-        }}
-        onExportPptx={handleExportPptx}
-        isExportingPptx={isExportingPptx}
       />
 
       {/* Rendimiento Promedio en Ejercicios (Solo ejercicios realizados por la empresa) */}
@@ -953,6 +891,8 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
           comp={comp}
           selectedYear={selectedYear}
           periodText={periodText}
+          exerciseStats={exerciseStats}
+          allEvaluations={evaluationsByYear}
         />
       )}
       {/* Modal Generador de Diplomas Oficiales */}

@@ -8,11 +8,6 @@ interface CompanyOverviewCardProps {
   selectedYear?: string;
   availableYears?: string[];
   operadoresConHistorialPrevio?: { count: number; pct: string };
-  onOpenSinglePageReport?: () => void;
-  onOpenCompanyReport?: () => void;
-  onOpenDiplomas?: () => void;
-  onExportPptx?: () => void;
-  isExportingPptx?: boolean;
 }
 
 export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
@@ -21,12 +16,7 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
   pctRecurrentes,
   selectedYear,
   availableYears = [],
-  operadoresConHistorialPrevio,
-  onOpenSinglePageReport,
-  onOpenCompanyReport,
-  onOpenDiplomas,
-  onExportPptx,
-  isExportingPptx = false
+  operadoresConHistorialPrevio
 }) => {
   // Texto descriptivo del periodo / años contemplados
   const periodText = React.useMemo(() => {
@@ -121,96 +111,6 @@ export const CompanyOverviewCard: React.FC<CompanyOverviewCardProps> = ({
           </div>
         </div>
 
-        {/* Acciones Ejecutivas: Imprimir / Generar PDF */}
-        <div className="no-print" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          {[
-            onOpenDiplomas
-              ? {
-                  key: 'diplomas',
-                  className: 'company-diplomas-btn',
-                  icon: '🎓',
-                  label: 'Diplomas',
-                  title: 'Generar diplomas oficiales para los operadores de la empresa y año seleccionados',
-                  onClick: onOpenDiplomas,
-                  disabled: false
-                }
-              : null,
-            onOpenSinglePageReport
-              ? {
-                  key: 'single-page',
-                  className: 'company-single-page-btn',
-                  icon: '📄',
-                  label: 'Single-Page',
-                  title: 'Generar reporte ejecutivo en formato PDF de 1 sola página con filtro de empresa y año',
-                  onClick: onOpenSinglePageReport,
-                  disabled: false
-                }
-              : null,
-            onExportPptx
-              ? {
-                  key: 'pptx',
-                  className: 'company-pptx-btn',
-                  icon: '📊',
-                  label: isExportingPptx ? 'Generando...' : 'PowerPoint',
-                  title: 'Generar presentación PowerPoint (.pptx) ejecutiva con los resultados filtrados',
-                  onClick: onExportPptx,
-                  disabled: isExportingPptx
-                }
-              : null,
-            onOpenCompanyReport
-              ? {
-                  key: 'expediente',
-                  className: 'company-export-btn',
-                  icon: '🖨️',
-                  label: 'Expediente',
-                  title: 'Vista previa del expediente PDF de la flota',
-                  onClick: onOpenCompanyReport,
-                  disabled: false
-                }
-              : null
-          ]
-            .filter((item): item is NonNullable<typeof item> => item !== null)
-            .map((action) => (
-              <button
-                key={action.key}
-                type="button"
-                className={`btn btn-secondary btn-sm ${action.className}`}
-                onClick={action.onClick}
-                disabled={action.disabled}
-                title={action.title}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  padding: '0.5rem 0.95rem',
-                  borderRadius: '8px',
-                  fontSize: '0.82rem',
-                  fontWeight: 600,
-                  background: 'var(--bg-card, #ffffff)',
-                  border: '1px solid var(--border-glow)',
-                  color: 'var(--primary)',
-                  cursor: action.disabled ? 'wait' : 'pointer',
-                  opacity: action.disabled ? 0.75 : 1,
-                  transition: 'all 0.2s ease',
-                  boxShadow: 'var(--shadow-card)'
-                }}
-                onMouseEnter={(e) => {
-                  if (action.disabled) return;
-                  e.currentTarget.style.transform = 'translateY(-1px)';
-                  e.currentTarget.style.borderColor = 'var(--primary)';
-                  e.currentTarget.style.background = 'rgba(56, 189, 248, 0.08)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.borderColor = 'var(--border-glow)';
-                  e.currentTarget.style.background = 'var(--bg-card, #ffffff)';
-                }}
-              >
-                <span>{action.icon}</span>
-                <span>{action.label}</span>
-              </button>
-            ))}
-        </div>
       </div>
 
       {/* Tercer Nivel: Periodo de Años, Número de Operadores, Conductores Recurrentes (> 1 vez), Promedio de Flota, Tasa de Aprobación */}

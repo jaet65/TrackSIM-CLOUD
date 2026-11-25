@@ -1,9 +1,13 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { normalizeExerciseName, findCatalogExercise } from '../services/exerciseCatalog';
 import { getEvaluationIncidentCounts } from '../services/incidentMetrics';
+import { buildExerciseStatsFromCompany, createCompanySummaryFromEvaluations, getEvaluationYear } from '../services/analytics';
+import { CompanySinglePageReportModal } from './company/CompanySinglePageReportModal';
+import { CompanyReportModal } from './company/CompanyReportModal';
+import { CompanyDiplomasModal } from './company/CompanyDiplomasModal';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -28,9 +32,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
     filteredEvaluations,
     companies,
     selectedCompany,
+    selectedCompanySummary,
     companiesSummaries,
+    selectedYear,
     loading
   } = useData();
+
+  const [isSinglePageReportOpen, setIsSinglePageReportOpen] = useState(false);
+  const [isCompanyReportOpen, setIsCompanyReportOpen] = useState(false);
+  const [isDiplomasOpen, setIsDiplomasOpen] = useState(false);
+  const [isExportingPptx, setIsExportingPptx] = useState(false);
 
   // Cálculo de Métricas Clave
   const metrics = useMemo(() => {
@@ -233,6 +244,136 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
     };
   }, [filteredEvaluations, selectedCompany, companies]);
 
+  const availableYears = useMemo(() => {
+    const years = new Set<string>();
+    filteredEvaluations.forEach((evaluation) => {
+      const year = getEvaluationYear(evaluation);
+      if (year) years.add(year);
+    });
+    return Array.from(years).sort().reverse();
+  }, [filteredEvaluations]);
+
+  const evaluationsByYear = useMemo(() => {
+    if (selectedYear === 'all') return filteredEvaluations;
+    return filteredEvaluations.filter((evaluation) => getEvaluationYear(evaluation) === selectedYear);
+  }, [filteredEvaluations, selectedYear]);
+
+  const executiveCompany = useMemo(() => {
+    if (selectedYear === 'all') {
+      if (userRole !== 'admin' && selectedCompany === 'all') {
+        return createCompanySummaryFromEvaluations('Flotas asignadas', 'flotas-asignadas', filteredEvaluations);
+      }
+      return selectedCompanySummary;
+    }
+    const companyName =
+      selectedCompany === 'all' ? 'Todas las empresas' : (selectedCompanySummary?.nombre || selectedCompany);
+    return createCompanySummaryFromEvaluations(
+      companyName,
+      selectedCompanySummary?.slug || 'flota',
+      evaluationsByYear
+    );
+  }, [selectedYear, selectedCompanySummary, selectedCompany, evaluationsByYear, userRole, filteredEvaluations]);
+
+  const periodText = useMemo(() => {
+    if (selectedYear && selectedYear !== 'all') return `Año ${selectedYear}`;
+    const sorted = [...availableYears].sort();
+    if (sorted.length === 0) return 'Histórico general';
+    if (sorted.length === 1) return `Año ${sorted[0]}`;
+    return `${sorted[0]} – ${sorted[sorted.length - 1]}`;
+  }, [selectedYear, availableYears]);
+
+  const { conductoresRecurrentes, pctRecurrentes } = useMemo(() => {
+    const conductores = executiveCompany?.conductores || [];
+    if (conductores.length === 0) return { conductoresRecurrentes: 0, pctRecurrentes: '0.0' };
+    const recurrentes = conductores.filter((driver) => (driver.totalEvaluaciones || 0) > 1).length;
+    return {
+      conductoresRecurrentes: recurrentes,
+      pctRecurrentes: ((recurrentes / conductores.length) * 100).toFixed(1)
+    };
+  }, [executiveCompany]);
+
+  const operadoresConHistorialPrevio = useMemo(() => {
+    if (!selectedYear || selectedYear === 'all') return { count: 0, pct: '0.0' };
+    const conductores = executiveCompany?.conductores || [];
+    if (conductores.length === 0) return { count: 0, pct: '0.0' };
+
+    const currentYear = parseInt(selectedYear, 10);
+    const namesInYear = new Set(
+      conductores.map((driver) => (driver.nombre || '').trim().toLowerCase()).filter(Boolean)
+    );
+    const namesWithHistory = new Set<string>();
+    filteredEvaluations.forEach((evaluation) => {
+      const year = getEvaluationYear(evaluation);
+      if (!year || parseInt(year, 10) >= currentYear) return;
+      const name = (evaluation.conductor || evaluation.operador || '').trim().toLowerCase();
+      if (name && namesInYear.has(name)) namesWithHistory.add(name);
+    });
+    return {
+      count: namesWithHistory.size,
+      pct: ((namesWithHistory.size / conductores.length) * 100).toFixed(1)
+    };
+  }, [selectedYear, executiveCompany, filteredEvaluations]);
+
+  const exerciseStats = useMemo(
+    () => executiveCompany ? buildExerciseStatsFromCompany(executiveCompany) : [],
+    [executiveCompany]
+  );
+
+  const topConductores = useMemo(
+    () => [...(executiveCompany?.conductores || [])].sort((a, b) => b.promedioScore - a.promedioScore).slice(0, 10),
+    [executiveCompany]
+  );
+
+  const handleExportPptx = async () => {
+    if (!executiveCompany) return;
+    setIsExportingPptx(true);
+    try {
+      const [{ generateCompanyPresentationPptx }, { generateCompanyAiInsight, isUsableCompanyAiResult }] = await Promise.all([
+        import('../services/companyPresentationGenerator'),
+        import('../services/companyAiInsights')
+      ]);
+      let aiResult: Awaited<ReturnType<typeof generateCompanyAiInsight>> | null = null;
+      try {
+        aiResult = await generateCompanyAiInsight({
+          comp: executiveCompany,
+          periodText,
+          selectedYear,
+          conductoresRecurrentes,
+          pctRecurrentes,
+          exerciseStats,
+          allEvaluations: evaluationsByYear
+        });
+      } catch {
+        // Continuar con el PPTX usando el motor local si la síntesis IA no está disponible.
+      }
+      const usableAiResult = isUsableCompanyAiResult(aiResult) ? aiResult : null;
+      await generateCompanyPresentationPptx({
+        comp: executiveCompany,
+        selectedYear,
+        periodText,
+        conductoresRecurrentes,
+        pctRecurrentes,
+        operadoresConHistorialPrevio,
+        exerciseStats,
+        allEvaluations: evaluationsByYear,
+        aiReport: usableAiResult?.structured,
+        aiSourceLabel:
+          usableAiResult?.source === 'gemini'
+            ? usableAiResult.fromCache
+              ? 'Análisis Ejecutivo IA · TrackSIM'
+              : 'Análisis Ejecutivo con IA · TrackSIM'
+            : 'Síntesis Ejecutiva Automática · Motor Local',
+        aiQuality: usableAiResult?.quality,
+        aiCached: usableAiResult?.fromCache,
+        aiWarning: usableAiResult?.warning
+      });
+    } catch (error) {
+      console.error('Error al generar presentación PowerPoint:', error);
+    } finally {
+      setIsExportingPptx(false);
+    }
+  };
+
   // Determinar si mostramos comparativa de Flotas o de Ciudades/Sedes
   const isCityComparison = companies.length <= 1 || selectedCompany !== 'all';
 
@@ -373,6 +514,27 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
           borderRadius: '14px'
         }}
       >
+        <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+          {[
+            { key: 'diplomas', icon: '🎓', label: 'Diplomas', title: 'Generar diplomas oficiales', onClick: () => setIsDiplomasOpen(true), disabled: false },
+            { key: 'single-page', icon: '📄', label: 'Single-Page', title: 'Abrir reporte ejecutivo de una página', onClick: () => setIsSinglePageReportOpen(true), disabled: false },
+            { key: 'pptx', icon: '📊', label: isExportingPptx ? 'Generando...' : 'PowerPoint', title: 'Generar presentación PowerPoint', onClick: handleExportPptx, disabled: isExportingPptx },
+            { key: 'expediente', icon: '🖨️', label: 'Expediente', title: 'Abrir expediente PDF de la flota', onClick: () => setIsCompanyReportOpen(true), disabled: false }
+          ].map((action) => (
+            <button
+              key={action.key}
+              type="button"
+              className={`btn btn-secondary btn-sm company-${action.key}-btn`}
+              onClick={action.onClick}
+              disabled={action.disabled}
+              title={action.title}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, borderRadius: '8px' }}
+            >
+              <span>{action.icon}</span>
+              <span>{action.label}</span>
+            </button>
+          ))}
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '1.25rem', alignItems: 'center' }}>
           {/* Nombre de la Empresa */}
           <div className="company-overview-item">
@@ -667,6 +829,42 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
         <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
           Sincronizando información en tiempo real...
         </div>
+      )}
+
+      {executiveCompany && isDiplomasOpen && (
+        <CompanyDiplomasModal
+          isOpen={isDiplomasOpen}
+          onClose={() => setIsDiplomasOpen(false)}
+          comp={executiveCompany}
+          selectedYear={selectedYear}
+          periodText={periodText}
+        />
+      )}
+      {executiveCompany && isCompanyReportOpen && (
+        <CompanyReportModal
+          isOpen={isCompanyReportOpen}
+          onClose={() => setIsCompanyReportOpen(false)}
+          comp={executiveCompany}
+          selectedYear={selectedYear}
+          periodText={periodText}
+          exerciseStats={exerciseStats}
+          allEvaluations={evaluationsByYear}
+        />
+      )}
+      {executiveCompany && isSinglePageReportOpen && (
+        <CompanySinglePageReportModal
+          isOpen={isSinglePageReportOpen}
+          onClose={() => setIsSinglePageReportOpen(false)}
+          comp={executiveCompany}
+          selectedYear={selectedYear}
+          periodText={periodText}
+          conductoresRecurrentes={conductoresRecurrentes}
+          pctRecurrentes={pctRecurrentes}
+          operadoresConHistorialPrevio={operadoresConHistorialPrevio}
+          exerciseStats={exerciseStats}
+          topConductores={topConductores}
+          allEvaluations={evaluationsByYear}
+        />
       )}
     </div>
   );

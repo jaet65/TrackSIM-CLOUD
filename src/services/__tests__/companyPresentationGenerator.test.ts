@@ -254,7 +254,8 @@ describe('companyPresentationGenerator', () => {
     expect(aiSlideTexts).toContain('Control de carril');
     expect(aiSlideTexts).toContain('Velocidad en pendiente');
     expect(aiSlideTexts).toContain('Reforzar uso de freno auxiliar');
-    expect(aiSlideTexts).toContain('≥ 7.8 próximo año');
+    expect(aiSlideTexts).not.toContain('METAS PARA EL PRÓXIMO AÑO');
+    expect(aiSlideTexts).not.toContain('≥ 7.8 próximo año');
     expect(aiSlideTexts).toContain('Calidad 85/100');
     expect(aiSlideTexts).toContain('Caché');
     expect(aiSlideTexts).toContain('Prioridad operativa');
