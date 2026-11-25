@@ -1,8 +1,9 @@
 import { Evaluation } from '../types';
 import { MISTAKE_DIMENSIONS, MistakeDimension, findCatalogMistake } from './mistakeCatalog';
+import { getEvaluationIncidentMode, getIncidentModes, type IncidentMode } from './incidentMetrics';
 
 export interface SingleSessionRadarResult {
-  scores: number[];
+  scores: Array<number | null>;
   errorCounts: Record<number, number>;
   hasMistakeData: boolean;
   mistakeDetails: Array<{ error: string; repeticiones: number; ejeId: number }>;
@@ -21,7 +22,7 @@ export const RADAR_ORDERED_DIMENSIONS: MistakeDimension[] = [
  * Calcula los puntajes de radar (1 a 10) para UNA ÚNICA sesión / evaluación.
  * Considera únicamente los errores e incidencias ocurridos en esa sesión específica.
  */
-export function calculateSingleSessionRadar(evaluation: Evaluation | null | undefined): SingleSessionRadarResult {
+export function calculateSingleSessionRadar(evaluation: Evaluation | null | undefined, modes?: Map<string, IncidentMode>): SingleSessionRadarResult {
   const errorCounts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   const mistakeMap = new Map<string, { error: string; repeticiones: number; ejeId: number }>();
   let hasMistakeData = false;
@@ -79,7 +80,11 @@ export function calculateSingleSessionRadar(evaluation: Evaluation | null | unde
     } else {
       // Fallback si la evaluación no tiene errores extraídos
       const finalScore = evaluation.evaluacionFinalPuntos ?? evaluation.calificacionExacta ?? 7.0;
-      const colFactor = Math.max(0, 10 - ((evaluation.colisiones || 0) * 2.5) - ((evaluation.fatalidades || 0) * 4));
+      const colisiones = evaluation.colisiones ?? evaluation.totalColisiones;
+      const fatalidades = evaluation.fatalidades;
+      const mode = getEvaluationIncidentMode(evaluation, modes || getIncidentModes([evaluation]));
+      const colFactor = mode === 'v1' && typeof colisiones === 'number' && typeof fatalidades === 'number'
+        ? Math.max(0, 10 - colisiones * 2.5 - fatalidades * 4) : null;
       const destrezaPct = evaluation.destrezaPuntos !== undefined && evaluation.destrezaMax
         ? evaluation.destrezaPuntos / evaluation.destrezaMax * 100
         : evaluation.habilidadesManejoPct;
@@ -87,7 +92,7 @@ export function calculateSingleSessionRadar(evaluation: Evaluation | null | unde
         ? evaluation.ecoDrivingPuntos / evaluation.ecoDrivingMax * 100
         : evaluation.practicaSimuladorPct;
       if (dim.id === 1) return parseFloat(Math.min(10, Math.max(2, (destrezaPct ? destrezaPct / 10 : finalScore))).toFixed(1));
-      if (dim.id === 2) return parseFloat(Math.min(10, Math.max(1, colFactor)).toFixed(1));
+      if (dim.id === 2) return colFactor === null ? null : parseFloat(Math.min(10, Math.max(1, colFactor)).toFixed(1));
       if (dim.id === 3) return parseFloat(Math.min(10, Math.max(2, (ecoDrivingPct ? ecoDrivingPct / 10 : finalScore))).toFixed(1));
       if (dim.id === 4) return parseFloat(Math.min(10, Math.max(2, finalScore * 0.95)).toFixed(1));
       return parseFloat(Math.min(10, Math.max(2, finalScore)).toFixed(1));

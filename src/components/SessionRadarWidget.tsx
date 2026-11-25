@@ -13,6 +13,7 @@ import { Evaluation } from '../types';
 import { calculateSingleSessionRadar } from '../services/sessionRadar';
 import { MISTAKE_DIMENSIONS } from '../services/mistakeCatalog';
 import { useTheme } from '../context/ThemeContext';
+import type { IncidentMode } from '../services/incidentMetrics';
 
 ChartJS.register(
   RadialLinearScale,
@@ -25,16 +26,17 @@ ChartJS.register(
 
 interface SessionRadarProps {
   evaluation: Evaluation;
+  incidentModes?: Map<string, IncidentMode>;
 }
 
-export const SessionRadarWidget: React.FC<SessionRadarProps> = ({ evaluation }) => {
+export const SessionRadarWidget: React.FC<SessionRadarProps> = ({ evaluation, incidentModes }) => {
   const { theme } = useTheme();
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedAxisId, setSelectedAxisId] = useState<number | 'all'>('all');
 
   const radarStats = useMemo(() => {
-    return calculateSingleSessionRadar(evaluation);
-  }, [evaluation]);
+    return calculateSingleSessionRadar(evaluation, incidentModes);
+  }, [evaluation, incidentModes]);
 
   const filteredMistakes = useMemo(() => {
     if (selectedAxisId === 'all') return radarStats.mistakeDetails;
@@ -176,7 +178,7 @@ export const SessionRadarWidget: React.FC<SessionRadarProps> = ({ evaluation }) 
         {/* Lista de Dimensiones y Puntuaciones de esta sesión */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
           {radarStats.radarDimensions.map((dim, idx) => {
-            const score = radarStats.scores[idx] || 0;
+            const score = radarStats.scores[idx];
             const count = radarStats.errorCounts[dim.id] || 0;
             const isDimSelected = selectedAxisId === dim.id;
 
@@ -199,7 +201,7 @@ export const SessionRadarWidget: React.FC<SessionRadarProps> = ({ evaluation }) 
                   cursor: 'pointer',
                   transition: 'all 0.15s ease'
                 }}
-                title={count > 0 ? `Filtrar errores de ${dim.shortName}` : 'Sin incidencias'}
+                title={!radarStats.hasMistakeData ? 'Sin desglose de errores' : count > 0 ? `Filtrar errores de ${dim.shortName}` : 'Sin errores registrados'}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
                   <span>{dim.icono}</span>
@@ -211,7 +213,7 @@ export const SessionRadarWidget: React.FC<SessionRadarProps> = ({ evaluation }) 
                   )}
                 </div>
                 <div style={{ fontWeight: 800, color: dim.color, fontSize: '0.85rem' }}>
-                  {score.toFixed(1)} <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>/ 10</span>
+                  {score == null ? 'Sin datos' : score.toFixed(1)} <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>/ 10</span>
                 </div>
               </div>
             );

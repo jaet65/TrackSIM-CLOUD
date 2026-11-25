@@ -17,6 +17,7 @@ interface CompanyAiInsightsCardProps {
   periodText: string;
   subjectType?: TrackySubjectType;
   evaluations?: Evaluation[];
+  contextEvaluations?: Evaluation[];
   onRegenerate: () => void;
   onClose: () => void;
 }
@@ -402,6 +403,7 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
   periodText,
   subjectType = 'company',
   evaluations,
+  contextEvaluations,
   onRegenerate,
   onClose
 }) => {
@@ -477,6 +479,7 @@ export const CompanyAiInsightsCard: React.FC<CompanyAiInsightsCardProps> = ({
         periodText,
         insight,
         evaluations,
+        contextEvaluations,
         forceRefresh
       });
       if (quickRequestIdRef.current === reqId) {

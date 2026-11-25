@@ -1,4 +1,5 @@
 import React from 'react';
+import { groupIncidentCollisions } from '../../services/incidentMetrics';
 
 interface AnnualBreakdownRow {
   year: string;
@@ -6,11 +7,9 @@ interface AnnualBreakdownRow {
   operatorCount: number;
   avgScore: number;
   passRate: number;
-  collisions: number;
-  offRoad: number;
-  fatalities: number;
-  totalIncidents: number;
-  accidentRate: number;
+  incidentDetails: Array<{ name: string; count: number }>;
+  totalIncidents: number | null;
+  accidentRate: number | null;
   scoreTrend?: {
     diff: number;
     percent: number;
@@ -25,10 +24,12 @@ interface AnnualBreakdownRow {
 
 interface CompanyAnnualBreakdownTableProps {
   consolidatedAnnualRows: AnnualBreakdownRow[];
+  mixed?: boolean;
 }
 
 export const CompanyAnnualBreakdownTable: React.FC<CompanyAnnualBreakdownTableProps> = ({
-  consolidatedAnnualRows
+  consolidatedAnnualRows,
+  mixed
 }) => {
   if (!consolidatedAnnualRows || consolidatedAnnualRows.length === 0) return null;
 
@@ -42,6 +43,7 @@ export const CompanyAnnualBreakdownTable: React.FC<CompanyAnnualBreakdownTablePr
           <p style={{ margin: '0.2rem 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
             Historial consolidado por año de evaluaciones, calificaciones, tasa de aprobación, desglose de siniestros y evolución interanual.
           </p>
+          {mixed && <p style={{ margin: '0.2rem 0 0', color: 'var(--text-muted)', fontSize: '0.8rem' }}>En clientes mixtos los conteos V1 se equiparan a V2; las fatalidades V1 no distinguen atropellos de peatón de vuelcos.</p>}
         </div>
       </div>
 
@@ -150,18 +152,11 @@ export const CompanyAnnualBreakdownTable: React.FC<CompanyAnnualBreakdownTablePr
                   </span>
                 </td>
 
-                {/* 5. Incidentes Totales a modo de Suma Vertical (Colisiones + Fuera de vía + Fatalidades = Total) */}
                 <td style={{ padding: '1rem', textAlign: 'center' }}>
                   <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(0,0,0,0.25)', padding: '0.45rem 0.85rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                    <div style={{ fontSize: '0.8rem', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                      <span title="Colisiones">💥 {row.collisions}</span>
-                      <span style={{ color: 'var(--text-muted)' }}>+</span>
-                      <span title="Vehículos Fuera de la Vía">🛑 {row.offRoad}</span>
-                      <span style={{ color: 'var(--text-muted)' }}>+</span>
-                      <span title="Fatalidades">💀 {row.fatalities}</span>
-                    </div>
-                    <div style={{ borderTop: '1px dashed rgba(255, 255, 255, 0.15)', width: '100%', marginTop: '4px', paddingTop: '3px', fontWeight: 800, fontSize: '0.95rem', color: row.totalIncidents > 0 ? '#f43f5e' : '#22c55e' }}>
-                      = {row.totalIncidents} siniestros
+                    {groupIncidentCollisions(row.incidentDetails).map((item) => <div key={item.name} style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>{item.name}: {item.count}</div>)}
+                    <div style={{ borderTop: '1px dashed rgba(255, 255, 255, 0.15)', width: '100%', marginTop: '4px', paddingTop: '3px', fontWeight: 800, fontSize: '0.95rem', color: row.totalIncidents === null ? '#94a3b8' : row.totalIncidents > 0 ? '#f43f5e' : '#22c55e' }}>
+                      {row.totalIncidents === null ? 'Datos incompletos' : `${row.totalIncidents} incidencias`}
                     </div>
                   </div>
                 </td>
@@ -172,10 +167,10 @@ export const CompanyAnnualBreakdownTable: React.FC<CompanyAnnualBreakdownTablePr
                     <span
                       style={{
                         fontWeight: 700,
-                        color: row.accidentRate === 0 ? '#22c55e' : row.accidentRate <= 1.0 ? '#fbbf24' : '#f43f5e'
+                        color: row.accidentRate === null ? '#94a3b8' : row.accidentRate === 0 ? '#22c55e' : row.accidentRate <= 1.0 ? '#fbbf24' : '#f43f5e'
                       }}
                     >
-                      {row.accidentRate.toFixed(2)}
+                      {row.accidentRate === null ? 'Sin datos' : row.accidentRate.toFixed(2)}
                       <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '3px' }}>
                         / operador
                       </span>
@@ -210,7 +205,7 @@ export const CompanyAnnualBreakdownTable: React.FC<CompanyAnnualBreakdownTablePr
                       </span>
                     ) : (
                       <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontStyle: 'italic' }}>
-                        Año Base
+                        {row.accidentRate === null ? 'Comparación no disponible' : 'Año base o comparación no disponible'}
                       </span>
                     )}
                   </div>

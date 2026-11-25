@@ -1,13 +1,16 @@
 import React from 'react';
 import { Evaluation } from '../../types';
+import { getHybridEvaluationIncidents, type IncidentMode } from '../../services/incidentMetrics';
 
 interface DriverSessionHistoryTableProps {
   driverEvaluations: Evaluation[];
+  incidentModes: Map<string, IncidentMode>;
   onViewReport: (evaluation: Evaluation) => void;
 }
 
 export const DriverSessionHistoryTable: React.FC<DriverSessionHistoryTableProps> = ({
   driverEvaluations,
+  incidentModes,
   onViewReport
 }) => {
   return (
@@ -38,10 +41,7 @@ export const DriverSessionHistoryTable: React.FC<DriverSessionHistoryTableProps>
           <tbody>
             {driverEvaluations.map((ev, idx) => {
               const score = ev.evaluacionFinalPuntos ?? ev.calificacionExacta ?? ev.promedioScore ?? 0;
-              const colisiones = ev.colisiones || ev.totalColisiones || 0;
-              const fatalidades = ev.fatalidades || 0;
-              const fueraVia = ev.vehiculoFueraVia || 0;
-              const totalIncidentes = colisiones + fatalidades + fueraVia;
+              const incidents = getHybridEvaluationIncidents(ev, incidentModes);
               const dateFormatted = ev.fechaCapacitacionFormato || ev.fechaCapacitacion || ev.fechaReporte || ev.fecha || 'N/A';
               const isTrackSimZeroV2 = ev.origen === 'TrackSIM-ZERO-V2';
               const destrezaOrHandling = isTrackSimZeroV2 ? ev.destrezaPuntos : ev.habilidadesManejoPuntos;
@@ -90,16 +90,16 @@ export const DriverSessionHistoryTable: React.FC<DriverSessionHistoryTableProps>
                     {ecoDrivingOrSimulator !== undefined ? ecoDrivingOrSimulator.toFixed(2) : 'N/D'} <small style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>/ {ecoDrivingMax} ptos</small>
                   </td>
                   <td>
-                    {totalIncidentes === 0 ? (
+                    {incidents.complete && incidents.total === 0 ? (
                       <span style={{ color: '#22c55e', fontWeight: 700, fontSize: '0.85rem' }}>
                         0 (Limpio)
                       </span>
                     ) : (
                       <span
                         style={{ color: '#ef4444', fontWeight: 700, fontSize: '0.85rem' }}
-                        title={`💥 ${colisiones} colisiones • 💀 ${fatalidades} fatalidades • 🛑 ${fueraVia} salidas`}
+                        title={incidents.details.map((item) => `${item.name}: ${item.count}`).join(' • ')}
                       >
-                        ⚠️ {totalIncidentes} {totalIncidentes === 1 ? 'incidente' : 'incidentes'}
+                        {incidents.total === null ? 'Sin datos' : `⚠️ ${incidents.total} incidencias${incidents.complete ? '' : ' conocidas (datos incompletos)'}`}
                       </span>
                     )}
                   </td>

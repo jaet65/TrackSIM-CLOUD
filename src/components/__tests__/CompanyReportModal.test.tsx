@@ -25,6 +25,23 @@ const company: CompanySummary = {
 };
 
 describe('CompanyReportModal', () => {
+  it('muestra los contadores históricos y la tasa V1 cuando el cliente no tiene V2', () => {
+    const evaluations: Evaluation[] = [{
+      id: 'legacy', empresa: 'Flota', conductor: 'Ana', fecha: '2025-01-01',
+      colisiones: 107, fatalidades: 20, vehiculoFueraVia: 49,
+      erroresFrecuentes: [{ error: 'Colisión con un objeto', repeticiones: 2 }]
+    }];
+    render(<CompanyReportModal isOpen onClose={vi.fn()} comp={company} selectedYear="all" periodText="2025" allEvaluations={evaluations} />);
+    const frame = screen.getByTitle('Vista previa completa del expediente PDF') as HTMLIFrameElement;
+    const report = new DOMParser().parseFromString(frame.srcdoc, 'text/html');
+    expect(report.body.textContent).toContain('Incidentes en el simulador176');
+    expect(report.body.textContent).toContain('Colisiones107');
+    expect(report.body.textContent).toContain('Fatalidades20');
+    expect(report.body.textContent).toContain('Fuera de vía49');
+    expect(report.querySelector('svg[aria-label="Incidencias anuales por operador evaluado"] title')?.textContent)
+      .toBe('2025: 176.00');
+  });
+
   it('suma incidencias críticas filtradas de V2 y registros anteriores sin duplicar conteos', () => {
     const evaluations: Evaluation[] = [
       {
@@ -66,22 +83,22 @@ describe('CompanyReportModal', () => {
     const getSummary = () => getReport().querySelector('.kpi-grid')!;
     const getBreakdown = () => Array.from(
       getReport().querySelectorAll('section.report-section')
-    ).find((section) => section.querySelector('h2')?.textContent === 'Desglose de incidencias críticas')!;
+    ).find((section) => section.querySelector('h2')?.textContent === 'Desglose de incidencias')!;
     const getRows = () => Array.from(getBreakdown().querySelectorAll('tbody tr')).map(
       (row) => Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent)
     );
     expect(getSummary().textContent).toContain('Incidencias críticas16');
     expect(getSummary().textContent).not.toMatch(/Colisiones|Fatalidades|Fuera de vía/);
     expect(getRows()).toEqual(expect.arrayContaining([
-      ['Colisión con un vehículo del tráfico', '4'],
+      ['Colisiones', '5'],
       ['Exceso de velocidad', '3'],
       ['<script>incidencia</script>', '1'],
       ['Sin desglose disponible', '4'],
-      ['Colisiones', '1'],
-      ['Fatalidades', '2'],
-      ['Salidas de vía', '1']
+      ['Atropello de peatón y vuelcos', '2'],
+      ['Salirse de la vía', '1']
     ]));
-    expect(getRows()).toHaveLength(7);
+    expect(getRows()).toHaveLength(6);
+    expect(getBreakdown().textContent).toContain('Datos de incidencias incompletos o inconsistentes para 3 evaluaciones');
     expect(getBreakdown().querySelector('script')).toBeNull();
 
     rerender(<CompanyReportModal {...props} allEvaluations={[evaluations[2]]} />);
@@ -159,12 +176,12 @@ describe('CompanyReportModal', () => {
 
   it('grafica promedios anuales y tasa de incidentes por operador con los filtros activos', () => {
     const evaluations: Evaluation[] = [
-      { id: '1', empresa: 'Flota', conductor: 'Ana', fecha: '2024-01-01', evaluacionFinalPuntos: 6, colisiones: 2 },
-      { id: '2', empresa: 'Flota', conductor: 'Ana', fecha: '2024-02-01', evaluacionFinalPuntos: 8 },
-      { id: '3', empresa: 'Flota', conductor: 'Luis', fecha: '2024-03-01', evaluacionFinalPuntos: 7, fatalidades: 1 },
-      { id: '4', empresa: 'Flota', conductor: 'Ana', fecha: '2025-01-01', evaluacionFinalPuntos: 8, origen: 'TrackSIM-ZERO-V2', erroresFrecuentes: [{ error: 'Colisión con un vehículo del tráfico', repeticiones: 1 }] },
-      { id: '5', empresa: 'Flota', conductor: 'Luis', fecha: '2025-02-01', evaluacionFinalPuntos: 9 },
-      { id: '6', empresa: 'Flota', conductor: 'Luis', evaluacionFinalPuntos: 10 }
+      { id: '1', empresa: 'Flota', conductor: 'Ana', fecha: '2024-01-01', evaluacionFinalPuntos: 6, origen: 'TrackSIM-ZERO-V2', accidentesCriticos: 2 },
+      { id: '2', empresa: 'Flota', conductor: 'Ana', fecha: '2024-02-01', evaluacionFinalPuntos: 8, origen: 'TrackSIM-ZERO-V2', accidentesCriticos: 0 },
+      { id: '3', empresa: 'Flota', conductor: 'Luis', fecha: '2024-03-01', evaluacionFinalPuntos: 7, origen: 'TrackSIM-ZERO-V2', accidentesCriticos: 1 },
+      { id: '4', empresa: 'Flota', conductor: 'Ana', fecha: '2025-01-01', evaluacionFinalPuntos: 8, origen: 'TrackSIM-ZERO-V2', accidentesCriticos: 1, erroresFrecuentes: [{ error: 'Colisión con un vehículo del tráfico', repeticiones: 1 }] },
+      { id: '5', empresa: 'Flota', conductor: 'Luis', fecha: '2025-02-01', evaluacionFinalPuntos: 9, origen: 'TrackSIM-ZERO-V2', accidentesCriticos: 0 },
+      { id: '6', empresa: 'Flota', conductor: 'Luis', evaluacionFinalPuntos: 10, origen: 'TrackSIM-ZERO-V2' }
     ];
     const props = { isOpen: true, onClose: vi.fn(), comp: company, selectedYear: 'all', periodText: '2024 – 2025' };
     const { rerender } = render(<CompanyReportModal {...props} allEvaluations={evaluations} />);
@@ -176,7 +193,7 @@ describe('CompanyReportModal', () => {
       getReport().querySelectorAll(`svg[aria-label="${label}"] g title`)
     ).map((title) => title.textContent);
     expect(graphValues('Calificación promedio anual de la flota')).toEqual(['2024: 7.00', '2025: 8.50']);
-    expect(graphValues('Incidentes viales anuales por operador evaluado')).toEqual(['2024: 1.50', '2025: 0.50']);
+    expect(graphValues('Incidencias anuales por operador evaluado')).toEqual(['2024: 1.50', '2025: 0.50']);
     expect(getReport().body.textContent).toContain('Reducción de 1.00 incidentes por operador');
     expect(getReport().body.textContent).toContain('1 evaluación sin año se excluyó');
     expect(getReport().body.textContent).not.toContain('Detalle de evolución por operador');
@@ -187,11 +204,18 @@ describe('CompanyReportModal', () => {
     expect(getReport().body.textContent).not.toContain('Reducción de');
 
     rerender(<CompanyReportModal {...props} allEvaluations={[
-      { id: 'zero', empresa: 'Flota', conductor: 'Ana', fecha: '2024-01-01', evaluacionFinalPuntos: 7 },
-      { id: 'increase', empresa: 'Flota', conductor: 'Ana', fecha: '2025-01-01', evaluacionFinalPuntos: 7, colisiones: 1 }
+      { id: 'zero', empresa: 'Flota', conductor: 'Ana', fecha: '2024-01-01', evaluacionFinalPuntos: 7, origen: 'TrackSIM-ZERO-V2', accidentesCriticos: 0 },
+      { id: 'increase', empresa: 'Flota', conductor: 'Ana', fecha: '2025-01-01', evaluacionFinalPuntos: 7, origen: 'TrackSIM-ZERO-V2', accidentesCriticos: 1 }
     ]} />);
     expect(getReport().body.textContent).toContain('Aumento de 1.00 incidentes por operador');
     expect(getReport().body.textContent).not.toContain('Reducción de');
+
+    rerender(<CompanyReportModal {...props} allEvaluations={[
+      { id: 'known', empresa: 'Flota', conductor: 'Ana', fecha: '2024-01-01', evaluacionFinalPuntos: 7, origen: 'TrackSIM-ZERO-V2', accidentesCriticos: 0 },
+      { id: 'partial', empresa: 'Flota', conductor: 'Ana', fecha: '2025-01-01', evaluacionFinalPuntos: 7, colisiones: 10, erroresFrecuentes: [{ error: 'Colisión con un objeto', repeticiones: 2 }] }
+    ]} />);
+    expect(graphValues('Incidencias anuales por operador evaluado')).toEqual([]);
+    expect(getReport().body.textContent).toContain('Se excluyeron los años con datos de incidencias incompletos.');
 
     rerender(<CompanyReportModal {...props} allEvaluations={[]} />);
     expect(getReport().querySelectorAll('svg.annual-chart')).toHaveLength(0);

@@ -3,8 +3,9 @@ import { useData } from '../context/DataContext';
 import { useTheme } from '../context/ThemeContext';
 import { Evaluation } from '../types';
 import { MISTAKE_DIMENSIONS, findCatalogMistake } from '../services/mistakeCatalog';
-import { getEvaluationIncidentCounts } from '../services/incidentMetrics';
+import { getEvaluationIncidentCounts, getHybridEvaluationIncidents, getHybridIncidentSummary, getIncidentModes } from '../services/incidentMetrics';
 import { processDriverSummaries } from '../services/analytics';
+import { calculateSingleSessionRadar } from '../services/sessionRadar';
 import type { CompanyAiInsightResult } from '../services/companyAiInsights';
 import { ReportDetailModal } from './ReportDetailModal';
 import { CompanyAiInsightsCard } from './company/CompanyAiInsightsCard';
@@ -154,6 +155,7 @@ export const EvolutionTab: React.FC = () => {
       return (e.empresa || '').trim().toLowerCase() === targetName;
     });
   }, [currentCompany, roleAllowedEvaluations]);
+  const incidentModes = useMemo(() => getIncidentModes(companyEvaluations), [companyEvaluations]);
 
   const visibleDriverSummaries = useMemo(
     () => processDriverSummaries(companyEvaluations),
@@ -199,12 +201,10 @@ export const EvolutionTab: React.FC = () => {
         percentChange: 0,
         difference: 0,
         totalEvalsByYear: [] as number[],
-        colisionesByYear: [] as number[],
-        fueraViaByYear: [] as number[],
-        fatalidadesByYear: [] as number[],
-        totalIncidentesByYear: [] as number[],
+        totalIncidentesByYear: [] as (number | null)[],
         operatorCountsByYear: [] as number[],
-        accidentRatesByYear: [] as number[],
+        accidentRatesByYear: [] as (number | null)[],
+        incidentComparisonAvailable: false,
         // Tendencia en Conteo Absoluto de Siniestros
         incidentCountTrendDirection: 'estable' as 'mejora' | 'deterioro' | 'estable',
         incidentCountPercentChange: 0,
@@ -218,7 +218,7 @@ export const EvolutionTab: React.FC = () => {
 
     const yearDataMap = new Map<
       string,
-      { totalScore: number; count: number; colisiones: number; fatalidades: number; fueraVia: number; operators: Set<string> }
+      { totalScore: number; count: number; evaluations: Evaluation[]; operators: Set<string> }
     >();
 
     companyEvaluations.forEach((e) => {
@@ -227,18 +227,12 @@ export const EvolutionTab: React.FC = () => {
       const year = match ? match[1] : (dateStr ? dateStr.substring(0, 4) : '');
       if (!year) return;
       const score = e.evaluacionFinalPuntos ?? e.calificacionExacta ?? e.promedioScore ?? 0;
-      const incidents = getEvaluationIncidentCounts(e);
-      const col = incidents.colisiones;
-      const fat = incidents.fatalidades;
-      const off = incidents.vehiculoFueraVia;
       const op = (e.conductor || e.operador || 'Sin Asignar').trim();
 
-      const current = yearDataMap.get(year) || { totalScore: 0, count: 0, colisiones: 0, fatalidades: 0, fueraVia: 0, operators: new Set<string>() };
+      const current = yearDataMap.get(year) || { totalScore: 0, count: 0, evaluations: [], operators: new Set<string>() };
       current.totalScore += score;
       current.count += 1;
-      current.colisiones += col;
-      current.fatalidades += fat;
-      current.fueraVia += off;
+      current.evaluations.push(e);
       current.operators.add(op);
       yearDataMap.set(year, current);
     });
@@ -251,14 +245,15 @@ export const EvolutionTab: React.FC = () => {
       return Number((data.totalScore / data.count).toFixed(2));
     });
     const totalEvalsByYear = labels.map((yr) => yearDataMap.get(yr)?.count || 0);
-    const colisionesByYear = labels.map((yr) => yearDataMap.get(yr)?.colisiones || 0);
-    const fatalidadesByYear = labels.map((yr) => yearDataMap.get(yr)?.fatalidades || 0);
-    const fueraViaByYear = labels.map((yr) => yearDataMap.get(yr)?.fueraVia || 0);
-    const totalIncidentesByYear = labels.map((_, i) => colisionesByYear[i] + fatalidadesByYear[i] + fueraViaByYear[i]);
+    const totalIncidentesByYear = labels.map((yr) => {
+      const summary = getHybridIncidentSummary(yearDataMap.get(yr)!.evaluations, incidentModes);
+      return summary.unavailable || summary.incomplete ? null : summary.total;
+    });
     const operatorCountsByYear = labels.map((yr) => yearDataMap.get(yr)?.operators.size || 0);
     const accidentRatesByYear = labels.map((_, i) => {
       const ops = operatorCountsByYear[i];
-      return ops > 0 ? Number((totalIncidentesByYear[i] / ops).toFixed(2)) : 0;
+      const total = totalIncidentesByYear[i];
+      return ops > 0 && total !== null ? Number((total / ops).toFixed(2)) : null;
     });
 
     // Calcular Dirección de Tendencia y Cambio en Calificación
@@ -267,6 +262,8 @@ export const EvolutionTab: React.FC = () => {
     let percentChange = 0;
     let difference = 0;
 
+    const incidentComparisonAvailable = n >= 2 && totalIncidentesByYear[0] !== null && totalIncidentesByYear[n - 1] !== null &&
+      accidentRatesByYear[0] !== null && accidentRatesByYear[n - 1] !== null;
     if (n >= 2) {
       const initialScore = averages[0];
       const finalScore = averages[n - 1];
@@ -287,9 +284,9 @@ export const EvolutionTab: React.FC = () => {
     let incidentCountPercentChange = 0;
     let incidentCountDifference = 0;
 
-    if (n >= 2) {
-      const initialIncidents = totalIncidentesByYear[0];
-      const finalIncidents = totalIncidentesByYear[n - 1];
+    if (n >= 2 && totalIncidentesByYear[0] !== null && totalIncidentesByYear[n - 1] !== null) {
+      const initialIncidents = totalIncidentesByYear[0]!;
+      const finalIncidents = totalIncidentesByYear[n - 1]!;
       incidentCountDifference = finalIncidents - initialIncidents;
       incidentCountPercentChange = initialIncidents > 0
         ? Number(((incidentCountDifference / initialIncidents) * 100).toFixed(1))
@@ -309,9 +306,9 @@ export const EvolutionTab: React.FC = () => {
     let ratePercentChange = 0;
     let rateDifference = 0;
 
-    if (n >= 2) {
-      const initialRate = accidentRatesByYear[0];
-      const finalRate = accidentRatesByYear[n - 1];
+    if (n >= 2 && accidentRatesByYear[0] !== null && accidentRatesByYear[n - 1] !== null) {
+      const initialRate = accidentRatesByYear[0]!;
+      const finalRate = accidentRatesByYear[n - 1]!;
       rateDifference = Number((finalRate - initialRate).toFixed(2));
       ratePercentChange = initialRate > 0
         ? Number(((rateDifference / initialRate) * 100).toFixed(1))
@@ -333,12 +330,10 @@ export const EvolutionTab: React.FC = () => {
       percentChange,
       difference,
       totalEvalsByYear,
-      colisionesByYear,
-      fatalidadesByYear,
-      fueraViaByYear,
       totalIncidentesByYear,
       operatorCountsByYear,
       accidentRatesByYear,
+      incidentComparisonAvailable,
       incidentCountTrendDirection,
       incidentCountPercentChange,
       incidentCountDifference,
@@ -346,7 +341,7 @@ export const EvolutionTab: React.FC = () => {
       ratePercentChange,
       rateDifference
     };
-  }, [currentCompany, companyEvaluations]);
+  }, [currentCompany, companyEvaluations, incidentModes]);
 
   // Datos para Gráfico de Siniestralidad según el modo seleccionado ('counts' o 'rate')
   const fleetAccidentsChartData = useMemo(() => {
@@ -381,7 +376,7 @@ export const EvolutionTab: React.FC = () => {
       datasets: [
         {
           type: 'line' as const,
-          label: 'Total Siniestros (Suma)',
+          label: 'Total de incidencias',
           data: companyAnnualEvolution.totalIncidentesByYear,
           borderColor: '#f43f5e',
           backgroundColor: 'rgba(244, 63, 94, 0.12)',
@@ -391,44 +386,6 @@ export const EvolutionTab: React.FC = () => {
           pointBackgroundColor: '#f43f5e',
           pointBorderColor: '#ffffff',
           pointRadius: 6
-        },
-        {
-          type: 'line' as const,
-          label: '💥 Colisiones',
-          data: companyAnnualEvolution.colisionesByYear,
-          borderColor: '#f59e0b',
-          backgroundColor: 'transparent',
-          tension: 0.35,
-          borderWidth: 2.5,
-          pointBackgroundColor: '#f59e0b',
-          pointBorderColor: '#0e1422',
-          pointRadius: 5
-        },
-        {
-          type: 'line' as const,
-          label: '🛑 Vehículos Fuera de la Vía',
-          data: companyAnnualEvolution.fueraViaByYear,
-          borderColor: '#06b6d4',
-          backgroundColor: 'transparent',
-          borderDash: [3, 3],
-          tension: 0.35,
-          borderWidth: 2.5,
-          pointBackgroundColor: '#06b6d4',
-          pointBorderColor: '#0e1422',
-          pointRadius: 5
-        },
-        {
-          type: 'line' as const,
-          label: '💀 Fatalidades',
-          data: companyAnnualEvolution.fatalidadesByYear,
-          borderColor: '#a855f7',
-          backgroundColor: 'transparent',
-          borderDash: [5, 4],
-          tension: 0.35,
-          borderWidth: 2.5,
-          pointBackgroundColor: '#a855f7',
-          pointBorderColor: '#0e1422',
-          pointRadius: 5
         }
       ]
     };
@@ -440,6 +397,7 @@ export const EvolutionTab: React.FC = () => {
       const isPositive = companyAnnualEvolution.rateTrendDirection === 'mejora';
       const isNegative = companyAnnualEvolution.rateTrendDirection === 'deterioro';
       return {
+        available: companyAnnualEvolution.incidentComparisonAvailable,
         direction: companyAnnualEvolution.rateTrendDirection,
         isPositive,
         isNegative,
@@ -451,6 +409,7 @@ export const EvolutionTab: React.FC = () => {
     const isPositive = companyAnnualEvolution.incidentCountTrendDirection === 'mejora';
     const isNegative = companyAnnualEvolution.incidentCountTrendDirection === 'deterioro';
     return {
+      available: companyAnnualEvolution.incidentComparisonAvailable,
       direction: companyAnnualEvolution.incidentCountTrendDirection,
       isPositive,
       isNegative,
@@ -493,9 +452,7 @@ export const EvolutionTab: React.FC = () => {
       operatorsSet: Set<string>;
       totalScore: number;
       approvedCount: number;
-      collisions: number;
-      offRoad: number;
-      fatalities: number;
+      evaluations: Evaluation[];
     }>();
 
     companyEvaluations.forEach((e) => {
@@ -510,22 +467,17 @@ export const EvolutionTab: React.FC = () => {
           operatorsSet: new Set(),
           totalScore: 0,
           approvedCount: 0,
-          collisions: 0,
-          offRoad: 0,
-          fatalities: 0
+          evaluations: []
         });
       }
       const data = map.get(yr)!;
+      data.evaluations.push(e);
       data.evalCount += 1;
       const op = (e.conductor || e.operador || 'Sin Asignar').trim();
       data.operatorsSet.add(op);
       const score = e.evaluacionFinalPuntos ?? e.calificacionExacta ?? e.promedioScore ?? 0;
       data.totalScore += score;
       if (score >= 6.0) data.approvedCount += 1;
-      const incidents = getEvaluationIncidentCounts(e);
-      data.collisions += incidents.colisiones;
-      data.offRoad += incidents.vehiculoFueraVia;
-      data.fatalities += incidents.fatalidades;
     });
 
     const sortedYears = Array.from(map.keys()).sort();
@@ -534,8 +486,9 @@ export const EvolutionTab: React.FC = () => {
       const operatorCount = d.operatorsSet.size;
       const avgScore = d.evalCount > 0 ? Number((d.totalScore / d.evalCount).toFixed(2)) : 0;
       const passRate = d.evalCount > 0 ? Number(((d.approvedCount / d.evalCount) * 100).toFixed(1)) : 0;
-      const totalIncidents = d.collisions + d.offRoad + d.fatalities;
-      const accidentRate = operatorCount > 0 ? Number((totalIncidents / operatorCount).toFixed(2)) : 0;
+      const incidentSummary = getHybridIncidentSummary(d.evaluations, incidentModes);
+      const totalIncidents = incidentSummary.unavailable || incidentSummary.incomplete ? null : incidentSummary.total;
+      const accidentRate = operatorCount > 0 && totalIncidents !== null ? Number((totalIncidents / operatorCount).toFixed(2)) : null;
 
       let scoreTrend: { type: 'mejora' | 'descenso' | 'estable'; diff: number; percent: number } | null = null;
       let accidentTrend: { type: 'mejora' | 'descenso' | 'estable'; diff: number; percent: number } | null = null;
@@ -545,8 +498,8 @@ export const EvolutionTab: React.FC = () => {
         const prevD = map.get(prevYr)!;
         const prevAvg = prevD.evalCount > 0 ? prevD.totalScore / prevD.evalCount : 0;
         const prevOpCount = prevD.operatorsSet.size;
-        const prevTotalIncidents = prevD.collisions + prevD.offRoad + prevD.fatalities;
-        const prevAccidentRate = prevOpCount > 0 ? prevTotalIncidents / prevOpCount : 0;
+        const prevSummary = getHybridIncidentSummary(prevD.evaluations, incidentModes);
+        const prevAccidentRate = prevOpCount > 0 && !prevSummary.unavailable && !prevSummary.incomplete ? prevSummary.total / prevOpCount : null;
 
         // Comparativo Calificación Promedio (Más puntaje = mejora)
         const sDiff = Number((avgScore - prevAvg).toFixed(2));
@@ -555,10 +508,12 @@ export const EvolutionTab: React.FC = () => {
         scoreTrend = { type: sType, diff: sDiff, percent: sPct };
 
         // Comparativo Tasa de Accidentes (Menos accidentes = mejora)
-        const aDiff = Number((accidentRate - prevAccidentRate).toFixed(2));
-        const aPct = prevAccidentRate > 0 ? Number(((aDiff / prevAccidentRate) * 100).toFixed(1)) : 0;
-        const aType = aDiff < -0.05 ? 'mejora' : aDiff > 0.05 ? 'descenso' : 'estable';
-        accidentTrend = { type: aType, diff: aDiff, percent: aPct };
+        if (accidentRate !== null && prevAccidentRate !== null) {
+          const aDiff = Number((accidentRate - prevAccidentRate).toFixed(2));
+          const aPct = prevAccidentRate > 0 ? Number(((aDiff / prevAccidentRate) * 100).toFixed(1)) : 0;
+          const aType = aDiff < -0.05 ? 'mejora' : aDiff > 0.05 ? 'descenso' : 'estable';
+          accidentTrend = { type: aType, diff: aDiff, percent: aPct };
+        }
       }
 
       return {
@@ -567,16 +522,14 @@ export const EvolutionTab: React.FC = () => {
         operatorCount,
         avgScore,
         passRate,
-        collisions: d.collisions,
-        offRoad: d.offRoad,
-        fatalities: d.fatalities,
         totalIncidents,
+        incidentDetails: incidentSummary.details,
         accidentRate,
         scoreTrend,
         accidentTrend
       };
     });
-  }, [currentCompany, companyEvaluations]);
+  }, [currentCompany, companyEvaluations, incidentModes]);
 
   // Evolución de Rendimiento por Ejercicio agrupando por años
   const companyExerciseEvolution = useMemo(() => {
@@ -935,6 +888,7 @@ export const EvolutionTab: React.FC = () => {
         driverName: currentDriver.nombre,
         empresa: currentDriver.empresa || 'TrackSIM',
         evaluations: driverEvaluations,
+        contextEvaluations: companyEvaluations,
         scopeLabel: driverScopeLabel,
         forceRefresh
       });
@@ -1042,10 +996,10 @@ export const EvolutionTab: React.FC = () => {
     labels: scoreLabels,
     datasets: [
       {
-        label: 'Total Incidentes (Suma)',
+        label: 'Total de incidencias',
         data: driverEvaluations.map((e) => {
-          const incidents = getEvaluationIncidentCounts(e);
-          return incidents.colisiones + incidents.fatalidades + incidents.vehiculoFueraVia;
+          const incidents = getHybridEvaluationIncidents(e, incidentModes);
+          return incidents.complete ? incidents.total : null;
         }),
         borderColor: '#f43f5e', // Rosa/Rojo Coral intenso
         backgroundColor: 'rgba(244, 63, 94, 0.12)',
@@ -1055,41 +1009,6 @@ export const EvolutionTab: React.FC = () => {
         pointBackgroundColor: '#f43f5e',
         pointBorderColor: '#ffffff',
         pointRadius: 6
-      },
-      {
-        label: '💥 Colisiones',
-        data: driverEvaluations.map((e) => getEvaluationIncidentCounts(e).colisiones),
-        borderColor: '#f59e0b', // Ámbar / Amarillo vibrante
-        backgroundColor: 'transparent',
-        tension: 0.35,
-        borderWidth: 2.5,
-        pointBackgroundColor: '#f59e0b',
-        pointBorderColor: '#0e1422',
-        pointRadius: 5
-      },
-      {
-        label: '💀 Fatalidades',
-        data: driverEvaluations.map((e) => getEvaluationIncidentCounts(e).fatalidades),
-        borderColor: '#a855f7', // Púrpura eléctrico distintivo
-        backgroundColor: 'transparent',
-        borderDash: [5, 4],
-        tension: 0.35,
-        borderWidth: 2.5,
-        pointBackgroundColor: '#a855f7',
-        pointBorderColor: '#0e1422',
-        pointRadius: 5
-      },
-      {
-        label: '🛑 Fuera de Vía',
-        data: driverEvaluations.map((e) => getEvaluationIncidentCounts(e).vehiculoFueraVia),
-        borderColor: '#06b6d4', // Cyan / Turquesa neón
-        backgroundColor: 'transparent',
-        borderDash: [3, 3],
-        tension: 0.35,
-        borderWidth: 2.5,
-        pointBackgroundColor: '#06b6d4',
-        pointBorderColor: '#0e1422',
-        pointRadius: 5
       }
     ]
   };
@@ -1168,7 +1087,6 @@ export const EvolutionTab: React.FC = () => {
         const latest = driverEvaluations[driverEvaluations.length - 1];
         if (!latest) return 7.0;
         const finalScore = latest.evaluacionFinalPuntos ?? latest.calificacionExacta ?? 7.0;
-        const colFactor = Math.max(0, 10 - ((latest.colisiones || 0) * 2.5) - ((latest.fatalidades || 0) * 4));
         const destrezaPct = latest.destrezaPuntos !== undefined && latest.destrezaMax
           ? latest.destrezaPuntos / latest.destrezaMax * 100
           : latest.habilidadesManejoPct;
@@ -1176,7 +1094,7 @@ export const EvolutionTab: React.FC = () => {
           ? latest.ecoDrivingPuntos / latest.ecoDrivingMax * 100
           : latest.practicaSimuladorPct;
         if (dim.id === 1) return parseFloat(Math.min(10, Math.max(2, (destrezaPct ? destrezaPct / 10 : finalScore))).toFixed(1));
-        if (dim.id === 2) return parseFloat(Math.min(10, Math.max(1, colFactor)).toFixed(1));
+        if (dim.id === 2) return calculateSingleSessionRadar(latest, incidentModes).scores[1];
         if (dim.id === 3) return parseFloat(Math.min(10, Math.max(2, (ecoDrivingPct ? ecoDrivingPct / 10 : finalScore))).toFixed(1));
         if (dim.id === 4) return parseFloat(Math.min(10, Math.max(2, finalScore * 0.95)).toFixed(1));
         return parseFloat(Math.min(10, Math.max(2, finalScore)).toFixed(1));
@@ -1184,7 +1102,7 @@ export const EvolutionTab: React.FC = () => {
     });
 
     return { errorCounts, hasMistakeData, scores, mistakeDetails };
-  }, [driverEvaluations, radarDimensions]);
+  }, [driverEvaluations, radarDimensions, incidentModes]);
 
   const radarData = {
     labels: radarDimensions.map(d => `${d.icono} ${d.shortName}`),
@@ -1344,6 +1262,7 @@ export const EvolutionTab: React.FC = () => {
             periodText={`${currentDriver?.empresa || 'TrackSIM'} • ${driverScopeLabel}`}
             subjectType="driver"
             evaluations={driverEvaluations}
+            contextEvaluations={companyEvaluations}
             onRegenerate={() => void handleExplainDriverWithAi(true)}
             onClose={() => setIsDriverAiOpen(false)}
           />
@@ -1364,12 +1283,14 @@ export const EvolutionTab: React.FC = () => {
           {/* Historial Cronológico de Sesiones del Conductor */}
           <DriverSessionHistoryTable
             driverEvaluations={driverEvaluations}
+            incidentModes={incidentModes}
             onViewReport={(ev) => setViewReport(ev)}
           />
 
           {/* Modal Detalle de Reporte de Sesión Unificado */}
           <ReportDetailModal
             evaluation={viewReport}
+            contextEvaluations={companyEvaluations}
             onClose={() => setViewReport(null)}
           />
 
@@ -1432,6 +1353,7 @@ export const EvolutionTab: React.FC = () => {
           {/* Tabla de Desglose Anual Consolidado (Resumen de Métricas Globales) */}
           <CompanyAnnualBreakdownTable
             consolidatedAnnualRows={consolidatedAnnualRows}
+            mixed={Array.from(incidentModes.values()).includes('mixed')}
           />
         </div>
       )}

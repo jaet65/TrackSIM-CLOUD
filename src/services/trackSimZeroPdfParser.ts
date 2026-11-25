@@ -266,8 +266,8 @@ function aggregateWeakPoints(rows: ParsedWeakPoint[]): FrequentMistakeItem[] {
   const mistakesByError = new Map<string, FrequentMistakeItem>();
   rows.forEach(({ error, repeticiones, severidad }) => {
     const normalizedError = normalizeText(error).replace(/\s+/g, ' ').trim();
-    const isCriticalOffRoad = normalizedError === 'salirse de la via' && severidad === 'critico';
-    const key = `${normalizedError}:${isCriticalOffRoad ? 'critico' : ''}`;
+    const isCritical = severidad === 'critico';
+    const key = `${normalizedError}:${isCritical ? 'critico' : ''}`;
     const existing = mistakesByError.get(key);
     if (existing) {
       existing.repeticiones += repeticiones;
@@ -276,7 +276,7 @@ function aggregateWeakPoints(rows: ParsedWeakPoint[]): FrequentMistakeItem[] {
         error,
         errorRaw: error,
         repeticiones,
-        ...(isCriticalOffRoad ? { severidad: 'CRITICO' } : {})
+        ...(isCritical ? { severidad: 'CRITICO' } : {})
       });
     }
   });

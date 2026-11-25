@@ -58,6 +58,16 @@ function createDriverEvaluations(): Evaluation[] {
 }
 
 describe('driverAiInsights', () => {
+  it('aplica el modo mixto de la flota aunque el operador solo tenga sesiones V1', () => {
+    const legacy: Evaluation = { id: 'v1', empresa: 'Flota', conductor: 'Ana', colisiones: 2, fatalidades: 1, vehiculoFueraVia: 3 };
+    const metrics = buildDriverAiMetricsContext({
+      driverName: 'Ana', empresa: 'Flota', evaluations: [legacy],
+      contextEvaluations: [legacy, { id: 'v2', empresa: 'Flota', origen: 'TrackSIM-ZERO-V2', accidentesCriticos: 0, erroresFrecuentes: [] }]
+    });
+    expect(metrics.totalCriticalEvents).toBe(6);
+    expect(metrics.criticalBreakdown).toContainEqual({ nombre: 'Atropello de peatón y vuelcos', total: 1 });
+    expect(metrics.criticalBreakdown).toContainEqual({ nombre: 'Salirse de la vía', total: 3 });
+  });
   it('calcula evolución individual, incidencias V2 y excluye Efectos del alcohol de refuerzo', () => {
     const evaluations = createDriverEvaluations();
     const metrics = buildDriverAiMetricsContext({
@@ -71,8 +81,9 @@ describe('driverAiInsights', () => {
     expect(metrics.ultimaCalificacion).toBe(8.1);
     expect(metrics.cambioEnPuntos).toBe(1.7);
     expect(metrics.tendencia).toBe('mejora');
-    expect(metrics.totalCriticalEvents).toBe(1);
-    expect(metrics.criticalBreakdown).toEqual([{ nombre: 'Colisión con un objeto', total: 1 }]);
+    expect(metrics.totalCriticalEvents).toBeNull();
+    expect(metrics.incidentDataIncomplete).toBe(true);
+    expect(metrics.criticalBreakdown).toEqual([{ nombre: 'Colisiones', total: 1 }]);
     expect(metrics.ejercicios.find((e) => e.nombre === 'Efectos del alcohol')?.esConcientizacionIntencional).toBe(true);
 
     const prompt = buildDriverAiPrompt(metrics);

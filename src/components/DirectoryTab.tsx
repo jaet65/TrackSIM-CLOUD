@@ -7,6 +7,7 @@ import { ReportDetailModal } from './ReportDetailModal';
 import { getMassDeleteReauthMethod } from '../services/authorization';
 import { logAudit } from '../services/auditLog';
 import { isEvaluationBackup, parseEvaluationBackup, serializeEvaluationBackup } from '../services/evaluationBackup';
+import { getHybridIncidentSummary } from '../services/incidentMetrics';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 import { useSystemDialogs } from '../context/SystemDialogContext';
 
@@ -286,17 +287,16 @@ const DirectoryTabContent: React.FC = () => {
   // Resumen métrico (KPIs) en tiempo real según filtros aplicados
   const stats = useMemo(() => {
     const total = displayList.length;
-    if (total === 0) return { total: 0, promedio: 0, aprobados: 0, tasaAprobacion: 0, incidentes: 0 };
+    const incidentes = getHybridIncidentSummary(displayList);
+    if (total === 0) return { total: 0, promedio: 0, aprobados: 0, tasaAprobacion: 0, incidentes };
     let sumScore = 0;
     let aprobados = 0;
-    let incidentes = 0;
     displayList.forEach((e) => {
       const sc = e.evaluacionFinalPuntos ?? e.calificacionExacta ?? e.promedioScore ?? 0;
       sumScore += sc;
       if (sc >= 6.0 || e.estado === 'Aprobado' || e.estado === 'Sobresaliente') {
         aprobados++;
       }
-      incidentes += (e.colisiones || 0) + (e.fatalidades || 0) + (e.vehiculoFueraVia || 0);
     });
     return {
       total,
@@ -1129,11 +1129,15 @@ const DirectoryTabContent: React.FC = () => {
         </div>
 
         <div className="glass-card" style={{ padding: '0.9rem 1.1rem', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Total Incidentes</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: stats.incidentes > 0 ? '#f87171' : '#4ade80', marginTop: '0.2rem' }}>
-            {stats.incidentes}
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>{stats.incidentes.label}</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: stats.incidentes.unavailable || stats.incidentes.incomplete ? '#94a3b8' : stats.incidentes.total > 0 ? '#f87171' : '#4ade80', marginTop: '0.2rem' }}>
+            {stats.incidentes.unavailable === stats.total && stats.total > 0 ? 'Sin datos' : stats.incidentes.total}
           </div>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>Colisiones / Fuera de Vía</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+            {stats.incidentes.details.map((item) => `${item.name}: ${item.count}`).join(' · ') || (stats.incidentes.unavailable || stats.incidentes.incomplete ? 'Sin desglose conocido' : 'Sin incidencias registradas')}
+          </div>
+          {(stats.incidentes.unavailable > 0 || stats.incidentes.incomplete > 0) && <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Datos parciales o no disponibles.</div>}
+          {Array.from(stats.incidentes.modes.values()).includes('mixed') && <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Las fatalidades V1 se agrupan con atropellos de peatón y vuelcos sin distinguirlos.</div>}
         </div>
       </div>
 
@@ -1553,6 +1557,7 @@ const DirectoryTabContent: React.FC = () => {
       {/* Modal: Ver Reporte Digital Detallado Unificado */}
       <ReportDetailModal
         evaluation={viewingReport}
+        contextEvaluations={displayList}
         onClose={() => setViewingReport(null)}
       />
 

@@ -14,6 +14,7 @@ import {
   type ZeroCloudExportGroup
 } from '../services/zeroExportContract';
 import { useSystemDialogs } from '../context/SystemDialogContext';
+import { getHybridEvaluationIncidents, getIncidentModes } from '../services/incidentMetrics';
 
 type ZeroGroupListFilter = 'all' | 'pending' | 'review' | 'partial' | 'imported';
 
@@ -472,6 +473,7 @@ const IngestaTabContent: React.FC = () => {
     </>
   );
   const isSuccessToast = feedback?.type === 'success';
+  const stagingIncidentModes = getIncidentModes(stagingFiles);
 
   return (
     <div className="view-section active">
@@ -1034,7 +1036,7 @@ const IngestaTabContent: React.FC = () => {
               <tbody>
                 {stagingFiles.map((item, idx) => {
                   const score = item.evaluacionFinalPuntos ?? item.calificacionExacta ?? item.promedioScore ?? 0;
-                  const incidentes = (item.colisiones || 0) + (item.fatalidades || 0) + (item.vehiculoFueraVia || 0);
+                  const incidentes = getHybridEvaluationIncidents(item, stagingIncidentModes);
 
                   return (
                     <tr key={idx}>
@@ -1063,8 +1065,8 @@ const IngestaTabContent: React.FC = () => {
                         </span>
                       </td>
                       <td style={{ textAlign: 'center' }}>
-                        <span style={{ color: incidentes > 0 ? 'var(--danger)' : 'var(--success)', fontWeight: 700 }}>
-                          {incidentes}
+                        <span style={{ color: !incidentes.complete ? 'var(--text-muted)' : (incidentes.total ?? 0) > 0 ? 'var(--danger)' : 'var(--success)', fontWeight: 700 }}>
+                          {incidentes.total === null ? 'Sin datos' : `${incidentes.total}${incidentes.complete ? '' : ' (parcial)'}`}
                         </span>
                       </td>
                       <td style={{ textAlign: 'center' }}>

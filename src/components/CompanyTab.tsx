@@ -3,7 +3,7 @@ import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { buildExerciseStatsFromCompany, createCompanySummaryFromEvaluations, getEvaluationYear } from '../services/analytics';
-import { getEvaluationIncidentCounts } from '../services/incidentMetrics';
+import { getHybridDriverIncidents, getHybridIncidentSummary, getIncidentModes } from '../services/incidentMetrics';
 import { ReportDetailModal } from './ReportDetailModal';
 import { CompanyOverviewCard } from './company/CompanyOverviewCard';
 import { CompanySinglePageReportModal } from './company/CompanySinglePageReportModal';
@@ -103,23 +103,33 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
     if (selectedYear === 'all') return filteredEvaluations;
     return filteredEvaluations.filter((e) => getEvaluationYear(e) === selectedYear);
   }, [filteredEvaluations, selectedYear]);
+  const driverIncidents = useMemo(
+    () => getHybridDriverIncidents(evaluationsByYear, getIncidentModes(evaluationsByYear)),
+    [evaluationsByYear]
+  );
+  const knownDriverIncidents = useMemo(() => {
+    const groups = new Map<string, typeof evaluationsByYear>();
+    evaluationsByYear.forEach((evaluation) => {
+      const name = (evaluation.conductor || evaluation.operador || '').trim().toLowerCase();
+      if (!name) return;
+      const group = groups.get(name) || [];
+      group.push(evaluation);
+      groups.set(name, group);
+    });
+    const modes = getIncidentModes(evaluationsByYear);
+    return new Map(Array.from(groups, ([name, evaluations]) => [name, getHybridIncidentSummary(evaluations, modes)]));
+  }, [evaluationsByYear]);
 
   // Resumen ejecutivo de la empresa/flota considerando el año seleccionado
   const comp = useMemo(() => {
-    if (selectedYear === 'all') {
-      if (userRole !== 'admin' && selectedCompany === 'all') {
-        return createCompanySummaryFromEvaluations('Flotas asignadas', 'flotas-asignadas', filteredEvaluations);
-      }
-      return selectedCompanySummary;
-    }
     const companyDisplayName =
-      selectedCompany === 'all' ? 'Todas las empresas' : (selectedCompanySummary?.nombre || selectedCompany);
+      selectedCompany === 'all' ? (userRole !== 'admin' ? 'Flotas asignadas' : 'Todas las empresas') : (selectedCompanySummary?.nombre || selectedCompany);
     return createCompanySummaryFromEvaluations(
       companyDisplayName,
       selectedCompanySummary?.slug || 'flota',
       evaluationsByYear
     );
-  }, [selectedYear, selectedCompanySummary, selectedCompany, evaluationsByYear, userRole, filteredEvaluations]);
+  }, [selectedCompanySummary, selectedCompany, evaluationsByYear, userRole]);
 
   // Cantidad y porcentaje de conductores que han participado más de 1 vez en el periodo visible
   const { conductoresRecurrentes, pctRecurrentes } = useMemo(() => {
@@ -183,8 +193,9 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
           cmp = (a.ultimaFecha || '').localeCompare(b.ultimaFecha || '');
           break;
         case 'incidentes': {
-          const totA = (a.colisiones || 0) + (a.fatalidades || 0) + (a.totalFueraVia || 0);
-          const totB = (b.colisiones || 0) + (b.fatalidades || 0) + (b.totalFueraVia || 0);
+          const totA = driverIncidents.get(a.nombre.trim().toLowerCase());
+          const totB = driverIncidents.get(b.nombre.trim().toLowerCase());
+          if (totA == null || totB == null) return totA == null ? (totB == null ? 0 : 1) : -1;
           cmp = totA - totB;
           break;
         }
@@ -209,7 +220,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
     });
 
     return list;
-  }, [comp, driverSearch, sortKey, sortDir]);
+  }, [comp, driverSearch, sortKey, sortDir, driverIncidents]);
 
   // Paginación del Ranking (Top 10 por página ordenado estrictamente por score)
   const rankingList = useMemo(() => {
@@ -528,7 +539,8 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
       return { labels: [], accidentRates: [], totalIncidentes: [], operatorsCount: [] };
     }
 
-    const yearDataMap = new Map<string, { colisiones: number; fatalidades: number; fueraVia: number; operators: Set<string> }>();
+    const modes = getIncidentModes(filteredEvaluations);
+    const yearDataMap = new Map<string, { evaluations: typeof filteredEvaluations; operators: Set<string> }>();
 
     filteredEvaluations.forEach((e) => {
       const dateStr = e.fechaCapacitacion || e.fechaReporte || e.fecha || '';
@@ -536,16 +548,10 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
       const year = match ? match[1] : (dateStr ? dateStr.substring(0, 4) : '');
       if (!year) return;
 
-      const incidents = getEvaluationIncidentCounts(e);
-      const col = incidents.colisiones;
-      const fat = incidents.fatalidades;
-      const off = incidents.vehiculoFueraVia;
       const op = (e.conductor || e.operador || 'Sin Asignar').trim();
 
-      const current = yearDataMap.get(year) || { colisiones: 0, fatalidades: 0, fueraVia: 0, operators: new Set<string>() };
-      current.colisiones += col;
-      current.fatalidades += fat;
-      current.fueraVia += off;
+      const current = yearDataMap.get(year) || { evaluations: [], operators: new Set<string>() };
+      current.evaluations.push(e);
       current.operators.add(op);
       yearDataMap.set(year, current);
     });
@@ -554,12 +560,14 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
     const labels = sortedYears.map((yr) => `Año ${yr}`);
     const totalIncidentes = sortedYears.map((yr) => {
       const d = yearDataMap.get(yr)!;
-      return d.colisiones + d.fatalidades + d.fueraVia;
+      const summary = getHybridIncidentSummary(d.evaluations, modes);
+      return summary.unavailable || summary.incomplete ? null : summary.total;
     });
     const operatorsCount = sortedYears.map((yr) => yearDataMap.get(yr)!.operators.size);
     const accidentRates = sortedYears.map((_, i) => {
       const ops = operatorsCount[i];
-      return ops > 0 ? Number((totalIncidentes[i] / ops).toFixed(2)) : 0;
+      const total = totalIncidentes[i];
+      return ops > 0 && total !== null ? Number((total / ops).toFixed(2)) : null;
     });
 
     return {
@@ -794,6 +802,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         pageSize={RANKING_PAGE_SIZE}
         onSetRankingPage={setRankingPage}
         fullRankingList={rankingList}
+        driverIncidents={driverIncidents}
       />
 
       {/* Gráfico: Tasa de Accidentes por Conductor (Visible en Pantalla y en el PDF/Impresión) */}
@@ -817,7 +826,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
                   Tasa de Accidentes por Conductor
                 </h3>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  Promedio de siniestros (colisiones, salidas de vía y fatalidades) por operador evaluado
+                  Incidencias por operador evaluado según el criterio de cada cliente. Los años con datos incompletos no se muestran.
                 </span>
               </div>
             </div>
@@ -853,6 +862,8 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
         onToggleExpandExercises={toggleExpandExercises}
         onViewReport={setViewReport}
         filteredEvaluations={evaluationsByYear}
+        driverIncidents={driverIncidents}
+        knownDriverIncidents={knownDriverIncidents}
         comp={comp}
         selectedYear={selectedYear}
         onSelectDriverName={setSelectedDriverName}
@@ -866,6 +877,7 @@ export const CompanyTab: React.FC<CompanyTabProps> = ({ onNavigate }) => {
       {/* Modal de Detalle de Reporte Unificado */}
       <ReportDetailModal
         evaluation={viewReport}
+        contextEvaluations={evaluationsByYear}
         onClose={() => setViewReport(null)}
       />
       {/* Modal Reporte Single-Page PDF Ejecutivo */}

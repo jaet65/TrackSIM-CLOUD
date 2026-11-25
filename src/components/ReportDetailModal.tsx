@@ -3,7 +3,7 @@ import { Evaluation } from '../types';
 import { logAudit } from '../services/auditLog';
 import type { CompanyAiInsightResult } from '../services/companyAiInsights';
 import { findCatalogExercise } from '../services/exerciseCatalog';
-import { getCriticalMistakes, getEvaluationIncidentCounts } from '../services/incidentMetrics';
+import { getEvaluationIncidentMode, getHybridEvaluationIncidents, getIncidentModes } from '../services/incidentMetrics';
 import { CompanyAiInsightsCard } from './company/CompanyAiInsightsCard';
 import { SessionRadarWidget } from './SessionRadarWidget';
 import { useEscapeKey } from '../hooks/useEscapeKey';
@@ -11,9 +11,10 @@ import { useEscapeKey } from '../hooks/useEscapeKey';
 interface ReportDetailModalProps {
   evaluation: Evaluation | null;
   onClose: () => void;
+  contextEvaluations?: Evaluation[];
 }
 
-export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation, onClose }) => {
+export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation, onClose, contextEvaluations = [] }) => {
   const viewedId = evaluation?.id;
   const viewedCompany = evaluation?.empresa;
   const viewedLabel = evaluation ? (evaluation.conductor || evaluation.operador || evaluation.folio || evaluation.id) : '';
@@ -55,20 +56,9 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
   const secondMetric = isTrackSimZeroV2
     ? { label: 'ECO DRIVING', value: evaluation.ecoDrivingPuntos, max: evaluation.ecoDrivingMax ?? 3 }
     : { label: 'PRÁCTICA EN SIMULADOR', value: evaluation.practicaSimuladorPuntos, max: 7 };
-  const incidentCounts = getEvaluationIncidentCounts(evaluation);
-  const colisiones = incidentCounts.colisiones;
-  const fatalidades = incidentCounts.fatalidades;
-  const fueraVia = incidentCounts.vehiculoFueraVia;
-  const totalIncidentes = colisiones + fatalidades + fueraVia;
-
-  // Errores críticos para evaluaciones provenientes de Zero o Ingesta V2
-  const criticalMistakes = isTrackSimZeroV2 ? getCriticalMistakes(evaluation.erroresFrecuentes || []) : [];
-  const totalCriticas = isTrackSimZeroV2
-    ? (evaluation.accidentesCriticos !== undefined
-        ? evaluation.accidentesCriticos
-        : criticalMistakes.reduce((sum, m) => sum + m.repeticiones, 0))
-    : totalIncidentes;
-  const hasZeroSafeDrive = isTrackSimZeroV2 && totalCriticas === 0;
+  const incidentModes = getIncidentModes([...contextEvaluations, evaluation]);
+  const incidents = getHybridEvaluationIncidents(evaluation, incidentModes);
+  const hasZeroSafeDrive = incidents.complete && incidents.total === 0;
 
   const isApproved = score >= 6.0;
   const estado = evaluation.estado || (isApproved ? 'Aprobado' : 'No Aprobado');
@@ -87,6 +77,7 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
         driverName,
         empresa: evaluation.empresa || 'TrackSIM',
         evaluations: [evaluation],
+        contextEvaluations,
         scopeLabel: sessionScopeLabel,
         forceRefresh
       });
@@ -251,10 +242,10 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
         {/* Bloque de Incidentes y Seguridad Vial */}
         <div
           style={{
-            background: hasZeroSafeDrive || (!isTrackSimZeroV2 && totalIncidentes === 0)
+            background: hasZeroSafeDrive
               ? 'rgba(16, 185, 129, 0.08)'
               : 'rgba(239, 68, 68, 0.08)',
-            border: `1px solid ${hasZeroSafeDrive || (!isTrackSimZeroV2 && totalIncidentes === 0) ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.2)'}`,
+            border: `1px solid ${hasZeroSafeDrive ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.2)'}`,
             borderRadius: '10px',
             padding: '0.9rem',
             marginBottom: '1.25rem'
@@ -263,7 +254,7 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
           <div
             style={{
               fontSize: '0.75rem',
-              color: hasZeroSafeDrive || (!isTrackSimZeroV2 && totalIncidentes === 0) ? '#10b981' : '#f87171',
+              color: hasZeroSafeDrive ? '#10b981' : '#f87171',
               fontWeight: 700,
               textTransform: 'uppercase',
               marginBottom: hasZeroSafeDrive ? 0 : '0.5rem',
@@ -275,85 +266,36 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
             }}
           >
             <span>
-              {isTrackSimZeroV2
-                ? (hasZeroSafeDrive
-                    ? '🛡️ Conducción Segura sin Incidentes Críticos'
-                    : '🚨 Incidentes y Seguridad en Simulador')
-                : (totalIncidentes === 0
-                    ? '🛡️ Conducción Segura sin Incidentes Críticos'
-                    : '🚨 Incidentes y Seguridad en Simulador')}
+              {hasZeroSafeDrive ? '🛡️ Sin incidencias registradas' : '🚨 Incidentes y Seguridad en Simulador'}
             </span>
             <span
               style={{
                 fontSize: '0.72rem',
-                color: hasZeroSafeDrive || (!isTrackSimZeroV2 && totalIncidentes === 0) ? '#10b981' : '#f87171'
+                color: hasZeroSafeDrive ? '#10b981' : '#f87171'
               }}
             >
-              {isTrackSimZeroV2
-                ? (hasZeroSafeDrive
-                    ? '✓ Sin Incidentes Críticos'
-                    : `${totalCriticas} ${totalCriticas === 1 ? 'incidencia crítica registrada' : 'incidencias críticas registradas'}`)
-                : (totalIncidentes === 0
-                    ? '✓ Sin Incidentes Graves'
-                    : `${totalIncidentes} ${totalIncidentes === 1 ? 'incidencia registrada' : 'incidencias registradas'}`)}
+              {incidents.total === null ? 'Sin datos' : `${incidents.total} incidencias${incidents.complete ? '' : ' conocidas'}`}
             </span>
           </div>
 
-          {isTrackSimZeroV2 ? (
-            !hasZeroSafeDrive && (
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-                  gap: '0.75rem',
-                  textAlign: 'center'
-                }}
-              >
-                {criticalMistakes.length > 0 ? (
-                  criticalMistakes.map((cm, idx) => (
-                    <div key={idx} style={{ background: 'var(--bg-card-hover)', padding: '0.55rem', borderRadius: '8px' }}>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>⚠️ {cm.error}</div>
-                      <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#ef4444', marginTop: '0.15rem' }}>
-                        {cm.repeticiones}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div style={{ background: 'var(--bg-card-hover)', padding: '0.55rem', borderRadius: '8px' }}>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>⚠️ Incidencias Críticas</div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#ef4444', marginTop: '0.15rem' }}>
-                      {totalCriticas}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', textAlign: 'center' }}>
-              <div style={{ background: 'var(--bg-card-hover)', padding: '0.55rem', borderRadius: '8px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>💥 Colisiones</div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: colisiones > 0 ? '#ef4444' : '#22c55e', marginTop: '0.15rem' }}>
-                  {colisiones}
+          {incidents.details.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', textAlign: 'center' }}>
+              {incidents.details.map((item, index) => (
+                <div key={`${item.name}-${index}`} style={{ background: 'var(--bg-card-hover)', padding: '0.55rem', borderRadius: '8px' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{item.name}</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: item.count > 0 ? '#ef4444' : '#22c55e', marginTop: '0.15rem' }}>{item.count}</div>
                 </div>
-              </div>
-              <div style={{ background: 'var(--bg-card-hover)', padding: '0.55rem', borderRadius: '8px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>💀 Fatalidades</div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: fatalidades > 0 ? '#ef4444' : '#22c55e', marginTop: '0.15rem' }}>
-                  {fatalidades}
-                </div>
-              </div>
-              <div style={{ background: 'var(--bg-card-hover)', padding: '0.55rem', borderRadius: '8px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>🛑 Fuera de Vía</div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: fueraVia > 0 ? '#ef4444' : '#22c55e', marginTop: '0.15rem' }}>
-                  {fueraVia}
-                </div>
-              </div>
+              ))}
             </div>
+          )}
+          {!incidents.complete && <p>Datos de incidencias incompletos o no disponibles.</p>}
+          {getEvaluationIncidentMode(evaluation, incidentModes) === 'mixed' && !isTrackSimZeroV2 && (
+            <p>Las fatalidades V1 se agrupan con atropellos de peatón y vuelcos sin distinguirlos.</p>
           )}
         </div>
 
         {/* Radar de Competencias de la Sesión Específica */}
-        <SessionRadarWidget evaluation={evaluation} />
+        <SessionRadarWidget evaluation={evaluation} incidentModes={incidentModes} />
 
         {/* Ejercicios y Simulaciones Realizadas */}
         {Array.isArray(evaluation.ejercicios) && evaluation.ejercicios.length > 0 && (
@@ -457,6 +399,7 @@ export const ReportDetailModal: React.FC<ReportDetailModalProps> = ({ evaluation
       periodText={`${evaluation.empresa || 'TrackSIM'} • ${sessionScopeLabel}`}
       subjectType="driver"
       evaluations={[evaluation]}
+      contextEvaluations={contextEvaluations}
       onRegenerate={() => void handleExplainSessionWithAi(true)}
       onClose={() => setIsAiOpen(false)}
     />

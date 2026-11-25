@@ -125,6 +125,36 @@ function createAnnualRows(): AnnualEvolutionRowInput[] {
 }
 
 describe('fleetEvolutionAiInsights', () => {
+  it('agrupa colisiones en filas anuales externas sin cambiar totales ni datos originales', () => {
+    const annualRows = createAnnualRows();
+    annualRows[0].incidentDetails = [
+      { name: 'Colisión con un objeto', count: 1 },
+      { name: 'Colisión con unas piedras', count: 2 },
+      { name: 'Atropello de un perro', count: 1 }
+    ];
+    const metrics = buildFleetEvolutionAiMetricsContext({
+      companyName: 'Transportes Norte', evaluations: createFleetEvolutionEvaluations(), annualRows
+    });
+    expect(metrics.desgloseAnual[0].incidentesTotales).toBe(4);
+    expect(metrics.desgloseAnual[0].desgloseIncidencias).toEqual([
+      { name: 'Colisiones', count: 3 }, { name: 'Atropello de un perro', count: 1 }
+    ]);
+    expect(annualRows[0].incidentDetails[0]).toEqual({ name: 'Colisión con un objeto', count: 1 });
+  });
+
+  it('no calcula una reducción cuando hay años con incidencias incompletas', () => {
+    const evaluations: Evaluation[] = [
+      { id: 'v1', empresa: 'Flota', conductor: 'Ana', fecha: '2024-01-01', colisiones: 2, fatalidades: 0, vehiculoFueraVia: 1 },
+      { id: 'v2', empresa: 'Flota', conductor: 'Ana', fecha: '2025-01-01', origen: 'TrackSIM-ZERO-V2', accidentesCriticos: 0 }
+    ];
+    const metrics = buildFleetEvolutionAiMetricsContext({ companyName: 'Flota', evaluations, annualRows: [] });
+    expect(metrics.desgloseAnual[0].incidentesTotales).toBe(3);
+    expect(metrics.desgloseAnual[0].desgloseIncidencias).toContainEqual({ name: 'Salirse de la vía', count: 1 });
+    expect(metrics.desgloseAnual[1].incidentesTotales).toBeNull();
+    expect(metrics.cambioTasaIncidentes).toBeNull();
+    expect(metrics.tendenciaSiniestralidad).toBe('no_disponible');
+    expect(buildLocalFleetEvolutionFallbackStructured(metrics).estadoGeneral.resumenSimple).toContain('no está disponible');
+  });
   it('calcula variación interanual, operadores recurrentes, progresión por ejercicio y excluye Efectos del alcohol', () => {
     const evaluations = createFleetEvolutionEvaluations();
     const annualRows = createAnnualRows();

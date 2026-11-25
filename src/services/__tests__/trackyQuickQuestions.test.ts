@@ -120,6 +120,15 @@ function createSampleEvaluations(): Evaluation[] {
 }
 
 describe('trackyQuickQuestions', () => {
+  it('advierte datos incompletos sin clasificarlos como ausencia de incidencias', () => {
+    const context = buildQuickQuestionContextData({
+      questionId: 'priority_drivers', subjectType: 'company', companyName: 'Flota', periodText: 'Actual',
+      insight: createSampleInsight(),
+      evaluations: [{ id: 'missing', empresa: 'Flota', conductor: 'Eva', evaluacionFinalPuntos: 9 }]
+    });
+    expect(context.incidentDataIncomplete).toBe(true);
+    expect(buildLocalQuickQuestionFallback('priority_drivers', context)).toContain('no es posible descartar');
+  });
   it('reemplaza respuestas rápidas incompatibles por el respaldo local', () => {
     const ctx = buildQuickQuestionContextData({
       questionId: 'diesel',

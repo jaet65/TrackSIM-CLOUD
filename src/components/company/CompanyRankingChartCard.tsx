@@ -11,6 +11,7 @@ interface CompanyRankingChartCardProps {
   pageSize: number;
   onSetRankingPage: (page: number | ((prev: number) => number)) => void;
   fullRankingList?: any[];
+  driverIncidents: Map<string, number | null>;
 }
 
 export const CompanyRankingChartCard: React.FC<CompanyRankingChartCardProps> = ({
@@ -22,7 +23,8 @@ export const CompanyRankingChartCard: React.FC<CompanyRankingChartCardProps> = (
   totalRankingPages,
   pageSize,
   onSetRankingPage,
-  fullRankingList = []
+  fullRankingList = [],
+  driverIncidents
 }) => {
   return (
     <details className="card print-avoid-break" open style={{ marginBottom: '2rem' }}>
@@ -57,7 +59,7 @@ export const CompanyRankingChartCard: React.FC<CompanyRankingChartCardProps> = (
             <tbody>
               {fullRankingList.slice(0, 10).map((op, idx) => {
                 const rank = idx + 1;
-                const totInc = (op.colisiones || 0) + (op.fatalidades || 0) + (op.totalFueraVia || 0);
+                const totInc = driverIncidents.get(op.nombre.trim().toLowerCase()) ?? null;
                 const isTop = op.promedioScore >= 8.0;
                 const isPass = op.promedioScore >= 6.0;
                 const scoreColor = isTop ? '#15803d' : isPass ? '#0369a1' : '#b91c1c';
@@ -76,8 +78,8 @@ export const CompanyRankingChartCard: React.FC<CompanyRankingChartCardProps> = (
                     <td style={{ padding: '4px 6px', textAlign: 'center' }}>
                       {typeof op.ultimoScore === 'number' ? Number(op.ultimoScore).toFixed(2) : '-'}
                     </td>
-                    <td style={{ padding: '4px 6px', textAlign: 'center', color: totInc > 0 ? '#b91c1c' : '#15803d', fontWeight: 600 }}>
-                      {totInc}
+                    <td style={{ padding: '4px 6px', textAlign: 'center', color: totInc === null ? '#475569' : totInc > 0 ? '#b91c1c' : '#15803d', fontWeight: 600 }}>
+                      {totInc ?? 'Sin datos'}
                     </td>
                     <td style={{ padding: '4px 6px', textAlign: 'center', fontWeight: 600, fontSize: '8pt' }}>
                       {op.estado || 'N/A'}

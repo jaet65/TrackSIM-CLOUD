@@ -22,7 +22,7 @@ interface DriverRadarModalProps {
   radarOptions: any;
   radarDimensions: RadarDimension[];
   axisStats: {
-    scores: number[];
+    scores: Array<number | null>;
     errorCounts: Record<number, number>;
     hasMistakeData: boolean;
     mistakeDetails: MistakeDetail[];
@@ -118,7 +118,7 @@ export const DriverRadarModal: React.FC<DriverRadarModalProps> = ({
               Puntajes por Dimensión Clave (0 - 10)
             </div>
             {radarDimensions.map((dim, idx) => {
-              const score = axisStats.scores[idx] || 0;
+              const score = axisStats.scores[idx];
               const count = axisStats.errorCounts[dim.id] || 0;
               const isSelected = selectedRadarAxisId === dim.id;
 
@@ -141,7 +141,7 @@ export const DriverRadarModal: React.FC<DriverRadarModalProps> = ({
                       <span>{dim.nombre}</span>
                     </span>
                     <span style={{ fontSize: '0.95rem', fontWeight: 800, color: dim.color }}>
-                      {score.toFixed(1)}                       <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>/10</span>
+                      {score == null ? 'Sin datos' : score.toFixed(1)}                       <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>/10</span>
                     </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>

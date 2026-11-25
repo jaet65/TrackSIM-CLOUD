@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Evaluation } from '../../types';
 import { logAudit } from '../../services/auditLog';
 import { useSystemDialogs } from '../../context/SystemDialogContext';
+import { getHybridIncidentSummary } from '../../services/incidentMetrics';
 
 export type CompanySortKey = 'promedioScore' | 'nombre' | 'totalEvaluaciones' | 'ultimaFecha' | 'incidentes' | 'estado';
 export type StatusFilterOption = 'all' | 'sobresaliente' | 'aprobado' | 'reforzar' | 'incidentes';
@@ -22,6 +23,8 @@ interface CompanyDriversTableProps {
   onToggleExpandExercises: (key: string) => void;
   onViewReport: (ev: any) => void;
   filteredEvaluations: Evaluation[];
+  driverIncidents: Map<string, number | null>;
+  knownDriverIncidents: Map<string, ReturnType<typeof getHybridIncidentSummary>>;
   comp: any;
   selectedYear?: string;
   onSelectDriverName: (name: string) => void;
@@ -45,6 +48,8 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
   onToggleExpandExercises,
   onViewReport,
   filteredEvaluations,
+  driverIncidents,
+  knownDriverIncidents,
   comp,
   selectedYear,
   onSelectDriverName,
@@ -58,7 +63,7 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
   const displayedConductores = useMemo(() => {
     if (statusFilter === 'all') return filteredConductores;
     return filteredConductores.filter((c) => {
-      const totIncidentes = (c.colisiones || 0) + (c.fatalidades || 0) + (c.totalFueraVia || 0);
+      const totIncidentes = knownDriverIncidents.get(c.nombre.trim().toLowerCase())?.total;
       switch (statusFilter) {
         case 'sobresaliente':
           return c.estado === 'Sobresaliente' || c.promedioScore >= 8.0;
@@ -72,12 +77,12 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
             c.promedioScore < 6.0
           );
         case 'incidentes':
-          return totIncidentes > 0;
+          return totIncidentes != null && totIncidentes > 0;
         default:
           return true;
       }
     });
-  }, [filteredConductores, statusFilter]);
+  }, [filteredConductores, statusFilter, knownDriverIncidents]);
 
   const effectiveTotalPages = statusFilter === 'all'
     ? initialTotalPages
@@ -104,10 +109,10 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
       'Score Promedio (0-10)',
       'Ultimo Score (0-10)',
       'Ultima Fecha',
-      'Colisiones',
-      'Fatalidades',
-      'Salidas de Via',
-      'Total Incidentes',
+      'Colisiones (criterio anterior)',
+      'Fatalidades (criterio anterior)',
+      'Salidas de Via (criterio anterior)',
+      'Total Incidencias (criterio por cliente)',
       'Estado General',
       'Ejercicios Realizados'
     ];
@@ -119,7 +124,7 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
     };
 
     const rows = displayedConductores.map((c) => {
-      const totalIncidentes = (c.colisiones || 0) + (c.fatalidades || 0) + (c.totalFueraVia || 0);
+      const totalIncidentes = driverIncidents.get(c.nombre.trim().toLowerCase()) ?? null;
       const exNames = Array.isArray(c.ejercicios)
         ? c.ejercicios.map((e: any) => e.nombre || `Ejercicio ${e.numero || ''}`).join('; ')
         : '';
@@ -331,7 +336,7 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
           {
             key: 'incidentes',
             label: 'Con Incidentes',
-            count: filteredConductores.filter((c) => (c.colisiones || 0) + (c.fatalidades || 0) + (c.totalFueraVia || 0) > 0).length,
+            count: filteredConductores.filter((c) => (knownDriverIncidents.get(c.nombre.trim().toLowerCase())?.total ?? 0) > 0).length,
             color: '#ef4444'
           }
         ].map((chip) => {
@@ -426,7 +431,8 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
             ) : (
               pagedDrivers.map((c, idx) => {
                 const globalIdx = (driversPage - 1) * pageSize + idx + 1;
-                const totalIncidentes = (c.colisiones || 0) + (c.fatalidades || 0) + (c.totalFueraVia || 0);
+                const totalIncidentes = driverIncidents.get(c.nombre.trim().toLowerCase()) ?? null;
+                const incidentSummary = knownDriverIncidents.get(c.nombre.trim().toLowerCase());
 
                 const isTopScore = c.promedioScore >= 8.0;
                 const isPassScore = c.promedioScore >= 6.0;
@@ -447,18 +453,7 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
                   if (found) {
                     onViewReport(found);
                   } else {
-                    onViewReport({
-                      id: c.latestEvalId || 'N/A',
-                      conductor: c.nombre,
-                      empresa: c.empresa || comp.nombre,
-                      sede: c.sede,
-                      fechaCapacitacionFormato: c.ultimaFecha,
-                      evaluacionFinalPuntos: c.ultimoScore,
-                      colisiones: c.colisiones || 0,
-                      fatalidades: c.fatalidades || 0,
-                      vehiculoFueraVia: c.totalFueraVia || 0,
-                      ejercicios: c.ejercicios || []
-                    });
+                    void showAlert('No se encontró una evaluación de este operador con los filtros actuales.');
                   }
                 };
 
@@ -647,14 +642,14 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
                           borderRadius: '8px',
                           fontWeight: 800,
                           fontSize: '0.85rem',
-                          background: totalIncidentes > 0 ? 'rgba(239, 68, 68, 0.14)' : 'rgba(34, 197, 94, 0.12)',
-                          color: totalIncidentes > 0 ? '#f87171' : '#4ade80',
-                          border: `1px solid ${totalIncidentes > 0 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`
+                          background: totalIncidentes === null ? 'rgba(148, 163, 184, 0.12)' : totalIncidentes > 0 ? 'rgba(239, 68, 68, 0.14)' : 'rgba(34, 197, 94, 0.12)',
+                          color: totalIncidentes === null ? '#94a3b8' : totalIncidentes > 0 ? '#f87171' : '#4ade80',
+                          border: `1px solid ${totalIncidentes === null ? 'rgba(148, 163, 184, 0.3)' : totalIncidentes > 0 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(34, 197, 94, 0.3)'}`
                         }}
-                        title={`Colisiones: ${c.colisiones || 0} | Fuera de vía: ${c.totalFueraVia || 0} | Fatalidades: ${c.fatalidades || 0}`}
+                        title={`${incidentSummary?.details.map((item) => `${item.name}: ${item.count}`).join(' · ') || 'Sin desglose'}${totalIncidentes === null ? ' · Datos incompletos o no disponibles' : ''}`}
                       >
-                        <span>{totalIncidentes > 0 ? '⚠️' : '🛡️'}</span>
-                        <span>{totalIncidentes}</span>
+                        <span>{totalIncidentes === null ? '—' : totalIncidentes > 0 ? '⚠️' : '🛡️'}</span>
+                        <span>{totalIncidentes ?? (incidentSummary && incidentSummary.unavailable < c.totalEvaluaciones ? `${incidentSummary.total} conocidas (parcial)` : 'Sin datos')}</span>
                       </span>
                     </td>
 
@@ -762,7 +757,7 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
           </thead>
           <tbody>
             {displayedConductores.map((c, idx) => {
-              const totalIncidentes = (c.colisiones || 0) + (c.fatalidades || 0) + (c.totalFueraVia || 0);
+              const totalIncidentes = driverIncidents.get(c.nombre.trim().toLowerCase()) ?? null;
               const isTop = c.promedioScore >= 8.0;
               const isPass = c.promedioScore >= 6.0;
               const scoreColor = isTop ? '#15803d' : isPass ? '#0369a1' : '#b91c1c';
@@ -798,8 +793,8 @@ export const CompanyDriversTable: React.FC<CompanyDriversTableProps> = ({
                       </div>
                     )}
                   </td>
-                  <td style={{ padding: '5px 6px', textAlign: 'center', color: totalIncidentes > 0 ? '#b91c1c' : '#15803d', fontWeight: 600 }}>
-                    {totalIncidentes}
+                  <td style={{ padding: '5px 6px', textAlign: 'center', color: totalIncidentes === null ? '#475569' : totalIncidentes > 0 ? '#b91c1c' : '#15803d', fontWeight: 600 }}>
+                    {totalIncidentes ?? 'Sin datos'}
                   </td>
                   <td style={{ padding: '5px 6px', textAlign: 'center', fontWeight: 600, fontSize: '8pt' }}>
                     {c.estado || 'N/A'}

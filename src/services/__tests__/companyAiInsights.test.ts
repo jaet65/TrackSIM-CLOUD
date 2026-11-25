@@ -73,6 +73,23 @@ function createSummary(): CompanySummary {
 }
 
 describe('companyAiInsights', () => {
+  it('usa incidencias híbridas y excluye sesiones incompletas de las sesiones sin incidentes', () => {
+    const allEvaluations: Evaluation[] = [
+      { id: 'legacy', empresa: 'Flota', conductor: 'Ana', colisiones: 1, fatalidades: 0, vehiculoFueraVia: 1, evaluacionFinalPuntos: 7 },
+      { id: 'zero', empresa: 'Flota', conductor: 'Luis', origen: 'TrackSIM-ZERO-V2', accidentesCriticos: 1,
+        erroresFrecuentes: [{ error: 'Atropello de un perro', repeticiones: 1 }, { error: 'Salirse de la vía', repeticiones: 2 }], evaluacionFinalPuntos: 8 },
+      { id: 'missing', empresa: 'Flota', conductor: 'Eva', evaluacionFinalPuntos: 9 }
+    ];
+    const metrics = buildCompanyAiMetricsContext({
+      comp: createSummary(), periodText: 'Histórico', selectedYear: 'all', conductoresRecurrentes: 0,
+      pctRecurrentes: '0', exerciseStats: [], allEvaluations
+    });
+    expect(metrics.totalCriticalEvents).toBeNull();
+    expect(metrics.criticalBreakdown).toContainEqual({ nombre: 'Salirse de la vía', total: 3 });
+    expect(metrics.criticalBreakdown).toContainEqual({ nombre: 'Atropello de un perro', total: 1 });
+    expect(metrics.correlacionIncidentes.evaluacionesSinIncidentes).toBe(0);
+    expect(metrics.operadoresConIncidentes).toBe(2);
+  });
   it('separa una respuesta combinada con Además en recomendaciones independientes', () => {
     const metrics = buildCompanyAiMetricsContext({
       comp: createSummary(),
@@ -285,8 +302,9 @@ describe('companyAiInsights', () => {
       allEvaluations: evaluations
     });
 
-    expect(context.totalCriticalEvents).toBe(2);
-    expect(context.criticalBreakdown).toEqual([{ nombre: 'Colisión con un objeto', total: 2 }]);
+    expect(context.totalCriticalEvents).toBeNull();
+    expect(context.incidentDataIncomplete).toBe(true);
+    expect(context.criticalBreakdown).toEqual([{ nombre: 'Colisiones', total: 2 }]);
     expect(context.filtroAnioActivo).toBe('2026');
     expect(context.ejercicios.find((e) => e.nombre === 'Efectos del alcohol')?.esConcientizacionIntencional).toBe(true);
     const prompt = buildCompanyAiPrompt(context);

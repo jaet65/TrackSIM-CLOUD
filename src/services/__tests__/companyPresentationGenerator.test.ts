@@ -77,6 +77,59 @@ function createMockCompany(count: number): CompanySummary {
 }
 
 describe('companyPresentationGenerator', () => {
+  it('no usa los contadores anteriores si faltan las evaluaciones de origen', () => {
+    const data = buildCompanyPresentationData({
+      comp: createMockCompany(2), selectedYear: 'all', periodText: 'Histórico',
+      conductoresRecurrentes: 0, pctRecurrentes: '0', exerciseStats: [], allEvaluations: []
+    });
+    expect(data.criticalSummary.noEvaluations).toBe(true);
+    expect(data.criticalSummary.incidentRate).toBe('—');
+    expect(data.criticalSummary.items).toEqual([]);
+  });
+  it('aplica las equivalencias híbridas en la presentación y la evolución anual', () => {
+    const data = buildCompanyPresentationData({
+      comp: createMockCompany(2),
+      selectedYear: 'all',
+      periodText: '2024 – 2025',
+      conductoresRecurrentes: 0,
+      pctRecurrentes: '0',
+      exerciseStats: [],
+      allEvaluations: [
+        { id: 'legacy', empresa: 'Transcooler', conductor: 'Ana', fecha: '2024-01-01', colisiones: 2, fatalidades: 1, vehiculoFueraVia: 3 },
+        { id: 'v2', empresa: 'Transcooler', conductor: 'Ana', fecha: '2025-01-01', origen: 'TrackSIM-ZERO-V2', accidentesCriticos: 3, erroresFrecuentes: [
+          { error: 'Colisión con un vehículo del tráfico', repeticiones: 2 },
+          { error: 'Vuelco', repeticiones: 1 },
+          { error: 'Salirse de la vía', repeticiones: 2 }
+        ] }
+      ]
+    });
+    expect(data.criticalSummary.totalIncidentes).toBe(11);
+    expect(data.criticalSummary.mixed).toBe(true);
+    expect(data.criticalSummary.items).toEqual(expect.arrayContaining([
+      { error: 'Colisiones', repeticiones: 4 },
+      { error: 'Atropello de peatón y vuelcos', repeticiones: 2 },
+      { error: 'Salirse de la vía', repeticiones: 5 }
+    ]));
+    expect(data.annualEvolution.years.map((year) => year.totalAccidentes)).toEqual([6, 5]);
+  });
+
+  it('no presenta como cero la tasa anual cuando faltan datos de incidencias', () => {
+    const data = buildCompanyPresentationData({
+      comp: createMockCompany(2),
+      selectedYear: 'all',
+      periodText: '2024 – 2025',
+      conductoresRecurrentes: 0,
+      pctRecurrentes: '0',
+      exerciseStats: [],
+      allEvaluations: [
+        { id: 'legacy', empresa: 'Transcooler', conductor: 'Ana', fecha: '2024-01-01', colisiones: 2 },
+        { id: 'v2', empresa: 'Transcooler', conductor: 'Ana', fecha: '2025-01-01', origen: 'TrackSIM-ZERO-V2', accidentesCriticos: 0, erroresFrecuentes: [] }
+      ]
+    });
+    expect(data.annualEvolution.years.map((year) => year.tasaAccidentes)).toEqual([null, 0]);
+    expect(data.annualEvolution.accidentRateDeltaFirstToLast).toBeNull();
+  });
+
   it('prepara exactamente Top 10 mejores y Top 10 peores conductores e incidencias críticas V2', () => {
     const comp = createMockCompany(14);
     const evaluations: Evaluation[] = [
@@ -110,7 +163,7 @@ describe('companyPresentationGenerator', () => {
     expect(data.criticalSummary.hasV2Data).toBe(true);
     expect(data.criticalSummary.totalIncidentes).toBe(6);
     expect(data.criticalSummary.items).toEqual([
-      { error: 'Colisión con un vehículo del tráfico', repeticiones: 4 },
+      { error: 'Colisiones', repeticiones: 4 },
       { error: 'Salirse de la vía', repeticiones: 2 }
     ]);
     expect(data.topMistakes[0]).toEqual({ error: 'Exceso de velocidad', repeticiones: 7 });
@@ -146,7 +199,9 @@ describe('companyPresentationGenerator', () => {
         conductor: 'Juan Pérez',
         fechaCapacitacion: '2024-05-10',
         evaluacionFinalPuntos: 6.0,
-        colisiones: 2
+        colisiones: 2,
+        fatalidades: 0,
+        vehiculoFueraVia: 0
       },
       {
         id: 'y1-2',
@@ -154,7 +209,9 @@ describe('companyPresentationGenerator', () => {
         conductor: 'Ana López',
         fechaCapacitacion: '2024-06-15',
         evaluacionFinalPuntos: 7.0,
-        colisiones: 1
+        colisiones: 1,
+        fatalidades: 0,
+        vehiculoFueraVia: 0
       },
       {
         id: 'y2-1',
@@ -163,6 +220,7 @@ describe('companyPresentationGenerator', () => {
         fechaCapacitacion: '2026-11-10',
         evaluacionFinalPuntos: 8.5,
         origen: 'TrackSIM-ZERO-V2',
+        accidentesCriticos: 0,
         erroresFrecuentes: []
       },
       {
@@ -172,6 +230,7 @@ describe('companyPresentationGenerator', () => {
         fechaCapacitacion: '2026-11-11',
         evaluacionFinalPuntos: 9.1,
         origen: 'TrackSIM-ZERO-V2',
+        accidentesCriticos: 1,
         erroresFrecuentes: [{ error: 'Colisión con un objeto', repeticiones: 1 }]
       }
     ];
@@ -260,5 +319,27 @@ describe('companyPresentationGenerator', () => {
     expect(aiSlideTexts).toContain('Caché');
     expect(aiSlideTexts).toContain('Prioridad operativa');
     expect(createdSlides[createdSlides.length - 1].texts.join(' ')).toContain('¡Gracias por su atención!');
+  });
+
+  it('muestra calidad cero y omite metadatos de IA no disponibles', async () => {
+    const input = {
+      comp: createMockCompany(1), selectedYear: '2026', periodText: 'Año 2026',
+      conductoresRecurrentes: 0, pctRecurrentes: '0', exerciseStats: [], allEvaluations: [],
+      aiReport: {
+        estadoGeneral: { nivel: 'bueno' as const, titulo: 'Resumen', resumenSimple: 'Resumen de flota' },
+        loQueVaBien: [], focosDeAtencion: [], planDeAccion: [], metasSimples: []
+      }
+    };
+    createdSlides.length = 0;
+    await generateCompanyPresentationPptx({ ...input, aiQuality: { score: 0, issues: [] }, aiCached: false });
+    const withQuality = createdSlides[createdSlides.length - 2].texts.join(' ');
+    expect(withQuality).toContain('Calidad 0/100');
+    expect(withQuality).not.toContain('Caché');
+
+    createdSlides.length = 0;
+    await generateCompanyPresentationPptx(input);
+    const withoutMetadata = createdSlides[createdSlides.length - 2].texts.join(' ');
+    expect(withoutMetadata).not.toContain('Calidad');
+    expect(withoutMetadata).not.toContain('Caché');
   });
 });

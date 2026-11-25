@@ -3,7 +3,7 @@ import { CompanySummary, Evaluation } from '../../types';
 import { logAudit } from '../../services/auditLog';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { createCompanySummaryFromEvaluations, getEvaluationYear } from '../../services/analytics';
-import { getCriticalMistakes, getEvaluationIncidentCounts } from '../../services/incidentMetrics';
+import { getHybridEvaluationIncidents, getHybridIncidentSummary } from '../../services/incidentMetrics';
 
 interface ExerciseStatItem {
   key: string;
@@ -53,32 +53,8 @@ export const CompanyReportModal: React.FC<CompanyReportModalProps> = ({
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
 
-    const criticalIncidents = new Map<string, { name: string; count: number }>();
-    const addCriticalIncident = (name: string, count: number) => {
-      if (count <= 0) return;
-      const key = name.toLowerCase();
-      const item = criticalIncidents.get(key) || { name, count: 0 };
-      item.count += count;
-      criticalIncidents.set(key, item);
-    };
-    allEvaluations.forEach((evaluation) => {
-      if (evaluation.origen === 'TrackSIM-ZERO-V2') {
-        const mistakes = getCriticalMistakes(evaluation.erroresFrecuentes || []);
-        if (mistakes.length > 0) {
-          mistakes.forEach((mistake) => addCriticalIncident(mistake.error, mistake.repeticiones));
-        } else {
-          addCriticalIncident('Sin desglose disponible', evaluation.accidentesCriticos || 0);
-        }
-      } else {
-        const incidents = getEvaluationIncidentCounts(evaluation);
-        addCriticalIncident('Colisiones', incidents.colisiones);
-        addCriticalIncident('Fatalidades', incidents.fatalidades);
-        addCriticalIncident('Salidas de vía', incidents.vehiculoFueraVia);
-      }
-    });
-    const criticalIncidentItems = Array.from(criticalIncidents.values()).sort((a, b) => b.count - a.count);
-    const criticalIncidentCount = criticalIncidentItems.reduce((total, item) => total + item.count, 0);
-    const criticalIncidentRows = criticalIncidentItems
+    const incidentSummary = getHybridIncidentSummary(allEvaluations);
+    const criticalIncidentRows = incidentSummary.details
       .map((item) => `<tr><td>${escapeHtml(item.name)}</td><td class="number">${item.count}</td></tr>`)
       .join('');
 
@@ -157,7 +133,7 @@ export const CompanyReportModal: React.FC<CompanyReportModalProps> = ({
         <td>${trend}</td>
       </tr>`;
     }).join('');
-    const annualData = new Map<string, { score: number; count: number; incidents: number; operators: Set<string> }>();
+    const annualData = new Map<string, { score: number; count: number; incidents: number; missing: number; operators: Set<string> }>();
     let undatedEvaluations = 0;
     allEvaluations.forEach((evaluation) => {
       const year = getEvaluationYear(evaluation);
@@ -165,11 +141,12 @@ export const CompanyReportModal: React.FC<CompanyReportModalProps> = ({
         undatedEvaluations += 1;
         return;
       }
-      const data = annualData.get(year) || { score: 0, count: 0, incidents: 0, operators: new Set<string>() };
-      const incidents = getEvaluationIncidentCounts(evaluation);
+      const data = annualData.get(year) || { score: 0, count: 0, incidents: 0, missing: 0, operators: new Set<string>() };
+      const incidents = getHybridEvaluationIncidents(evaluation, incidentSummary.modes);
       data.score += getScore(evaluation) ?? 0;
       data.count += 1;
-      data.incidents += incidents.colisiones + incidents.fatalidades + incidents.vehiculoFueraVia;
+      if (!incidents.complete || incidents.total === null) data.missing += 1;
+      else data.incidents += incidents.total;
       data.operators.add((evaluation.conductor || evaluation.operador || 'Sin Asignar').trim());
       annualData.set(year, data);
     });
@@ -178,17 +155,17 @@ export const CompanyReportModal: React.FC<CompanyReportModalProps> = ({
       .map(([year, data]) => ({
         year,
         average: Number((data.score / data.count).toFixed(2)),
-        rate: Number((data.incidents / data.operators.size).toFixed(2))
+        rate: data.missing === 0 ? Number((data.incidents / data.operators.size).toFixed(2)) : null
       }));
-    const chart = (values: number[], maximum: number, color: string, label: string) => {
+    const chart = (rows: Array<{ year: string; value: number }>, maximum: number, color: string, label: string) => {
       const left = 55;
       const right = 755;
       const top = 25;
       const bottom = 175;
-      const points = values.map((value, index) => ({
-        x: values.length === 1 ? (left + right) / 2 : left + index * (right - left) / (values.length - 1),
-        y: bottom - (value / maximum) * (bottom - top),
-        value
+      const points = rows.map((row, index) => ({
+        x: rows.length === 1 ? (left + right) / 2 : left + index * (right - left) / (rows.length - 1),
+        y: bottom - (row.value / maximum) * (bottom - top),
+        value: row.value
       }));
       return `<svg viewBox="0 0 810 215" role="img" aria-label="${label}" class="annual-chart">
         <line x1="${left}" y1="${top}" x2="${left}" y2="${bottom}" stroke="#94a3b8"/>
@@ -196,12 +173,15 @@ export const CompanyReportModal: React.FC<CompanyReportModalProps> = ({
         <text x="45" y="${top + 4}" text-anchor="end">${maximum.toFixed(2)}</text>
         <text x="45" y="${bottom + 4}" text-anchor="end">0</text>
         <polyline fill="none" stroke="${color}" stroke-width="3" points="${points.map((point) => `${point.x},${point.y}`).join(' ')}"/>
-        ${points.map((point, index) => `<g><title>${annualRows[index].year}: ${point.value.toFixed(2)}</title><circle cx="${point.x}" cy="${point.y}" r="4" fill="${color}"/><text x="${point.x}" y="${point.y - 9}" text-anchor="middle">${point.value.toFixed(2)}</text><text x="${point.x}" y="198" text-anchor="middle">${annualRows[index].year}</text></g>`).join('')}
+        ${points.map((point, index) => `<g><title>${rows[index].year}: ${point.value.toFixed(2)}</title><circle cx="${point.x}" cy="${point.y}" r="4" fill="${color}"/><text x="${point.x}" y="${point.y - 9}" text-anchor="middle">${point.value.toFixed(2)}</text><text x="${point.x}" y="198" text-anchor="middle">${rows[index].year}</text></g>`).join('')}
       </svg>`;
     };
-    const rateChange = annualRows.length >= 2 ? annualRows[annualRows.length - 1].rate - annualRows[0].rate : null;
+    const rateRows = annualRows.flatMap((row) => row.rate === null ? [] : [{ year: row.year, value: row.rate }]);
+    const rateChange = annualRows.length >= 2 && rateRows.length === annualRows.length
+      ? rateRows[rateRows.length - 1].value - rateRows[0].value
+      : null;
     const rateTrend = rateChange === null
-      ? 'Se necesitan al menos dos años para comparar la tasa.'
+      ? (annualRows.length < 2 ? 'Se necesitan al menos dos años para comparar la tasa.' : 'No se puede comparar la tasa porque faltan datos críticos en algunos años.')
       : rateChange < 0
         ? `Reducción de ${Math.abs(rateChange).toFixed(2)} incidentes por operador entre ${annualRows[0].year} y ${annualRows[annualRows.length - 1].year}.`
         : rateChange > 0
@@ -226,27 +206,31 @@ export const CompanyReportModal: React.FC<CompanyReportModalProps> = ({
             <div><span>Operadores con más de una evaluación</span><strong>${recurrentOperators.length}</strong></div>
             <div><span>Promedio de flota</span><strong>${comp.promedioFinal.toFixed(2)} / 10</strong></div>
             <div><span>Tasa de aprobación</span><strong>${comp.tasaAprobacion.toFixed(1)}%</strong></div>
-            <div><span>Incidencias críticas</span><strong>${criticalIncidentCount}</strong></div>
+            <div><span>${incidentSummary.label}</span><strong>${incidentSummary.unavailable === allEvaluations.length && allEvaluations.length > 0 ? 'Sin datos' : incidentSummary.total}</strong></div>
             <div><span>Sedes</span><strong>${comp.sedes?.length || 0}</strong></div>
           </div>
         </section>
         <section class="report-section">
-          <h2>Desglose de incidencias críticas</h2>
+          <h2>Desglose de incidencias</h2>
           ${criticalIncidentRows
             ? `<table><thead><tr><th>Tipo de incidencia</th><th class="number">Cantidad</th></tr></thead><tbody>${criticalIncidentRows}</tbody></table>`
-            : `<p>${allEvaluations.length > 0 ? 'No se registraron incidencias críticas en el periodo.' : 'No hay evaluaciones disponibles para el periodo.'}</p>`}
+            : `<p>${incidentSummary.unavailable ? 'No hay incidencias conocidas en los datos disponibles.' : allEvaluations.length > 0 ? 'No se registraron incidencias en el periodo.' : 'No hay evaluaciones disponibles para el periodo.'}</p>`}
+          ${incidentSummary.unavailable ? `<p>Datos de incidencias no disponibles para ${incidentSummary.unavailable} ${incidentSummary.unavailable === 1 ? 'evaluación' : 'evaluaciones'}; el total es parcial.</p>` : ''}
+          ${incidentSummary.incomplete ? `<p>Datos de incidencias incompletos o inconsistentes para ${incidentSummary.incomplete} ${incidentSummary.incomplete === 1 ? 'evaluación' : 'evaluaciones'}; el total puede no incluir todas las incidencias.</p>` : ''}
+          ${Array.from(incidentSummary.modes.values()).includes('mixed') ? '<p>En clientes mixtos se equiparan los conteos V1 a las categorías V2; las fatalidades V1 no distinguen atropellos de peatón de vuelcos.</p>' : ''}
         </section>
         ${exerciseRows ? `<section class="report-section"><h2>Desempeño por ejercicio</h2><table><thead><tr><th>#</th><th>Ejercicio</th><th class="number">Evaluaciones</th><th class="number">Promedio</th><th>Nivel</th></tr></thead><tbody>${exerciseRows}</tbody></table></section>` : ''}
         ${operatorRows ? `<section class="report-section"><h2>Métricas por operador</h2><table><thead><tr><th>#</th><th>Operador</th><th>Sede</th><th class="number">Evaluaciones</th><th class="number">Promedio</th><th class="number">Última calificación</th><th>Última fecha</th><th>Estado</th></tr></thead><tbody>${operatorRows}</tbody></table></section>` : ''}
         ${recurrentOperatorRows ? `<section class="report-section"><h2>Evolución por operador recurrente</h2><p>Comparación entre la primera y la última evaluación del periodo. Cambio en puntos sobre 10.</p><table><thead><tr><th>#</th><th>Operador</th><th class="number">Evaluaciones</th><th class="number">Primera</th><th class="number">Última</th><th class="number">Cambio</th><th>Tendencia</th></tr></thead><tbody>${recurrentOperatorRows}</tbody></table><p>Sin fechas o calificaciones completas, o con varias evaluaciones en la primera o última fecha, la evolución no es comparable.</p></section>` : ''}
         <section class="report-section">
           <h2>Evolución anual de la flota</h2>
-          ${annualRows.length ? `<p>Calificación promedio por evaluación (0 a 10).</p>${chart(annualRows.map((row) => row.average), 10, '#0284c7', 'Calificación promedio anual de la flota')}` : '<p>No hay evaluaciones con año disponible para generar la gráfica.</p>'}
+          ${annualRows.length ? `<p>Calificación promedio por evaluación (0 a 10).</p>${chart(annualRows.map((row) => ({ year: row.year, value: row.average })), 10, '#0284c7', 'Calificación promedio anual de la flota')}` : '<p>No hay evaluaciones con año disponible para generar la gráfica.</p>'}
           ${undatedEvaluations ? `<p>${undatedEvaluations} ${undatedEvaluations === 1 ? 'evaluación sin año se excluyó' : 'evaluaciones sin año se excluyeron'} de las gráficas.</p>` : ''}
         </section>
         <section class="report-section">
           <h2>Tasa anual de siniestralidad</h2>
-          ${annualRows.length ? `<p>Incidentes viales (colisiones, fatalidades y salidas de vía) por operador evaluado en cada año.</p>${chart(annualRows.map((row) => row.rate), Math.max(1, ...annualRows.map((row) => row.rate)), '#e11d48', 'Incidentes viales anuales por operador evaluado')}<p>${rateTrend}</p>` : '<p>No hay evaluaciones con año disponible para generar la gráfica.</p>'}
+          ${rateRows.length ? `<p>Incidencias por operador evaluado en cada año, según el criterio del cliente en el periodo filtrado.</p>${chart(rateRows, Math.max(1, ...rateRows.map((row) => row.value)), '#e11d48', 'Incidencias anuales por operador evaluado')}<p>${rateTrend}</p>` : '<p>No hay datos de incidencias completos para generar la gráfica.</p>'}
+          ${rateRows.length < annualRows.length ? '<p>Se excluyeron los años con datos de incidencias incompletos.</p>' : ''}
         </section>
       </main>`;
 
@@ -329,7 +313,7 @@ export const CompanyReportModal: React.FC<CompanyReportModalProps> = ({
         <body${themeAttribute}>${report}</body>
       </html>`);
     setPreviewError('');
-  }, [isOpen, comp, periodText, selectedYear, exerciseStats, allEvaluations]);
+  }, [isOpen, comp, periodText, exerciseStats, allEvaluations]);
 
   if (!isOpen) return null;
 

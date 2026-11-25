@@ -8,7 +8,7 @@ import {
   isAlcoholAwarenessExercise,
   readCachedAiInsight
 } from './companyAiInsights';
-import { getEvaluationIncidentCounts } from './incidentMetrics';
+import { getHybridIncidentSummary, getIncidentModes, groupIncidentCollisions } from './incidentMetrics';
 
 export interface AnnualEvolutionRowInput {
   year: string;
@@ -16,11 +16,12 @@ export interface AnnualEvolutionRowInput {
   operatorCount: number;
   avgScore: number;
   passRate: number;
-  collisions: number;
-  offRoad: number;
-  fatalities: number;
-  totalIncidents: number;
-  accidentRate: number;
+  collisions?: number;
+  offRoad?: number;
+  fatalities?: number;
+  incidentDetails?: Array<{ name: string; count: number }>;
+  totalIncidents: number | null;
+  accidentRate: number | null;
 }
 
 export interface FleetEvolutionAiInsightRequest {
@@ -44,9 +45,7 @@ function buildAnnualRowsFromEvaluations(evaluations: Evaluation[]): AnnualEvolut
       scoreSum: number;
       scoreCount: number;
       passedCount: number;
-      collisions: number;
-      offRoad: number;
-      fatalities: number;
+      evaluations: Evaluation[];
     }
   >();
 
@@ -59,9 +58,7 @@ function buildAnnualRowsFromEvaluations(evaluations: Evaluation[]): AnnualEvolut
       scoreSum: 0,
       scoreCount: 0,
       passedCount: 0,
-      collisions: 0,
-      offRoad: 0,
-      fatalities: 0
+      evaluations: []
     };
 
     const score = getEvalScore(ev);
@@ -74,28 +71,25 @@ function buildAnnualRowsFromEvaluations(evaluations: Evaluation[]): AnnualEvolut
       if (score >= 6.0) entry.passedCount += 1;
     }
 
-    const inc = getEvaluationIncidentCounts(ev);
-    entry.collisions += inc.colisiones;
-    entry.offRoad += inc.vehiculoFueraVia;
-    entry.fatalities += inc.fatalidades;
+    entry.evaluations.push(ev);
     byYear.set(year, entry);
   });
 
+  const modes = getIncidentModes(evaluations);
   return Array.from(byYear.entries())
     .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
     .map(([year, d]) => {
-      const totalIncidents = d.collisions + d.offRoad + d.fatalities;
+      const incidents = getHybridIncidentSummary(d.evaluations, modes);
+      const totalIncidents = incidents.unavailable || incidents.incomplete ? null : incidents.total;
       return {
         year,
         evalCount: d.evalCount,
         operatorCount: d.drivers.size,
         avgScore: d.scoreCount > 0 ? Number((d.scoreSum / d.scoreCount).toFixed(2)) : 0,
         passRate: d.scoreCount > 0 ? Number(((d.passedCount / d.scoreCount) * 100).toFixed(1)) : 0,
-        collisions: d.collisions,
-        offRoad: d.offRoad,
-        fatalities: d.fatalities,
+        incidentDetails: incidents.details,
         totalIncidents,
-        accidentRate: d.evalCount > 0 ? Number((totalIncidents / d.evalCount).toFixed(2)) : 0
+        accidentRate: d.drivers.size > 0 && totalIncidents !== null ? Number((totalIncidents / d.drivers.size).toFixed(2)) : null
       };
     });
 }
@@ -122,15 +116,16 @@ export function buildFleetEvolutionAiMetricsContext(input: FleetEvolutionAiInsig
   const ultimaCalificacion = lastRow ? Number(lastRow.avgScore.toFixed(2)) : 0;
   const primeraTasaAprobacion = firstRow ? Number(firstRow.passRate.toFixed(1)) : 0;
   const ultimaTasaAprobacion = lastRow ? Number(lastRow.passRate.toFixed(1)) : 0;
-  const primeraTasaIncidentes = firstRow ? Number(firstRow.accidentRate.toFixed(2)) : 0;
-  const ultimaTasaIncidentes = lastRow ? Number(lastRow.accidentRate.toFixed(2)) : 0;
+  const primeraTasaIncidentes = firstRow?.accidentRate ?? null;
+  const ultimaTasaIncidentes = lastRow?.accidentRate ?? null;
 
   const cambioCalificacionPuntos =
     aniosEvaluados >= 2 ? Number((ultimaCalificacion - primeraCalificacion).toFixed(2)) : 0;
   const cambioTasaAprobacionPts =
     aniosEvaluados >= 2 ? Number((ultimaTasaAprobacion - primeraTasaAprobacion).toFixed(1)) : 0;
   const cambioTasaIncidentes =
-    aniosEvaluados >= 2 ? Number((ultimaTasaIncidentes - primeraTasaIncidentes).toFixed(2)) : 0;
+    aniosEvaluados >= 2 && ultimaTasaIncidentes !== null && primeraTasaIncidentes !== null
+      ? Number((ultimaTasaIncidentes - primeraTasaIncidentes).toFixed(2)) : null;
 
   const tendenciaCalificacion: 'mejora' | 'descenso' | 'estable' | 'un_anio' =
     aniosEvaluados < 2
@@ -141,9 +136,11 @@ export function buildFleetEvolutionAiMetricsContext(input: FleetEvolutionAiInsig
           ? 'descenso'
           : 'estable';
 
-  const tendenciaSiniestralidad: 'mejora' | 'deterioro' | 'estable' | 'un_anio' =
+  const tendenciaSiniestralidad: 'mejora' | 'deterioro' | 'estable' | 'un_anio' | 'no_disponible' =
     aniosEvaluados < 2
       ? 'un_anio'
+      : cambioTasaIncidentes === null
+        ? 'no_disponible'
       : cambioTasaIncidentes <= -0.05
         ? 'mejora'
         : cambioTasaIncidentes >= 0.05
@@ -285,10 +282,8 @@ export function buildFleetEvolutionAiMetricsContext(input: FleetEvolutionAiInsig
       calificacionPromedio: Number(row.avgScore.toFixed(2)),
       tasaAprobacionPct: Number(row.passRate.toFixed(1)),
       incidentesTotales: row.totalIncidents,
-      colisiones: row.collisions,
-      salidasVia: row.offRoad,
-      fatalidades: row.fatalities,
-      incidentesPorEvaluacion: Number(row.accidentRate.toFixed(2))
+      desgloseIncidencias: groupIncidentCollisions(row.incidentDetails || []),
+      incidenciasPorOperador: row.accidentRate
     })),
     operadoresRecurrentes: {
       total: recurrentTotal,
@@ -311,7 +306,9 @@ export function buildFleetEvolutionAiPrompt(
     'Analiza la EVOLUCIÓN HISTÓRICA de la flota año contra año y entrega conclusiones ejecutivas claras para dirección y gerencia de flota.',
     'REGLAS ESTRICTAS:',
     '- Usa español sencillo, ejecutivo y accionable, SIN jerga estadística (nada de desviación estándar, mediana, sigma ni percentiles).',
-    '- Compara explícitamente cómo evolucionó la flota entre el primer y el último año (calificación promedio, tasa de aprobación e incidentes por evaluación).',
+    '- Las tasas son por operador. Si una tasa o total es null, explica que no hay datos completos y no infieras mejoras ni ausencia de incidencias.',
+    '- "Atropello de peatón y vuelcos" puede incluir fatalidades históricas sin subtipo; no atribuyas esos registros a un subtipo específico.',
+    '- Compara la calificación promedio y la tasa de aprobación entre el primer y el último año; compara las incidencias por operador solo si ambas tasas están disponibles.',
     '- Si existen operadores recurrentes (total > 0), destaca el impacto real de las re-capacitaciones (cuántos mejoraron y su avance promedio).',
     '- Analiza qué ejercicios operativos mejoraron o retrocedieron con el tiempo.',
     '- REGLA CRÍTICA SOBRE "Efectos del alcohol" (esConcientizacionIntencional: true): es un ejercicio de CONCIENTIZACIÓN planeado intencionalmente para obtener mala calificación y choques para sensibilizar al operador. NO lo reportes como retroceso operativo ni recomiendes reentrenar ese escenario.',
@@ -347,10 +344,10 @@ export function buildLocalFleetEvolutionFallbackStructured(
 ): CompanyAiStructuredReport {
   const multiYear = metrics.aniosEvaluados >= 2;
   const nivel: CompanyAiStructuredReport['estadoGeneral']['nivel'] =
-    metrics.ultimaCalificacion >= 8.0 && metrics.cambioCalificacionPuntos >= 0 && metrics.ultimaTasaIncidentes <= 0.35
+    metrics.ultimaCalificacion >= 8.0 && metrics.cambioCalificacionPuntos >= 0 && metrics.ultimaTasaIncidentes !== null && metrics.ultimaTasaIncidentes <= 0.35
       ? 'sobresaliente'
       : metrics.tendenciaCalificacion === 'descenso' || metrics.tendenciaSiniestralidad === 'deterioro' || metrics.ultimaCalificacion < 6.0
-        ? metrics.ultimaCalificacion < 6.0 || (metrics.cambioCalificacionPuntos <= -0.8 && metrics.cambioTasaIncidentes > 0.2)
+        ? metrics.ultimaCalificacion < 6.0 || (metrics.cambioCalificacionPuntos <= -0.8 && metrics.cambioTasaIncidentes !== null && metrics.cambioTasaIncidentes > 0.2)
           ? 'critico'
           : 'atencion'
         : metrics.ultimaCalificacion >= 7.0
@@ -367,10 +364,15 @@ export function buildLocalFleetEvolutionFallbackStructured(
           : 'Línea base histórica lista para comparar ciclos';
 
   const scoreDeltaPhrase = multiYear
-    ? `entre ${metrics.primerAnio} y ${metrics.ultimoAnio} el promedio pasó de ${metrics.primeraCalificacion.toFixed(2)} a ${metrics.ultimaCalificacion.toFixed(2)} (${metrics.cambioCalificacionPuntos >= 0 ? '+' : ''}${metrics.cambioCalificacionPuntos.toFixed(2)} pts) y los incidentes por evaluación pasaron de ${metrics.primeraTasaIncidentes.toFixed(2)} a ${metrics.ultimaTasaIncidentes.toFixed(2)}`
-    : `durante ${metrics.ultimoAnio} se registró un promedio de ${metrics.ultimaCalificacion.toFixed(2)} sobre 10 con ${metrics.ultimaTasaIncidentes.toFixed(2)} incidentes por evaluación`;
+    ? `entre ${metrics.primerAnio} y ${metrics.ultimoAnio} el promedio pasó de ${metrics.primeraCalificacion.toFixed(2)} a ${metrics.ultimaCalificacion.toFixed(2)} (${metrics.cambioCalificacionPuntos >= 0 ? '+' : ''}${metrics.cambioCalificacionPuntos.toFixed(2)} pts)`
+    : `durante ${metrics.ultimoAnio} se registró un promedio de ${metrics.ultimaCalificacion.toFixed(2)} sobre 10`;
+  const incidentPhrase = multiYear && metrics.primeraTasaIncidentes !== null && metrics.ultimaTasaIncidentes !== null
+    ? ` La tasa de incidencias por operador pasó de ${metrics.primeraTasaIncidentes.toFixed(2)} a ${metrics.ultimaTasaIncidentes.toFixed(2)}.`
+    : !multiYear && metrics.ultimaTasaIncidentes !== null
+      ? ` Se registraron ${metrics.ultimaTasaIncidentes.toFixed(2)} incidencias por operador.`
+      : ' La comparación de incidencias no está disponible por falta de datos completos.';
 
-  const resumenSimple = `En ${metrics.empresa}, ${scoreDeltaPhrase}. La tasa de aprobación más reciente se ubica en ${metrics.ultimaTasaAprobacion.toFixed(1)}% con ${metrics.totalEvaluaciones} evaluaciones acumuladas.`;
+  const resumenSimple = `En ${metrics.empresa}, ${scoreDeltaPhrase}.${incidentPhrase} La tasa de aprobación más reciente se ubica en ${metrics.ultimaTasaAprobacion.toFixed(1)}% con ${metrics.totalEvaluaciones} evaluaciones acumuladas.`;
 
   const operationalExercises = metrics.evolucionEjercicios.filter((ex) => !ex.esConcientizacionIntencional);
   const improvedEx = [...operationalExercises]
@@ -387,10 +389,10 @@ export function buildLocalFleetEvolutionFallbackStructured(
       detalle: `Subió +${metrics.cambioCalificacionPuntos.toFixed(2)} puntos de ${metrics.primerAnio} a ${metrics.ultimoAnio}.`
     });
   }
-  if (multiYear && metrics.cambioTasaIncidentes < 0) {
+  if (multiYear && metrics.cambioTasaIncidentes !== null && metrics.cambioTasaIncidentes < 0 && metrics.primeraTasaIncidentes !== null && metrics.ultimaTasaIncidentes !== null) {
     loQueVaBien.push({
-      titulo: 'Reducción de incidentes por evaluación',
-      detalle: `Bajó de ${metrics.primeraTasaIncidentes.toFixed(2)} a ${metrics.ultimaTasaIncidentes.toFixed(2)} incidentes por sesión evaluada.`
+      titulo: 'Reducción de incidencias por operador',
+      detalle: `Bajó de ${metrics.primeraTasaIncidentes.toFixed(2)} a ${metrics.ultimaTasaIncidentes.toFixed(2)} incidencias por operador.`
     });
   }
   if (metrics.operadoresRecurrentes.total > 0 && metrics.operadoresRecurrentes.mejoraron > 0) {
@@ -413,9 +415,9 @@ export function buildLocalFleetEvolutionFallbackStructured(
   }
 
   const focosDeAtencion: CompanyAiStructuredReport['focosDeAtencion'] = [];
-  if (multiYear && metrics.cambioTasaIncidentes > 0.05) {
+  if (multiYear && metrics.cambioTasaIncidentes !== null && metrics.cambioTasaIncidentes > 0.05 && metrics.primeraTasaIncidentes !== null && metrics.ultimaTasaIncidentes !== null) {
     focosDeAtencion.push({
-      titulo: 'Repunte en tasa de incidentes por sesión',
+      titulo: 'Repunte en tasa de incidencias por operador',
       porqueImporta: `Subió de ${metrics.primeraTasaIncidentes.toFixed(2)} a ${metrics.ultimaTasaIncidentes.toFixed(2)}, aumentando el riesgo de siniestros reales en ruta.`,
       nivel: 'alto'
     });
@@ -447,7 +449,7 @@ export function buildLocalFleetEvolutionFallbackStructured(
   }
 
   const scoreTarget = Math.min(9.5, Number(Math.max(metrics.ultimaCalificacion + 0.4, 8.0).toFixed(1)));
-  const incidentTarget = Math.max(0, Number((metrics.ultimaTasaIncidentes * 0.75).toFixed(2)));
+  const incidentTarget = metrics.ultimaTasaIncidentes === null ? null : Math.max(0, Number((metrics.ultimaTasaIncidentes * 0.75).toFixed(2)));
   const passTarget = Math.min(98, Math.max(85, Math.round(metrics.ultimaTasaAprobacion + 5)));
 
   return {
@@ -486,9 +488,9 @@ export function buildLocalFleetEvolutionFallbackStructured(
         meta: `≥ ${scoreTarget.toFixed(1)} / 10`
       },
       {
-        indicador: 'Incidentes / sesión',
-        actual: `${metrics.ultimaTasaIncidentes.toFixed(2)}`,
-        meta: `≤ ${incidentTarget.toFixed(2)}`
+        indicador: 'Incidencias / operador',
+        actual: metrics.ultimaTasaIncidentes === null ? 'No disponible' : metrics.ultimaTasaIncidentes.toFixed(2),
+        meta: incidentTarget === null ? 'No disponible' : `≤ ${incidentTarget.toFixed(2)}`
       },
       {
         indicador: 'Tasa de aprobación',
@@ -508,7 +510,7 @@ export function buildLocalFleetEvolutionFallbackInsight(
 function buildFleetEvolutionCacheKey(
   metrics: ReturnType<typeof buildFleetEvolutionAiMetricsContext>
 ): string {
-  return `evolution|${metrics.empresa}|${metrics.alcance}|${metrics.aniosEvaluados}|${metrics.totalEvaluaciones}|${metrics.ultimaCalificacion}|${metrics.ultimaTasaIncidentes}|${metrics.operadoresRecurrentes.total}`;
+  return `evolution-hybrid-v2|${metrics.empresa}|${metrics.alcance}|${metrics.aniosEvaluados}|${metrics.totalEvaluaciones}|${metrics.ultimaCalificacion}|${JSON.stringify(metrics.desgloseAnual)}|${metrics.operadoresRecurrentes.total}`;
 }
 
 export function getCachedFleetEvolutionAiInsight(

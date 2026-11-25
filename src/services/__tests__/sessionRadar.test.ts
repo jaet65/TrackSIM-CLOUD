@@ -3,6 +3,7 @@ import {
   calculateSingleSessionRadar
 } from '../sessionRadar';
 import { Evaluation } from '../../types';
+import { getIncidentModes } from '../incidentMetrics';
 
 describe('sessionRadar service', () => {
   it('debe retornar dimensiones predeterminadas y scores por defecto (7.0) si no hay evaluación', () => {
@@ -95,6 +96,14 @@ describe('sessionRadar service', () => {
     const result = calculateSingleSessionRadar(mockEval as Evaluation);
 
     expect(result.scores[0]).toBe(5.0);
+    expect(result.scores[1]).toBeNull();
     expect(result.scores[2]).toBe(5.0);
+  });
+
+  it('no aplica la fórmula histórica de colisiones al radar de un cliente mixto', () => {
+    const v1: Evaluation = { id: 'v1', empresa: 'Flota', colisiones: 1, fatalidades: 0 };
+    const v2: Evaluation = { id: 'v2', empresa: 'Flota', origen: 'TrackSIM-ZERO-V2', accidentesCriticos: 0 };
+    expect(calculateSingleSessionRadar(v1, getIncidentModes([v1, v2])).scores[1]).toBeNull();
+    expect(calculateSingleSessionRadar({ id: 'missing', empresa: 'Flota' }).scores[1]).toBeNull();
   });
 });

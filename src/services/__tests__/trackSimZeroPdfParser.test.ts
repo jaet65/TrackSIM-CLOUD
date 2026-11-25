@@ -87,8 +87,8 @@ describe('TrackSIM-ZERO individual PDF parser', () => {
     expect(parsed.vehiculoFueraVia).toBe(0);
     expect(parsed.totalInfracciones).toBe(2);
     expect(parsed.erroresFrecuentes).toEqual([
-      { error: 'Pisar el acotamiento derecho', errorRaw: 'Pisar el acotamiento derecho', repeticiones: 22 },
-      { error: 'Frenado brusco', errorRaw: 'Frenado brusco', repeticiones: 4 },
+      { error: 'Pisar el acotamiento derecho', errorRaw: 'Pisar el acotamiento derecho', repeticiones: 22, severidad: 'CRITICO' },
+      { error: 'Frenado brusco', errorRaw: 'Frenado brusco', repeticiones: 4, severidad: 'CRITICO' },
       {
         error: 'No emplear el freno de embrague para engranar la marcha de arranque',
         errorRaw: 'No emplear el freno de embrague para engranar la marcha de arranque',
@@ -176,6 +176,22 @@ describe('TrackSIM-ZERO individual PDF parser', () => {
     expect(parsed.erroresFrecuentes).toEqual(expect.arrayContaining([
       { error: 'Salirse de la vía', errorRaw: 'Salirse de la vía', repeticiones: 2, severidad: 'CRITICO' },
       { error: 'Salirse de la vía', errorRaw: 'Salirse de la vía', repeticiones: 3 }
+    ]));
+  });
+
+  it('preserves critical severity for all parsed weak points', () => {
+    const lines = individualPdfLines();
+    replaceWeakPointSection(lines, [
+      textLine(2, 530, [{ text: 'Nivel Crítico', x: 22 }]),
+      textLine(2, 518, [{ text: 'Frenado brusco', x: 18 }, { text: '2× veces', x: 180 }]),
+      textLine(2, 493, [{ text: 'Nivel Grave', x: 22 }]),
+      textLine(2, 481, [{ text: 'Frenado brusco', x: 18 }, { text: '3× veces', x: 180 }])
+    ]);
+
+    const parsed = parseTrackSimZeroPdfLines(lines, 'Ana_Conductora_expediente.pdf');
+    expect(parsed.erroresFrecuentes).toEqual(expect.arrayContaining([
+      { error: 'Frenado brusco', errorRaw: 'Frenado brusco', repeticiones: 2, severidad: 'CRITICO' },
+      { error: 'Frenado brusco', errorRaw: 'Frenado brusco', repeticiones: 3 }
     ]));
   });
 

@@ -3,7 +3,7 @@ import { logAudit } from './auditLog';
 import type { CompanyAiStructuredReport } from './companyAiInsights';
 import type { AiResponseQuality } from './companyAiInsights';
 import { findCatalogExercise } from './exerciseCatalog';
-import { getCriticalMistakes, getEvaluationIncidentCounts } from './incidentMetrics';
+import { getHybridDriverIncidents, getHybridEvaluationIncidents, getHybridIncidentSummary } from './incidentMetrics';
 
 export interface ExerciseStatSummary {
   key: string;
@@ -35,7 +35,7 @@ export interface DriverRowSummary {
   sede: string;
   sesiones: number;
   promedioScore: number;
-  incidentes: number;
+  incidentes: number | null;
   estado: string;
 }
 
@@ -78,9 +78,12 @@ export interface CompanyPresentationData {
   }>;
   criticalSummary: {
     hasV2Data: boolean;
+    noEvaluations: boolean;
     totalIncidentes: number;
     incidentRate: string;
     items: Array<{ error: string; repeticiones: number }>;
+    incomplete: number;
+    mixed: boolean;
   };
   topMistakes: Array<{ error: string; repeticiones: number }>;
   top10Best: DriverRowSummary[];
@@ -93,11 +96,11 @@ export interface CompanyPresentationData {
       sesiones: number;
       promedio: number;
       tasaAprobacion: number;
-      totalAccidentes: number;
-      tasaAccidentes: number;
+      totalAccidentes: number | null;
+      tasaAccidentes: number | null;
     }>;
     scoreDeltaFirstToLast: number;
-    accidentRateDeltaFirstToLast: number;
+    accidentRateDeltaFirstToLast: number | null;
     recurrentImpact: {
       count: number;
       firstAvg: number;
@@ -210,10 +213,6 @@ async function generateQrDataUrl(text: string): Promise<string | null> {
   }
 }
 
-function getDriverIncidents(c: any): number {
-  return (c.colisiones || 0) + (c.fatalidades || 0) + (c.totalFueraVia || 0);
-}
-
 function getEvalYear(ev: Evaluation): string | null {
   const dateStr = ev.fechaCapacitacion || ev.fechaReporte || ev.fecha || '';
   const match = String(dateStr).match(/\b(20\d{2}|19\d{2})\b/);
@@ -274,7 +273,7 @@ function buildActionPlan(
   }
 
   if (totalIncidentes > 0) {
-    return 'Implementar talleres de conducción defensiva orientados a control de colisiones y prevención de incidentes críticos.';
+    return 'Implementar talleres de conducción defensiva orientados a prevenir las incidencias registradas.';
   }
 
   if (promedioFinal < 7.0) {
@@ -308,50 +307,17 @@ export function buildCompanyPresentationData(input: CompanyPresentationInput): C
   const pctAprobados = totalConductores > 0 ? Math.round((aprobados / totalConductores) * 100) : 0;
   const pctRefuerzo = totalConductores > 0 ? Math.round((refuerzo / totalConductores) * 100) : 0;
 
-  // Incidentes críticos reales (Zero / V2) o acumulados (legacy)
+  // Incidencias según el criterio de cada cliente en el periodo filtrado
   const hasV2Data = allEvaluations.some((ev) => ev.origen === 'TrackSIM-ZERO-V2');
-  let criticalItems: Array<{ error: string; repeticiones: number }> = [];
-  let totalIncidentes = 0;
+  const incidentSummary = getHybridIncidentSummary(allEvaluations);
+  const driverIncidents = getHybridDriverIncidents(allEvaluations, incidentSummary.modes);
+  const driverIncidentCount = (driver: { nombre: string }) =>
+    driverIncidents.get(driver.nombre.trim().toLowerCase()) ?? null;
+  const criticalItems = incidentSummary.details.map((item) => ({ error: item.name, repeticiones: item.count }));
+  const totalIncidentes = incidentSummary.total;
 
-  if (hasV2Data) {
-    const critMap = new Map<string, { error: string; repeticiones: number }>();
-    const addCrit = (name: string, count: number) => {
-      if (count <= 0) return;
-      const key = name.toLowerCase();
-      const current = critMap.get(key) || { error: name, repeticiones: 0 };
-      current.repeticiones += count;
-      critMap.set(key, current);
-    };
-
-    allEvaluations.forEach((ev) => {
-      if (ev.origen === 'TrackSIM-ZERO-V2') {
-        const criticos = getCriticalMistakes(ev.erroresFrecuentes || []);
-        if (criticos.length > 0) {
-          criticos.forEach((c) => addCrit(c.error, c.repeticiones));
-        } else if ((ev.accidentesCriticos || 0) > 0) {
-          addCrit('Incidencias Críticas', ev.accidentesCriticos || 0);
-        }
-      } else {
-        const inc = getEvaluationIncidentCounts(ev);
-        addCrit('Colisiones', inc.colisiones);
-        addCrit('Salidas de Vía', inc.vehiculoFueraVia);
-        addCrit('Fatalidades', inc.fatalidades);
-      }
-    });
-
-    criticalItems = Array.from(critMap.values()).sort((a, b) => b.repeticiones - a.repeticiones);
-    totalIncidentes = criticalItems.reduce((sum, item) => sum + item.repeticiones, 0);
-  } else {
-    const col = comp.totalColisiones || 0;
-    const out = comp.totalFueraVia || 0;
-    const fat = comp.totalFatalidades || 0;
-    totalIncidentes = col + out + fat;
-    if (col > 0) criticalItems.push({ error: 'Colisiones', repeticiones: col });
-    if (out > 0) criticalItems.push({ error: 'Salidas de Vía', repeticiones: out });
-    if (fat > 0) criticalItems.push({ error: 'Fatalidades', repeticiones: fat });
-  }
-
-  const incidentRate = totalConductores > 0 ? (totalIncidentes / totalConductores).toFixed(2) : '0.00';
+  const incidentRate = incidentSummary.unavailable + incidentSummary.incomplete > 0 || !allEvaluations.length || !totalConductores
+    ? '—' : (totalIncidentes / totalConductores).toFixed(2);
 
   // Top errores recurrentes (erroresFrecuentes)
   const mistakesMap = new Map<string, { error: string; repeticiones: number }>();
@@ -374,7 +340,9 @@ export function buildCompanyPresentationData(input: CompanyPresentationInput): C
   // Top 10 mejores conductores
   const sortedBest = [...conductores].sort((a, b) => {
     if (b.promedioScore !== a.promedioScore) return b.promedioScore - a.promedioScore;
-    return getDriverIncidents(a) - getDriverIncidents(b);
+    const incA = driverIncidentCount(a);
+    const incB = driverIncidentCount(b);
+    return incA === null || incB === null ? 0 : incA - incB;
   });
   const top10Best: DriverRowSummary[] = sortedBest.slice(0, 10).map((c, idx) => ({
     rank: idx + 1,
@@ -382,14 +350,16 @@ export function buildCompanyPresentationData(input: CompanyPresentationInput): C
     sede: c.sede || 'Principal',
     sesiones: c.totalEvaluaciones || 1,
     promedioScore: c.promedioScore,
-    incidentes: getDriverIncidents(c),
+    incidentes: driverIncidentCount(c),
     estado: c.estado || (c.promedioScore >= 8 ? 'Sobresaliente' : c.promedioScore >= 6 ? 'Aprobado' : 'Reforzar')
   }));
 
   // Top 10 peores conductores (atención prioritaria)
   const sortedWorst = [...conductores].sort((a, b) => {
     if (a.promedioScore !== b.promedioScore) return a.promedioScore - b.promedioScore;
-    return getDriverIncidents(b) - getDriverIncidents(a);
+    const incA = driverIncidentCount(a);
+    const incB = driverIncidentCount(b);
+    return incA === null || incB === null ? 0 : incB - incA;
   });
   const top10Worst: DriverRowSummary[] = sortedWorst.slice(0, 10).map((c, idx) => ({
     rank: idx + 1,
@@ -397,7 +367,7 @@ export function buildCompanyPresentationData(input: CompanyPresentationInput): C
     sede: c.sede || 'Principal',
     sesiones: c.totalEvaluaciones || 1,
     promedioScore: c.promedioScore,
-    incidentes: getDriverIncidents(c),
+    incidentes: driverIncidentCount(c),
     estado: c.estado || (c.promedioScore >= 8 ? 'Sobresaliente' : c.promedioScore >= 6 ? 'Aprobado' : 'Reforzar')
   }));
 
@@ -523,6 +493,7 @@ export function buildCompanyPresentationData(input: CompanyPresentationInput): C
       scoreSum: number;
       approved: number;
       accidentes: number;
+      incomplete: boolean;
     }
   >();
   const driverHistoryMap = new Map<string, Array<{ time: number; score: number }>>();
@@ -544,21 +515,17 @@ export function buildCompanyPresentationData(input: CompanyPresentationInput): C
       sesiones: 0,
       scoreSum: 0,
       approved: 0,
-      accidentes: 0
+      accidentes: 0,
+      incomplete: false
     };
     if (opName) bucket.operators.add(opKey);
     bucket.sesiones += 1;
     bucket.scoreSum += score;
     if (score >= 6.0) bucket.approved += 1;
 
-    if (ev.origen === 'TrackSIM-ZERO-V2') {
-      const crits = getCriticalMistakes(ev.erroresFrecuentes || []);
-      const evCrits = crits.length > 0 ? crits.reduce((s, c) => s + c.repeticiones, 0) : (ev.accidentesCriticos || 0);
-      bucket.accidentes += evCrits;
-    } else {
-      const inc = getEvaluationIncidentCounts(ev);
-      bucket.accidentes += inc.colisiones + inc.fatalidades + inc.vehiculoFueraVia;
-    }
+    const incidents = getHybridEvaluationIncidents(ev, incidentSummary.modes);
+    if (!incidents.complete) bucket.incomplete = true;
+    if (incidents.total !== null) bucket.accidentes += incidents.total;
     yearMap.set(yr, bucket);
   });
 
@@ -572,8 +539,8 @@ export function buildCompanyPresentationData(input: CompanyPresentationInput): C
       sesiones: b.sesiones,
       promedio: Number((b.scoreSum / b.sesiones).toFixed(2)),
       tasaAprobacion: Number(((b.approved / b.sesiones) * 100).toFixed(1)),
-      totalAccidentes: b.accidentes,
-      tasaAccidentes: opsCount > 0 ? Number((b.accidentes / opsCount).toFixed(2)) : 0
+      totalAccidentes: b.incomplete ? null : b.accidentes,
+      tasaAccidentes: b.incomplete ? null : opsCount > 0 ? Number((b.accidentes / opsCount).toFixed(2)) : 0
     };
   });
 
@@ -596,9 +563,11 @@ export function buildCompanyPresentationData(input: CompanyPresentationInput): C
   const scoreDeltaFirstToLast = hasMultiYear
     ? Number((yearsData[yearsData.length - 1].promedio - yearsData[0].promedio).toFixed(2))
     : 0;
-  const accidentRateDeltaFirstToLast = hasMultiYear
-    ? Number((yearsData[yearsData.length - 1].tasaAccidentes - yearsData[0].tasaAccidentes).toFixed(2))
-    : 0;
+  const firstRate = yearsData[0]?.tasaAccidentes;
+  const lastRate = yearsData[yearsData.length - 1]?.tasaAccidentes;
+  const accidentRateDeltaFirstToLast = hasMultiYear && firstRate != null && lastRate != null && yearsData.every((year) => year.tasaAccidentes !== null)
+    ? Number((lastRate - firstRate).toFixed(2))
+    : null;
 
   return {
     companyName: comp.nombre || 'Flota',
@@ -624,9 +593,12 @@ export function buildCompanyPresentationData(input: CompanyPresentationInput): C
     exercisesByYear,
     criticalSummary: {
       hasV2Data,
+      noEvaluations: allEvaluations.length === 0,
       totalIncidentes,
       incidentRate,
-      items: criticalItems
+      items: criticalItems,
+      incomplete: incidentSummary.unavailable + incidentSummary.incomplete,
+      mixed: Array.from(incidentSummary.modes.values()).includes('mixed')
     },
     topMistakes,
     top10Best,
@@ -732,7 +704,7 @@ function buildDriverTableRows(rows: DriverRowSummary[], isWorst: boolean): any[]
   rows.forEach((r, idx) => {
     const bg = idx % 2 === 0 ? COLORS.white : 'F1F5F9';
     const scoreColor = r.promedioScore >= 8.0 ? COLORS.green : r.promedioScore >= 6.0 ? COLORS.sky : COLORS.red;
-    const incColor = r.incidentes > 0 ? COLORS.red : COLORS.green;
+    const incColor = r.incidentes === null ? COLORS.slate : r.incidentes > 0 ? COLORS.red : COLORS.green;
 
     tableRows.push([
       { text: String(r.rank), options: { fill: { color: bg }, align: 'center', fontSize: 9, bold: true, color: COLORS.slate } },
@@ -744,7 +716,7 @@ function buildDriverTableRows(rows: DriverRowSummary[], isWorst: boolean): any[]
         options: { fill: { color: bg }, align: 'center', fontSize: 9, bold: true, color: scoreColor }
       },
       {
-        text: String(r.incidentes),
+        text: r.incidentes === null ? '—' : String(r.incidentes),
         options: { fill: { color: bg }, align: 'center', fontSize: 9, bold: true, color: incColor }
       },
       { text: r.estado, options: { fill: { color: bg }, align: 'center', fontSize: 8.5, bold: true, color: scoreColor } }
@@ -877,10 +849,6 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
   // SLIDE 2: CATÁLOGO DE EJERCICIOS REALIZADOS Y DESCRIPCIÓN
   // =========================================================================
   const sDesc = pres.addSlide();
-  const lowestExercises = data.exercises
-    .filter((ex) => ex.nivel === 'Requiere Refuerzo')
-    .sort((a, b) => a.promedio - b.promedio)
-    .slice(0, 2);
   addSlideHeader(
     sDesc,
     'Catálogo de Ejercicios Realizados',
@@ -989,8 +957,8 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     {
       label: 'TASA DE ACCIDENTES',
       value: data.criticalSummary.incidentRate,
-      sub: `${data.criticalSummary.totalIncidentes} eventos / op.`,
-      color: Number(data.criticalSummary.incidentRate) > 1 ? COLORS.red : Number(data.criticalSummary.incidentRate) > 0 ? COLORS.amber : COLORS.green
+      sub: data.criticalSummary.noEvaluations ? 'Sin evaluaciones disponibles' : `${data.criticalSummary.totalIncidentes} eventos conocidos`,
+      color: data.criticalSummary.incidentRate === '—' ? COLORS.slate : Number(data.criticalSummary.incidentRate) > 1 ? COLORS.red : Number(data.criticalSummary.incidentRate) > 0 ? COLORS.amber : COLORS.green
     }
   ];
 
@@ -1285,13 +1253,14 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
       fontFace: 'Segoe UI'
     });
 
-    sEvo.addChart(
+    const completeRateYears = yrs.filter((year): year is typeof year & { tasaAccidentes: number } => year.tasaAccidentes !== null);
+    if (completeRateYears.length > 0) sEvo.addChart(
       pres.ChartType.line,
       [
         {
           name: 'Tasa de Accidentes',
-          labels: yrs.map((y) => y.year),
-          values: yrs.map((y) => y.tasaAccidentes)
+          labels: completeRateYears.map((y) => y.year),
+          values: completeRateYears.map((y) => y.tasaAccidentes)
         }
       ],
       {
@@ -1313,6 +1282,11 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
         dataLabelColor: COLORS.red
       }
     );
+    if (completeRateYears.length < yrs.length) {
+      sEvo.addText('Se excluyeron años con datos de incidencias incompletos.', {
+        x: 0.85, y: 6.47, w: 5.6, h: 0.2, fontSize: 8, color: COLORS.slate
+      });
+    }
 
     // Tabla derecha superior: Comparativa Año con Año
     const evoRows: any[][] = [
@@ -1328,13 +1302,13 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     yrs.slice(-7).forEach((y, idx) => {
       const bg = idx % 2 === 0 ? COLORS.white : 'F1F5F9';
       const pColor = y.promedio >= 8 ? COLORS.green : y.promedio >= 6 ? COLORS.sky : COLORS.red;
-      const aColor = y.tasaAccidentes > 1 ? COLORS.red : y.tasaAccidentes > 0 ? COLORS.amber : COLORS.green;
+      const aColor = y.tasaAccidentes === null ? COLORS.slate : y.tasaAccidentes > 1 ? COLORS.red : y.tasaAccidentes > 0 ? COLORS.amber : COLORS.green;
       evoRows.push([
         { text: y.year, options: { fill: { color: bg }, fontSize: 9.5, bold: true, color: COLORS.navy, align: 'center' } },
         { text: String(y.operadores), options: { fill: { color: bg }, fontSize: 9, color: COLORS.slate, align: 'center' } },
         { text: y.promedio.toFixed(2), options: { fill: { color: bg }, fontSize: 9.5, bold: true, color: pColor, align: 'center' } },
         { text: `${y.tasaAprobacion.toFixed(1)}%`, options: { fill: { color: bg }, fontSize: 9, color: COLORS.slate, align: 'center' } },
-        { text: y.tasaAccidentes.toFixed(2), options: { fill: { color: bg }, fontSize: 9.5, bold: true, color: aColor, align: 'center' } }
+        { text: y.tasaAccidentes === null ? '—' : y.tasaAccidentes.toFixed(2), options: { fill: { color: bg }, fontSize: 9.5, bold: true, color: aColor, align: 'center' } }
       ]);
     });
 
@@ -1380,7 +1354,7 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     const scoreDelta = data.annualEvolution.scoreDeltaFirstToLast;
     const accDelta = data.annualEvolution.accidentRateDeltaFirstToLast;
     const scoreSign = scoreDelta >= 0 ? '+' : '';
-    const accSign = accDelta > 0 ? '+' : '';
+    const accSign = accDelta !== null && accDelta > 0 ? '+' : '';
 
     const rec = data.annualEvolution.recurrentImpact;
     const recurrentLine =
@@ -1403,8 +1377,8 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
           options: { bold: true, color: COLORS.navy }
         },
         {
-          text: `${accSign}${accDelta.toFixed(2)} eventos/op.\n`,
-          options: { bold: true, color: accDelta <= 0 ? COLORS.green : COLORS.red }
+          text: accDelta === null ? 'No comparable por datos incompletos.\n' : `${accSign}${accDelta.toFixed(2)} eventos/op.\n`,
+          options: { bold: true, color: accDelta === null ? COLORS.slate : accDelta <= 0 ? COLORS.green : COLORS.red }
         },
         {
           text: recurrentLine,
@@ -1556,8 +1530,8 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
   const s4 = pres.addSlide();
   addSlideHeader(
     s4,
-    'Seguridad Vial y Errores Críticos',
-    `Incidencias críticas y patrones frecuentes detectados en ${data.companyName}`,
+    'Seguridad Vial e Incidencias',
+    `Incidencias y patrones frecuentes detectados en ${data.companyName}`,
     slidePage++,
     totalSlides
   );
@@ -1584,8 +1558,8 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
   });
   s4.addText(
     hasCriticals
-      ? `Incidencias Críticas Acumuladas (${data.criticalSummary.totalIncidentes} en total)`
-      : 'Conducción Segura sin Incidentes Críticos',
+      ? `Incidencias acumuladas (${data.criticalSummary.totalIncidentes} conocidas)`
+      : data.criticalSummary.noEvaluations ? 'Sin evaluaciones disponibles' : data.criticalSummary.incomplete ? 'Datos de incidencias incompletos' : 'Sin incidencias registradas',
     {
       x: 0.9,
       y: 1.45,
@@ -1602,7 +1576,7 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
     const critRows: any[][] = [
       [
         {
-          text: 'Tipo de Incidencia Crítica',
+          text: 'Tipo de incidencia',
           options: { bold: true, fontSize: 9, color: COLORS.white, fill: { color: '991B1B' }, align: 'left' }
         },
         {
@@ -1623,12 +1597,12 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
       y: 2.0,
       w: 5.54,
       colW: [4.34, 1.2],
-      rowH: 0.38,
+      rowH: data.criticalSummary.incomplete || data.criticalSummary.mixed ? 0.33 : 0.38,
       border: { pt: 0.5, color: 'FECACA' },
       valign: 'middle'
     });
   } else {
-    s4.addText('La flota no registró incidencias críticas durante el periodo evaluado.', {
+    s4.addText(data.criticalSummary.noEvaluations ? 'No hay evaluaciones disponibles para calcular incidencias.' : data.criticalSummary.incomplete ? 'No hay incidencias conocidas; existen datos incompletos.' : 'La flota no registró incidencias durante el periodo evaluado.', {
       x: 0.9,
       y: 3.4,
       w: 5.3,
@@ -1638,6 +1612,13 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
       color: COLORS.green,
       bold: true
     });
+  }
+  if (data.criticalSummary.incomplete || data.criticalSummary.mixed) {
+    const notes = [
+      data.criticalSummary.incomplete ? `${data.criticalSummary.incomplete} evaluaciones con datos incompletos o no disponibles.` : '',
+      data.criticalSummary.mixed ? 'Conteos V1 equiparados a V2; fatalidades V1 sin desglose.' : ''
+    ].filter(Boolean).join(' ');
+    s4.addText(notes, { x: 0.9, y: 6.35, w: 5.3, h: 0.35, fontSize: 8, color: COLORS.navy, fontFace: 'Segoe UI' });
   }
 
   // Panel derecho: Errores Frecuentes en Simulador
@@ -1811,6 +1792,23 @@ export async function generateCompanyPresentationPptx(input: CompanyPresentation
       slidePage++,
       totalSlides
     );
+    const aiMetadata = [
+      input.aiQuality ? `Calidad ${input.aiQuality.score}/100` : '',
+      input.aiCached ? 'Caché' : ''
+    ].filter(Boolean).join(' • ');
+    if (aiMetadata) {
+      sAi.addText(aiMetadata, {
+        x: 10.3,
+        y: 0.68,
+        w: 2.45,
+        h: 0.28,
+        align: 'right',
+        fontSize: 8,
+        color: COLORS.muted,
+        fontFace: 'Segoe UI',
+        fit: 'shrink'
+      });
+    }
 
     const nivelPalette: Record<
       CompanyAiStructuredReport['estadoGeneral']['nivel'],

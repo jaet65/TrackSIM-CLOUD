@@ -85,7 +85,7 @@ export const DriverChartsSection: React.FC<DriverChartsSectionProps> = ({
       <div className="card" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
         <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.05rem', fontWeight: 700 }}>🚨 Historial y Tendencia de Incidentes</h3>
         <p style={{ margin: '0 0 1rem', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-          Comportamiento de colisiones, fatalidades y salidas de vía registradas en el simulador a lo largo del tiempo.
+          Incidencias por sesión según el criterio del cliente. Las sesiones con datos incompletos no se muestran.
         </p>
         <div style={{ height: '280px', width: '100%' }}>
           <Line data={accidentChartData} options={chartOptions} />

@@ -6,7 +6,7 @@ import {
   generateCompanyAiInsight,
   type CompanyAiInsightResult
 } from '../../services/companyAiInsights';
-import { getCriticalMistakes, getEvaluationIncidentCounts } from '../../services/incidentMetrics';
+import { getHybridDriverIncidents, getHybridIncidentSummary } from '../../services/incidentMetrics';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 interface ExerciseStatItem {
@@ -105,6 +105,14 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
     };
   }, [isOpen]);
 
+  const incidentSummary = React.useMemo(() => getHybridIncidentSummary(allEvaluations), [allEvaluations]);
+  const driverIncidents = React.useMemo(
+    () => getHybridDriverIncidents(allEvaluations, incidentSummary.modes),
+    [allEvaluations, incidentSummary]
+  );
+  const getDriverIncidents = React.useCallback((driver: { nombre: string }) =>
+    driverIncidents.get(driver.nombre.trim().toLowerCase()) ?? null, [driverIncidents]);
+
   // Top 5 operadores con menor puntaje / Red Flags (declarado antes de condicionales)
   const bottomRanked = React.useMemo(() => {
     if (!isOpen || !comp?.conductores || comp.conductores.length === 0) return [];
@@ -112,12 +120,12 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
       if (a.promedioScore !== b.promedioScore) {
         return a.promedioScore - b.promedioScore;
       }
-      const incA = (a.colisiones || 0) + (a.fatalidades || 0) + (a.totalFueraVia || 0);
-      const incB = (b.colisiones || 0) + (b.fatalidades || 0) + (b.totalFueraVia || 0);
-      return incB - incA;
+      const incA = getDriverIncidents(a);
+      const incB = getDriverIncidents(b);
+      return incA === null || incB === null ? 0 : incB - incA;
     });
     return sortedAsc.slice(0, 5);
-  }, [isOpen, comp?.conductores]);
+  }, [isOpen, comp?.conductores, getDriverIncidents]);
 
   // Análisis de errores más recurrentes de la flota a partir de las evaluaciones
   const topRecurringMistakes = React.useMemo(() => {
@@ -142,46 +150,16 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
       .slice(0, 3);
   }, [isOpen, allEvaluations]);
 
-  // Desglose acumulado de incidencias críticas reales para evaluaciones Zero / Ingesta V2
   const criticalBreakdown = React.useMemo(() => {
-    if (!isOpen || !allEvaluations || allEvaluations.length === 0) {
-      return { hasV2Data: false, items: [] as Array<{ error: string; repeticiones: number }>, total: 0 };
-    }
-
-    const hasV2Data = allEvaluations.some((ev) => ev.origen === 'TrackSIM-ZERO-V2');
-    if (!hasV2Data) {
-      return { hasV2Data: false, items: [] as Array<{ error: string; repeticiones: number }>, total: 0 };
-    }
-
-    const map = new Map<string, { error: string; repeticiones: number }>();
-    const addItem = (name: string, count: number) => {
-      if (count <= 0) return;
-      const key = name.toLowerCase();
-      const existing = map.get(key) || { error: name, repeticiones: 0 };
-      existing.repeticiones += count;
-      map.set(key, existing);
+    const summary = incidentSummary;
+    return {
+      hasV2Data: allEvaluations.some((ev) => ev.origen === 'TrackSIM-ZERO-V2'),
+      items: summary.details.map((item) => ({ error: item.name, repeticiones: item.count })),
+      total: summary.total,
+      incomplete: summary.unavailable + summary.incomplete,
+      mixed: Array.from(summary.modes.values()).includes('mixed')
     };
-
-    allEvaluations.forEach((ev) => {
-      if (ev.origen === 'TrackSIM-ZERO-V2') {
-        const criticos = getCriticalMistakes(ev.erroresFrecuentes || []);
-        if (criticos.length > 0) {
-          criticos.forEach((c) => addItem(c.error, c.repeticiones));
-        } else if ((ev.accidentesCriticos || 0) > 0) {
-          addItem('Incidencias Críticas', ev.accidentesCriticos || 0);
-        }
-      } else {
-        const inc = getEvaluationIncidentCounts(ev);
-        addItem('Colisiones', inc.colisiones);
-        addItem('Salidas de Vía', inc.vehiculoFueraVia);
-        addItem('Fatalidades', inc.fatalidades);
-      }
-    });
-
-    const items = Array.from(map.values()).sort((a, b) => b.repeticiones - a.repeticiones);
-    const total = items.reduce((sum, item) => sum + item.repeticiones, 0);
-    return { hasV2Data: true, items, total };
-  }, [isOpen, allEvaluations]);
+  }, [allEvaluations, incidentSummary]);
 
   // Generación dinámica y contextual del Plan de Acción Recomendado
   const dynamicActionPlan = React.useMemo(() => {
@@ -230,9 +208,9 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
     }
 
     // 2. Fallback inteligente según siniestralidad o calificaciones si no hay errores específicos desglosados
-    const tieneSiniestros = (comp.totalColisiones || 0) + (comp.totalFueraVia || 0) > 0;
+    const tieneSiniestros = incidentSummary.total > 0;
     if (tieneSiniestros) {
-      return 'Priorizar talleres de conducción defensiva en simulador orientados a control de colisiones, maniobras de evasión y prevención de salidas de camino.';
+      return 'Priorizar talleres de conducción defensiva en simulador orientados a prevenir las incidencias registradas.';
     }
 
     if (comp.promedioFinal < 7.0) {
@@ -240,7 +218,7 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
     }
 
     return 'Continuar con el programa preventivo anual, incorporando escenarios de complejidad climática adversa y maniobras de precisión para preservar el estándar sobresaliente de la flota.';
-  }, [isOpen, topRecurringMistakes, comp.totalColisiones, comp.totalFueraVia, comp.promedioFinal]);
+  }, [isOpen, topRecurringMistakes, incidentSummary.total, comp.promedioFinal]);
 
   if (!isOpen) return null;
 
@@ -252,9 +230,8 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
   });
 
   // Tasa de incidentes general (considerando críticos reales cuando proviene de Zero / V2)
-  const legacyTotalIncidentes = (comp.totalColisiones || 0) + (comp.totalFatalidades || 0) + (comp.totalFueraVia || 0);
-  const totalIncidentes = criticalBreakdown.hasV2Data ? criticalBreakdown.total : legacyTotalIncidentes;
-  const incidentRate = comp.totalConductores > 0 ? (totalIncidentes / comp.totalConductores).toFixed(2) : '0.00';
+  const totalIncidentes = criticalBreakdown.total;
+  const incidentRate = criticalBreakdown.incomplete > 0 || allEvaluations.length === 0 || comp.totalConductores === 0 ? '—' : (totalIncidentes / comp.totalConductores).toFixed(2);
 
   // Distribución de niveles de aptitud
   const totalConductores = comp.conductores?.length || 0;
@@ -600,21 +577,21 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
                   style={{
                     fontSize: '1.25rem',
                     fontWeight: 800,
-                    color: Number(incidentRate) > 1.0 ? '#dc2626' : Number(incidentRate) > 0 ? '#d97706' : '#16a34a',
+                    color: incidentRate === '—' ? '#64748b' : Number(incidentRate) > 1.0 ? '#dc2626' : Number(incidentRate) > 0 ? '#d97706' : '#16a34a',
                     marginTop: '0.1rem'
                   }}
                 >
                   {incidentRate}
                 </div>
-                <span style={{ fontSize: '0.66rem', color: '#64748b', display: 'block' }}>{totalIncidentes} tot / operador</span>
+                <span style={{ fontSize: '0.66rem', color: '#64748b', display: 'block' }}>{allEvaluations.length ? `${totalIncidentes} eventos conocidos` : 'Sin evaluaciones disponibles'}</span>
               </div>
             </div>
 
             {/* BARRA DE DESGLOSE DE SINIESTROS POR TIPO */}
             <div
               style={{
-                background: criticalBreakdown.hasV2Data && totalIncidentes === 0 ? '#ecfdf5' : '#fff1f2',
-                border: `1px solid ${criticalBreakdown.hasV2Data && totalIncidentes === 0 ? '#a7f3d0' : '#fecdd3'}`,
+                background: criticalBreakdown.hasV2Data && totalIncidentes === 0 && !criticalBreakdown.incomplete ? '#ecfdf5' : '#fff1f2',
+                border: `1px solid ${criticalBreakdown.hasV2Data && totalIncidentes === 0 && !criticalBreakdown.incomplete ? '#a7f3d0' : '#fecdd3'}`,
                 borderRadius: '8px',
                 padding: '0.45rem 0.8rem',
                 marginBottom: '0.75rem',
@@ -627,20 +604,20 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <span style={{ fontSize: '0.95rem' }}>
-                  {criticalBreakdown.hasV2Data && totalIncidentes === 0 ? '🛡️' : '🚨'}
+                  {criticalBreakdown.hasV2Data && totalIncidentes === 0 && !criticalBreakdown.incomplete ? '🛡️' : '🚨'}
                 </span>
                 <span
                   style={{
                     fontWeight: 700,
                     fontSize: '0.76rem',
-                    color: criticalBreakdown.hasV2Data && totalIncidentes === 0 ? '#065f46' : '#9f1239'
+                    color: criticalBreakdown.hasV2Data && totalIncidentes === 0 && !criticalBreakdown.incomplete ? '#065f46' : '#9f1239'
                   }}
                 >
-                  {criticalBreakdown.hasV2Data
-                    ? (totalIncidentes === 0
+                  {allEvaluations.length === 0 ? 'Sin evaluaciones disponibles' : criticalBreakdown.hasV2Data
+                    ? (totalIncidentes === 0 && !criticalBreakdown.incomplete
                         ? 'Conducción Segura sin Incidentes Críticos (0 eventos)'
-                        : `Desglose de Siniestros Acumulados (${totalIncidentes} críticos en total):`)
-                    : `Desglose de Siniestros Acumulados (${totalIncidentes} eventos en total):`}
+                        : `Desglose de Incidencias (${totalIncidentes} eventos conocidos):`)
+                    : `Desglose de Siniestros Acumulados (${totalIncidentes} ${criticalBreakdown.incomplete ? 'eventos conocidos' : 'eventos en total'}):`}
                 </span>
               </div>
               {criticalBreakdown.hasV2Data ? (
@@ -653,19 +630,13 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
                     ))}
                   </div>
                 )
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1.35rem', fontSize: '0.76rem' }}>
-                  <span style={{ color: '#be123c', fontWeight: 600 }}>
-                    💥 <strong>{comp.totalColisiones || 0}</strong> Colisiones
-                  </span>
-                  <span style={{ color: '#c2410c', fontWeight: 600 }}>
-                    ⚠️ <strong>{comp.totalFueraVia || 0}</strong> Salidas de Vía
-                  </span>
-                  <span style={{ color: '#881337', fontWeight: 700 }}>
-                    🛑 <strong>{comp.totalFatalidades || 0}</strong> Fatalidades
-                  </span>
+              ) : allEvaluations.length > 0 ? (
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.85rem 1.25rem', fontSize: '0.76rem' }}>
+                  {criticalBreakdown.items.map((item) => <span key={item.error} style={{ color: '#be123c', fontWeight: 600 }}><strong>{item.repeticiones}</strong> {item.error}</span>)}
                 </div>
-              )}
+              ) : null}
+              {criticalBreakdown.incomplete > 0 && <div>Datos de incidencias incompletos o no disponibles: {criticalBreakdown.incomplete} evaluaciones.</div>}
+              {criticalBreakdown.mixed && <div>Los conteos V1 se equiparan a V2; las fatalidades V1 no distinguen atropellos de peatón de vuelcos.</div>}
             </div>
 
             {/* DISTRIBUCIÓN DE APTITUD VISUAL (BARRA SEGMENTADA) */}
@@ -757,7 +728,7 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
                       topRanked.map((c, idx) => {
                         const medals = ['🥇', '🥈', '🥉'];
                         const rankLabel = medals[idx] || `${idx + 1}`;
-                        const totIncidentes = (c.colisiones || 0) + (c.fatalidades || 0) + (c.totalFueraVia || 0);
+                        const totIncidentes = getDriverIncidents(c);
 
                         return (
                           <tr key={c.nombre + idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 0 ? '#ffffff' : '#f0fdf4' }}>
@@ -768,8 +739,8 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
                             <td style={{ padding: '2.5px 3px', textAlign: 'center', fontWeight: 700, color: '#15803d' }}>
                               {c.promedioScore.toFixed(1)}
                             </td>
-                            <td style={{ padding: '2.5px 3px', textAlign: 'center', fontWeight: 600, color: totIncidentes > 0 ? '#dc2626' : '#15803d' }}>
-                              {totIncidentes}
+                            <td style={{ padding: '2.5px 3px', textAlign: 'center', fontWeight: 600, color: totIncidentes === null ? '#64748b' : totIncidentes > 0 ? '#dc2626' : '#15803d' }}>
+                              {totIncidentes ?? '—'}
                             </td>
                           </tr>
                         );
@@ -803,7 +774,7 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
                   <tbody>
                     {bottomRanked.length > 0 ? (
                       bottomRanked.map((c, idx) => {
-                        const totIncidentes = (c.colisiones || 0) + (c.fatalidades || 0) + (c.totalFueraVia || 0);
+                        const totIncidentes = getDriverIncidents(c);
 
                         return (
                           <tr key={c.nombre + idx} style={{ borderBottom: '1px solid #fee2e2', background: idx % 2 === 0 ? '#ffffff' : '#fff5f5' }}>
@@ -817,7 +788,7 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
                               {c.promedioScore.toFixed(1)}
                             </td>
                             <td style={{ padding: '2.5px 3px', textAlign: 'center', fontWeight: 700, color: '#dc2626' }}>
-                              {totIncidentes}
+                              {totIncidentes ?? '—'}
                             </td>
                           </tr>
                         );
@@ -877,7 +848,7 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
                     • <strong>Alineación Técnica:</strong> La flota alcanzó una calificación media de <strong>{comp.promedioFinal.toFixed(2)}/10</strong> con un <strong>{comp.tasaAprobacion.toFixed(1)}%</strong> de operadores aprobados. {comp.promedioFinal >= 7.5 ? 'El rendimiento demuestra solidez en el control vehicular y maniobrabilidad.' : 'Se recomienda reforzar prácticas en simulador para estandarizar el dominio técnico.'}
                   </p>
                   <p style={{ margin: '0 0 0.3rem 0' }}>
-                    • <strong>Control de Incidentes:</strong> Se registraron {totalIncidentes} siniestros acumulados ({incidentRate} por conductor) con {comp.totalColisiones || 0} colisiones y {comp.totalFueraVia || 0} salidas de vía registradas en el simulador.
+                    • <strong>Control de Incidentes:</strong> {allEvaluations.length ? `Se registraron ${totalIncidentes} incidencias conocidas (${incidentRate} por conductor), según el criterio de cada cliente.` : 'No hay evaluaciones disponibles.'}
                   </p>
                   <p style={{ margin: 0 }}>
                     • <strong>Continuidad de Capacitación:</strong> {selectedYear && selectedYear !== 'all' && operadoresConHistorialPrevio ? `El ${operadoresConHistorialPrevio.pct}% del grupo cuenta con registros previos en años anteriores, lo que facilita el análisis de evolución y retención de destrezas.` : `El ${pctRecurrentes}% de los conductores registra más de una sesión, facilitando el seguimiento preventivo continuo.`}

@@ -6,7 +6,7 @@ import {
   isAlcoholAwarenessExercise,
   readCachedAiTextAnswer
 } from './companyAiInsights';
-import { getCriticalMistakes, getEvaluationIncidentCounts } from './incidentMetrics';
+import { getHybridEvaluationIncidents, getIncidentModes } from './incidentMetrics';
 
 export type TrackySubjectType = 'company' | 'driver' | 'evolution';
 
@@ -33,6 +33,7 @@ export interface TrackyQuickQuestionRequest {
   periodText: string;
   insight: CompanyAiInsightResult;
   evaluations?: Evaluation[];
+  contextEvaluations?: Evaluation[];
   forceRefresh?: boolean;
 }
 
@@ -68,24 +69,14 @@ function getEvalScore(ev: Evaluation): number {
   return ev.evaluacionFinalPuntos ?? ev.calificacionExacta ?? ev.promedioScore ?? 0;
 }
 
-function getEvalIncidents(ev: Evaluation): number {
-  if (ev.origen === 'TrackSIM-ZERO-V2') {
-    const crits = getCriticalMistakes(ev.erroresFrecuentes || []);
-    if (crits.length > 0) {
-      return crits.reduce((sum, item) => sum + item.repeticiones, 0);
-    }
-    return ev.accidentesCriticos || 0;
-  }
-  const inc = getEvaluationIncidentCounts(ev);
-  return inc.colisiones + inc.vehiculoFueraVia + inc.fatalidades;
-}
-
 export function buildQuickQuestionContextData(input: TrackyQuickQuestionRequest) {
   const evaluations = input.evaluations || [];
+  const modes = getIncidentModes([...(input.contextEvaluations || []), ...evaluations]);
+  let incidentDataIncomplete = evaluations.length === 0;
 
   const driverMap = new Map<
     string,
-    { nombre: string; sessions: Array<{ date: string; score: number; incidents: number }> }
+    { nombre: string; sessions: Array<{ date: string; score: number; incidents: number | null; complete: boolean }> }
   >();
   const dieselMistakesMap = new Map<string, number>();
   const allMistakesMap = new Map<string, number>();
@@ -97,7 +88,8 @@ export function buildQuickQuestionContextData(input: TrackyQuickQuestionRequest)
   evaluations.forEach((ev) => {
     const rawDriver = (ev.conductor || ev.operador || '').trim();
     const score = getEvalScore(ev);
-    const incidents = getEvalIncidents(ev);
+    const incidents = getHybridEvaluationIncidents(ev, modes);
+    if (!incidents.complete || incidents.total === null) incidentDataIncomplete = true;
 
     if (rawDriver) {
       const key = rawDriver.toLowerCase();
@@ -105,7 +97,8 @@ export function buildQuickQuestionContextData(input: TrackyQuickQuestionRequest)
       entry.sessions.push({
         date: String(ev.fechaCapacitacion || ev.fechaReporte || ev.fecha || ''),
         score,
-        incidents
+        incidents: incidents.total,
+        complete: incidents.complete
       });
       driverMap.set(key, entry);
     }
@@ -156,6 +149,7 @@ export function buildQuickQuestionContextData(input: TrackyQuickQuestionRequest)
     promedio: number;
     cambioPuntos: number;
     incidentes: number;
+    datosIncidenciasCompletos: boolean;
     scorePrioridad: number;
   }> = [];
 
@@ -168,7 +162,8 @@ export function buildQuickQuestionContextData(input: TrackyQuickQuestionRequest)
       validScores.length > 0 ? Number((validScores.reduce((sum, s) => sum + s, 0) / validScores.length).toFixed(2)) : 0;
     const cambioPuntos =
       validScores.length >= 2 ? Number((validScores[validScores.length - 1] - validScores[0]).toFixed(2)) : 0;
-    const incidentes = sorted.reduce((sum, s) => sum + s.incidents, 0);
+    const incidentes = sorted.reduce((sum, s) => sum + (s.incidents ?? 0), 0);
+    const datosIncidenciasCompletos = sorted.every((s) => s.complete && s.incidents !== null);
 
     if (validScores.length >= 2) {
       recTotal += 1;
@@ -188,6 +183,7 @@ export function buildQuickQuestionContextData(input: TrackyQuickQuestionRequest)
         promedio,
         cambioPuntos,
         incidentes,
+        datosIncidenciasCompletos,
         scorePrioridad
       });
     }
@@ -242,6 +238,7 @@ export function buildQuickQuestionContextData(input: TrackyQuickQuestionRequest)
     periodText: input.periodText,
     totalEvaluaciones: evaluations.length,
     totalOperadores: driverMap.size,
+    incidentDataIncomplete,
     ecoDrivingPromedioPct: ecoCount > 0 ? Number((ecoSum / ecoCount).toFixed(1)) : null,
     operadoresPrioritarios,
     habitosDieselYFrenos,
@@ -288,6 +285,7 @@ export function buildTrackyQuickQuestionPrompt(
     '',
     'REGLAS ESTRICTAS:',
     '- Usa español claro, práctico y directo, SIN jerga estadística (nada de desviación estándar, mediana, sigma ni siglas internas).',
+    '- Si incidentDataIncomplete o datosIncidenciasCompletos indica datos incompletos, acláralo; no afirmes que no hubo incidencias ni presentes los conteos conocidos como totales.',
     '- Los cursos en simulador se realizan 1 o 2 veces al año; ajusta tus plazos a esa realidad operativa.',
     '- REGLA SOBRE "Efectos del alcohol": es un ejercicio de concientización intencional; NUNCA lo menciones como falla operativa ni recomiendes reforzarlo.',
     `- INSTRUCCIÓN DE FORMATO: ${QUESTION_INSTRUCTIONS[question.id]}`,
@@ -374,14 +372,17 @@ export function buildLocalQuickQuestionFallback(
       if (operadoresPrioritarios.length === 0) {
         return [
           `### 🎯 Prioridad de seguimiento (${ctx.companyName})`,
-          `No se detectaron operadores por debajo de 7.5 ni con incidentes críticos en **${ctx.periodText}**.`,
+          ctx.incidentDataIncomplete
+            ? `Los datos de incidencias están incompletos para **${ctx.periodText}**; no es posible descartar operadores con incidencias.`
+            : `No se detectaron operadores por debajo de 7.5 ni con incidencias en **${ctx.periodText}**.`,
           '- Mantén seguimiento preventivo en el siguiente ciclo anual para conservar el nivel de toda la flota.'
         ].join('\n');
       }
 
       const driverLines = operadoresPrioritarios.map((d, idx) => {
         const reasons: string[] = [`calificación ${d.ultimaCalificacion.toFixed(2)}/10`];
-        if (d.incidentes > 0) reasons.push(`${d.incidentes} incidente(s)`);
+        if (d.incidentes > 0) reasons.push(`${d.incidentes} incidencia(s)${d.datosIncidenciasCompletos ? '' : ' conocidas'}`);
+        if (!d.datosIncidenciasCompletos) reasons.push('datos de incidencias incompletos');
         if (d.cambioPuntos <= -0.4) reasons.push(`baja de ${Math.abs(d.cambioPuntos).toFixed(1)} pts`);
         return `${idx + 1}. **${d.nombre}** — ${reasons.join(', ')}.`;
       });
@@ -389,6 +390,7 @@ export function buildLocalQuickQuestionFallback(
       return [
         `### 🎯 Operadores prioritarios para refuerzo (${ctx.companyName})`,
         ...driverLines,
+        ...(ctx.incidentDataIncomplete ? ['Los datos de incidencias están incompletos; la lista puede no incluir a todos los operadores que requieren seguimiento.'] : []),
         '',
         '### Recomendación operativa',
         `- Asignar retroalimentación breve en campo antes de la próxima jornada y priorizar práctica enfocada en ${ejerciciosOperativosBajos[0] ? `"${ejerciciosOperativosBajos[0].nombre}"` : 'maniobras defensivas'}.`
@@ -506,6 +508,7 @@ export function validateTrackyQuickAnswer(
 
 function buildQuickQuestionCacheKey(input: TrackyQuickQuestionRequest): string {
   const insightStamp = input.insight.createdAtMs ?? input.insight.generatedAt;
+  const modes = getIncidentModes([...(input.contextEvaluations || []), ...(input.evaluations || [])]);
   const evaluationFingerprint = JSON.stringify(
     (input.evaluations || []).map((ev) => ({
       id: ev.id,
@@ -513,7 +516,7 @@ function buildQuickQuestionCacheKey(input: TrackyQuickQuestionRequest): string {
       conductor: ev.conductor || ev.operador,
       score: ev.evaluacionFinalPuntos ?? ev.calificacionExacta ?? ev.promedioScore,
       sede: ev.sede || ev.ciudad,
-      incidentes: getEvalIncidents(ev)
+      incidentes: getHybridEvaluationIncidents(ev, modes)
     }))
   );
   let hash = 2166136261;
@@ -521,7 +524,7 @@ function buildQuickQuestionCacheKey(input: TrackyQuickQuestionRequest): string {
     hash ^= evaluationFingerprint.charCodeAt(i);
     hash = Math.imul(hash, 16777619);
   }
-  return `qa-v2|${input.subjectType}|${input.questionId}|${input.companyName}|${input.periodText}|${hash >>> 0}|${insightStamp}`;
+  return `qa-hybrid-v2|${input.subjectType}|${input.questionId}|${input.companyName}|${input.periodText}|${hash >>> 0}|${insightStamp}`;
 }
 
 export function getCachedTrackyQuickAnswer(input: TrackyQuickQuestionRequest): AiQuickAnswerResult | null {

@@ -1,7 +1,7 @@
 import type { CompanySummary, Evaluation } from '../types';
 import { getEvaluationYear } from './analytics';
 import { app } from './firebaseApp';
-import { getCriticalMistakes, getEvaluationIncidentCounts } from './incidentMetrics';
+import { getHybridEvaluationIncidents, getIncidentModes } from './incidentMetrics';
 import { addDoc, collection, db, serverTimestamp } from './firebaseFirestore';
 
 export interface AiExerciseInput {
@@ -90,7 +90,7 @@ const modelCooldownUntil = new Map<string, number>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const STORAGE_KEY_PREFIX = 'tracksim_ai_insight_v8:';
 const TEXT_STORAGE_KEY_PREFIX = 'tracksim_ai_qa_v3:';
-const AI_PROMPT_VERSION = 'v3';
+const AI_PROMPT_VERSION = 'v5-hybrid';
 
 export const TRACKY_AI_QUALITY_COLLECTION = 'tracky_ai_quality';
 
@@ -218,11 +218,14 @@ export function buildCompanyAiMetricsContext(input: CompanyAiInsightRequest) {
   const stdDevScore = calcStdDev(scores, meanScore);
 
   const hasV2Data = allEvaluations.some((ev) => ev.origen === 'TrackSIM-ZERO-V2');
+  const incidentModes = getIncidentModes(allEvaluations);
   const critMap = new Map<string, number>();
   const mistakesMap = new Map<string, { reps: number; evalsWithMistake: number; eje?: string }>();
   const ejeMap = new Map<string, number>();
-  const sedeMap = new Map<string, { count: number; scoreSum: number; approved: number; accidents: number }>();
-  const yearMap = new Map<string, { count: number; scoreSum: number; approved: number; accidents: number }>();
+  const sedeMap = new Map<string, { count: number; scoreSum: number; approved: number; accidents: number; incomplete: boolean }>();
+  const yearMap = new Map<string, { count: number; scoreSum: number; approved: number; accidents: number; incomplete: boolean }>();
+  const driversWithIncidents = new Set<string>();
+  let incidentDataIncomplete = allEvaluations.length === 0;
 
   let evalsWithCritical = 0;
   let scoreSumWithCrit = 0;
@@ -239,32 +242,19 @@ export function buildCompanyAiMetricsContext(input: CompanyAiInsightRequest) {
 
   allEvaluations.forEach((ev) => {
     const score = getEvalScore(ev);
-    let evAccidents = 0;
+    const incidents = getHybridEvaluationIncidents(ev, incidentModes);
+    const evAccidents = incidents.total;
+    if (!incidents.complete || evAccidents === null) incidentDataIncomplete = true;
+    incidents.details.forEach((item) => {
+      if (item.count > 0) critMap.set(item.name, (critMap.get(item.name) || 0) + item.count);
+    });
 
-    if (ev.origen === 'TrackSIM-ZERO-V2') {
-      const crits = getCriticalMistakes(ev.erroresFrecuentes || []);
-      if (crits.length > 0) {
-        crits.forEach((c) => {
-          critMap.set(c.error, (critMap.get(c.error) || 0) + c.repeticiones);
-          evAccidents += c.repeticiones;
-        });
-      } else if ((ev.accidentesCriticos || 0) > 0) {
-        const n = ev.accidentesCriticos || 0;
-        critMap.set('Incidencias Críticas', (critMap.get('Incidencias Críticas') || 0) + n);
-        evAccidents += n;
-      }
-    } else {
-      const inc = getEvaluationIncidentCounts(ev);
-      if (inc.colisiones > 0) critMap.set('Colisiones', (critMap.get('Colisiones') || 0) + inc.colisiones);
-      if (inc.vehiculoFueraVia > 0) critMap.set('Salidas de Vía', (critMap.get('Salidas de Vía') || 0) + inc.vehiculoFueraVia);
-      if (inc.fatalidades > 0) critMap.set('Fatalidades', (critMap.get('Fatalidades') || 0) + inc.fatalidades);
-      evAccidents = inc.colisiones + inc.vehiculoFueraVia + inc.fatalidades;
-    }
-
-    if (evAccidents > 0) {
+    if (evAccidents !== null && evAccidents > 0) {
       evalsWithCritical += 1;
       scoreSumWithCrit += score;
-    } else {
+      const driver = (ev.conductor || ev.operador || '').trim().toLowerCase();
+      if (driver) driversWithIncidents.add(driver);
+    } else if (incidents.complete && evAccidents === 0) {
       evalsWithoutCritical += 1;
       scoreSumWithoutCrit += score;
     }
@@ -308,20 +298,22 @@ export function buildCompanyAiMetricsContext(input: CompanyAiInsightRequest) {
     }
 
     const sedeName = (ev.sede || ev.ciudad || 'Principal').trim() || 'Principal';
-    const sedeCurr = sedeMap.get(sedeName) || { count: 0, scoreSum: 0, approved: 0, accidents: 0 };
+    const sedeCurr = sedeMap.get(sedeName) || { count: 0, scoreSum: 0, approved: 0, accidents: 0, incomplete: false };
     sedeCurr.count += 1;
     sedeCurr.scoreSum += score;
     if (score >= 6.0) sedeCurr.approved += 1;
-    sedeCurr.accidents += evAccidents;
+    if (evAccidents !== null) sedeCurr.accidents += evAccidents;
+    if (!incidents.complete || evAccidents === null) sedeCurr.incomplete = true;
     sedeMap.set(sedeName, sedeCurr);
 
     const yr = getEvaluationYear(ev);
     if (yr) {
-      const curr = yearMap.get(yr) || { count: 0, scoreSum: 0, approved: 0, accidents: 0 };
+      const curr = yearMap.get(yr) || { count: 0, scoreSum: 0, approved: 0, accidents: 0, incomplete: false };
       curr.count += 1;
       curr.scoreSum += score;
       if (score >= 6.0) curr.approved += 1;
-      curr.accidents += evAccidents;
+      if (evAccidents !== null) curr.accidents += evAccidents;
+      if (!incidents.complete || evAccidents === null) curr.incomplete = true;
       yearMap.set(yr, curr);
     }
   });
@@ -329,7 +321,7 @@ export function buildCompanyAiMetricsContext(input: CompanyAiInsightRequest) {
   const criticalBreakdown = Array.from(critMap.entries())
     .map(([nombre, total]) => ({ nombre, total }))
     .sort((a, b) => b.total - a.total);
-  const totalCriticalEvents = criticalBreakdown.reduce((sum, item) => sum + item.total, 0);
+  const totalCriticalEvents = incidentDataIncomplete ? null : criticalBreakdown.reduce((sum, item) => sum + item.total, 0);
 
   const totalEvalsCount = Math.max(allEvaluations.length, 1);
   const topMistakes = Array.from(mistakesMap.entries())
@@ -352,7 +344,7 @@ export function buildCompanyAiMetricsContext(input: CompanyAiInsightRequest) {
       evaluaciones: d.count,
       promedio: Number((d.scoreSum / d.count).toFixed(2)),
       aprobacionPct: Number(((d.approved / d.count) * 100).toFixed(1)),
-      incidentes: d.accidents
+      incidentes: d.incomplete ? null : d.accidents
     }))
     .sort((a, b) => b.evaluaciones - a.evaluaciones);
 
@@ -363,12 +355,10 @@ export function buildCompanyAiMetricsContext(input: CompanyAiInsightRequest) {
       evaluaciones: d.count,
       promedio: Number((d.scoreSum / d.count).toFixed(2)),
       aprobacionPct: Number(((d.approved / d.count) * 100).toFixed(1)),
-      accidentes: d.accidents
+      accidentes: d.incomplete ? null : d.accidents
     }));
 
-  const operadoresConIncidentes = conductores.filter(
-    (c) => (c.colisiones || 0) + (c.fatalidades || 0) + (c.totalFueraVia || 0) > 0
-  ).length;
+  const operadoresConIncidentes = driversWithIncidents.size;
 
   return {
     empresa: comp.nombre,
@@ -404,6 +394,7 @@ export function buildCompanyAiMetricsContext(input: CompanyAiInsightRequest) {
     },
     hasV2Data,
     totalCriticalEvents,
+    incidentDataIncomplete,
     operadoresConIncidentes,
     correlacionIncidentes: {
       evaluacionesConIncidentes: evalsWithCritical,
@@ -628,6 +619,8 @@ export function buildCompanyAiPrompt(metrics: ReturnType<typeof buildCompanyAiMe
     'Tu objetivo es que CUALQUIER persona entienda en segundos cómo está la flota, qué va bien, qué riesgos hay en la vida diaria (accidentes, gasto de diésel, desgaste de frenos) y qué hacer.',
     'REGLAS ESTRICTAS:',
     '- Usa un español claro, cercano y natural. PROHIBIDO usar jerga estadística (nada de "desviación estándar", "mediana", "sigma", "V2", "telemetría agregada").',
+    '- Si incidentDataIncomplete es true o algún total es null, explica que hay datos incompletos; no inventes totales ni afirmes ausencia de incidencias.',
+    '- La categoría "Atropello de peatón y vuelcos" puede incluir fatalidades históricas sin subtipo; no atribuyas sus registros a peatones o vuelcos por separado.',
     '- Los cursos en simulador se toman 1 o 2 veces al año. Devuelve 2 o 3 elementos independientes en planDeAccion bajo el plazo "Próximas capacitaciones". NUNCA uses "Además" para unir varias acciones dentro de un mismo elemento.',
     '- REGLA SOBRE "Efectos del alcohol" (esConcientizacionIntencional: true): es un ejercicio de CONCIENTIZACIÓN planeado intencionalmente para salir mal y mostrar el riesgo de manejar alcoholizado. Es completamente natural tener calificación baja y accidentes en ese ejercicio; NO lo marques como falla técnica ni recomiendes reforzar o mejorar su calificación.',
     '- Si filtroAnioActivo es un año específico (por ejemplo "2026"), analiza únicamente ese año sin mencionar tendencias de varios años; si es "Todos los años", incluye la evolución anual cuando haya 2 o más años.',
@@ -720,9 +713,9 @@ export function buildLocalFallbackStructured(metrics: ReturnType<typeof buildCom
     });
   }
 
-  if (metrics.totalCriticalEvents > 0 && topCrit) {
+  if (topCrit) {
     focosDeAtencion.push({
-      titulo: `${metrics.totalCriticalEvents} incidentes graves registrados`,
+      titulo: metrics.totalCriticalEvents === null ? 'Incidencias conocidas con datos incompletos' : `${metrics.totalCriticalEvents} incidencias registradas`,
       porqueImporta: `El problema más repetido fue "${topCrit.nombre}" (${topCrit.total} veces), lo que representa riesgo directo de accidente en carretera.`,
       nivel: 'alto'
     });
@@ -798,7 +791,7 @@ export function buildLocalFallbackStructured(metrics: ReturnType<typeof buildCom
       },
       {
         indicador: topErrs[0] ? 'Error principal' : 'Incidentes graves',
-        actual: topErrs[0] ? `${topErrs[0].repeticiones} veces` : `${metrics.totalCriticalEvents}`,
+        actual: topErrs[0] ? `${topErrs[0].repeticiones} veces` : metrics.totalCriticalEvents === null ? 'Datos incompletos' : `${metrics.totalCriticalEvents}`,
         meta: '-30% próximo año'
       }
     ]

@@ -3,7 +3,7 @@ import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { normalizeExerciseName, findCatalogExercise } from '../services/exerciseCatalog';
-import { getEvaluationIncidentCounts } from '../services/incidentMetrics';
+import { getHybridEvaluationIncidents, getHybridIncidentSummary } from '../services/incidentMetrics';
 import { buildExerciseStatsFromCompany, createCompanySummaryFromEvaluations, getEvaluationYear } from '../services/analytics';
 import { CompanySinglePageReportModal } from './company/CompanySinglePageReportModal';
 import { CompanyReportModal } from './company/CompanyReportModal';
@@ -42,6 +42,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
   const [isCompanyReportOpen, setIsCompanyReportOpen] = useState(false);
   const [isDiplomasOpen, setIsDiplomasOpen] = useState(false);
   const [isExportingPptx, setIsExportingPptx] = useState(false);
+  const incidentSummary = useMemo(() => getHybridIncidentSummary(filteredEvaluations), [filteredEvaluations]);
 
   // Cálculo de Métricas Clave
   const metrics = useMemo(() => {
@@ -50,10 +51,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
       return {
         total: 0,
         avgScore: 0,
-        totalColisiones: 0,
-        totalFatalidades: 0,
-        totalFueraVia: 0,
-        totalIncidentes: 0,
         passingRate: 0,
         sobresalientes: 0,
         aprobados: 0,
@@ -64,9 +61,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
     }
 
     let sumScore = 0;
-    let sumCol = 0;
-    let sumFat = 0;
-    let sumOff = 0;
     let passing = 0;
     let sobresalientes = 0;
     let aprobados = 0;
@@ -76,11 +70,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
 
     filteredEvaluations.forEach((e) => {
       const score = e.evaluacionFinalPuntos ?? e.calificacionExacta ?? e.promedioScore ?? 0;
-      const incidents = getEvaluationIncidentCounts(e);
       sumScore += score;
-      sumCol += incidents.colisiones;
-      sumFat += incidents.fatalidades;
-      sumOff += incidents.vehiculoFueraVia;
 
       const driverName = (e.conductor || e.operador || '').trim();
       if (driverName) uniqueDrivers.add(driverName);
@@ -102,10 +92,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
       total,
       totalDrivers: uniqueDrivers.size,
       avgScore: parseFloat((sumScore / total).toFixed(2)),
-      totalColisiones: sumCol,
-      totalFatalidades: sumFat,
-      totalFueraVia: sumOff,
-      totalIncidentes: sumCol + sumFat + sumOff,
       passingRate: parseFloat(((passing / total) * 100).toFixed(1)),
       sobresalientes,
       aprobados,
@@ -641,16 +627,29 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
         {/* KPI 4: Total Incidentes */}
         <div className="glass-card kpi-card">
           <div className="kpi-top">
-            <span className="kpi-label">Incidentes en Simulador</span>
+            <span className="kpi-label">{incidentSummary.label}</span>
             <div className="kpi-icon rose">⚠️</div>
           </div>
-          <div className="kpi-value" style={{ color: metrics.totalIncidentes > 0 ? 'var(--danger)' : 'var(--success)' }}>
-            {metrics.totalIncidentes}
+          <div className="kpi-value" style={{ color: incidentSummary.unavailable > 0 || incidentSummary.incomplete > 0 ? 'var(--text-main)' : incidentSummary.total > 0 ? 'var(--danger)' : 'var(--success)' }}>
+            {incidentSummary.unavailable === metrics.total && metrics.total > 0 ? 'Sin datos' : incidentSummary.total}
           </div>
-          <div className="kpi-footer" style={{ fontSize: '0.74rem', lineHeight: 1.35 }}>
-            <span>💥 {metrics.totalColisiones} Colisiones</span> •{' '}
-            <span>💀 {metrics.totalFatalidades} Fatalidades</span> •{' '}
-            <span>🛑 {metrics.totalFueraVia} Fuera de Vía</span>
+          <div className="kpi-footer kpi-incidents-footer">
+            {incidentSummary.details.length > 0 && (
+              <ul className="kpi-incidents-list">
+                {incidentSummary.details.map((detail) => (
+                  <li key={detail.name}>{detail.name}: {detail.count}</li>
+                ))}
+              </ul>
+            )}
+            {incidentSummary.unavailable > 0 && (
+              <div>Sin datos de incidencias: {incidentSummary.unavailable} {incidentSummary.unavailable === 1 ? 'evaluación' : 'evaluaciones'}. El total no incluye estas evaluaciones.</div>
+            )}
+            {incidentSummary.incomplete > 0 && (
+              <div>Datos incompletos o inconsistentes: {incidentSummary.incomplete} {incidentSummary.incomplete === 1 ? 'evaluación' : 'evaluaciones'}. El total puede no incluir todas las incidencias.</div>
+            )}
+            {Array.from(incidentSummary.modes.values()).includes('mixed') && (
+              <div>En clientes mixtos se equiparan los conteos V1 a las categorías V2; las fatalidades V1 no distinguen atropellos de vuelcos.</div>
+            )}
           </div>
         </div>
       </div>
@@ -755,7 +754,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
                   <th>Empresa</th>
                   <th>Fecha de Sesión</th>
                   <th>Calificación</th>
-                  <th>Incidentes</th>
+                  <th>{incidentSummary.label}</th>
                   <th>Estado</th>
                   {onNavigate && <th style={{ textAlign: 'right' }}>Acción</th>}
                 </tr>
@@ -770,8 +769,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
                 ) : (
                   recentEvaluations.map((ev) => {
                     const score = ev.evaluacionFinalPuntos ?? ev.calificacionExacta ?? ev.promedioScore ?? 0;
-                    const incidents = getEvaluationIncidentCounts(ev);
-                    const incidentes = incidents.colisiones + incidents.fatalidades + incidents.vehiculoFueraVia;
+                    const incidentes = getHybridEvaluationIncidents(ev, incidentSummary.modes);
 
                     return (
                       <tr key={ev.id}>
@@ -794,8 +792,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({ onNavigate }) => {
                           </span>
                         </td>
                         <td>
-                          <span style={{ color: incidentes > 0 ? 'var(--danger)' : 'var(--success)', fontWeight: 700 }}>
-                            {incidentes}
+                          <span style={{ color: incidentes.total === null || !incidentes.complete ? 'var(--text-muted)' : incidentes.total > 0 ? 'var(--danger)' : 'var(--success)', fontWeight: 700 }}>
+                            {incidentes.total === null ? 'Sin datos' : `${incidentes.total}${incidentes.complete ? '' : ' (datos incompletos o inconsistentes)'}`}
                           </span>
                         </td>
                         <td>

@@ -16,6 +16,7 @@ export interface CatalogMistake {
   nombre: string;
   ejeId: number;
   alias?: string[];
+  critico?: boolean;
 }
 
 export const MISTAKE_DIMENSIONS: Record<string, MistakeDimension> = {
@@ -161,6 +162,7 @@ export const MISTAKE_CATALOG: CatalogMistake[] = [
   {
     nombre: 'Saltarse un semáforo en rojo',
     ejeId: 1,
+    critico: true,
     alias: ['saltarse un semaforo en rojo', 'semaforo en rojo', 'pasar semaforo rojo']
   },
 
@@ -170,32 +172,38 @@ export const MISTAKE_CATALOG: CatalogMistake[] = [
   {
     nombre: 'Atropello de un peatón',
     ejeId: 2,
-    alias: ['atropello de un peaton', 'atropello peaton']
+    critico: true,
+    alias: ['atropello de un peaton', 'atropello de peaton', 'atropello peaton']
   },
   {
     nombre: 'Atropello de un perro',
     ejeId: 2,
-    alias: ['atropello de un perro', 'atropello perro', 'atropello animal']
+    critico: true,
+    alias: ['atropello de un perro', 'atropello de perro', 'atropello perro', 'atropello animal']
   },
   {
     nombre: 'Colisión con un objeto',
     ejeId: 2,
-    alias: ['colision con un objeto', 'colision objeto']
+    critico: true,
+    alias: ['colision con un objeto', 'colision con objeto', 'colision objeto']
   },
   {
     nombre: 'Colisión con un vehículo de incidencia',
     ejeId: 2,
-    alias: ['colision con un vehiculo de incidencia', 'colision vehiculo de incidencia']
+    critico: true,
+    alias: ['colision con un vehiculo de incidencia', 'colision con vehiculo de incidencia', 'colision vehiculo de incidencia']
   },
   {
     nombre: 'Colisión con un vehículo del tráfico',
     ejeId: 2,
-    alias: ['colision con un vehiculo del trafico', 'colision vehiculo trafico']
+    critico: true,
+    alias: ['colision con un vehiculo del trafico', 'colision con vehiculo del trafico', 'colision vehiculo trafico']
   },
   {
     nombre: 'Colisión con unas piedras',
     ejeId: 2,
-    alias: ['colision con unas piedras', 'colision piedras', 'choque con piedras']
+    critico: true,
+    alias: ['colision con unas piedras', 'colision con piedras', 'colision piedras', 'choque con piedras']
   },
   {
     nombre: 'Derrape del remolque',
@@ -230,11 +238,13 @@ export const MISTAKE_CATALOG: CatalogMistake[] = [
   {
     nombre: 'Vuelco',
     ejeId: 2,
+    critico: true,
     alias: ['vuelco', 'volcadura']
   },
   {
     nombre: 'Vuelco del remolque',
     ejeId: 2,
+    critico: true,
     alias: ['vuelco del remolque', 'volcadura de remolque', 'volcadura remolque']
   },
 

@@ -8,12 +8,13 @@ import {
   isAlcoholAwarenessExercise,
   readCachedAiInsight
 } from './companyAiInsights';
-import { getCriticalMistakes, getEvaluationIncidentCounts } from './incidentMetrics';
+import { getHybridEvaluationIncidents, getIncidentModes } from './incidentMetrics';
 
 export interface DriverAiInsightRequest {
   driverName: string;
   empresa: string;
   evaluations: Evaluation[];
+  contextEvaluations?: Evaluation[];
   scopeLabel?: string;
   forceRefresh?: boolean;
 }
@@ -51,6 +52,8 @@ export function buildDriverAiMetricsContext(input: DriverAiInsightRequest) {
           : 'estable';
 
   const critMap = new Map<string, number>();
+  const modes = getIncidentModes([...(input.contextEvaluations || []), ...orderedEvals]);
+  let incidentDataIncomplete = orderedEvals.length === 0;
   const mistakesMap = new Map<string, { repeticiones: number; eje?: string }>();
   const exerciseMap = new Map<string, { nombre: string; sum: number; count: number }>();
 
@@ -65,27 +68,11 @@ export function buildDriverAiMetricsContext(input: DriverAiInsightRequest) {
 
   const historialSesiones = orderedEvals.map((ev, idx) => {
     const score = getEvalScore(ev);
-    let sessionIncidents = 0;
-
-    if (ev.origen === 'TrackSIM-ZERO-V2') {
-      const crits = getCriticalMistakes(ev.erroresFrecuentes || []);
-      if (crits.length > 0) {
-        crits.forEach((c) => {
-          critMap.set(c.error, (critMap.get(c.error) || 0) + c.repeticiones);
-          sessionIncidents += c.repeticiones;
-        });
-      } else if ((ev.accidentesCriticos || 0) > 0) {
-        const n = ev.accidentesCriticos || 0;
-        critMap.set('Incidencias Críticas', (critMap.get('Incidencias Críticas') || 0) + n);
-        sessionIncidents += n;
-      }
-    } else {
-      const inc = getEvaluationIncidentCounts(ev);
-      if (inc.colisiones > 0) critMap.set('Colisiones', (critMap.get('Colisiones') || 0) + inc.colisiones);
-      if (inc.vehiculoFueraVia > 0) critMap.set('Salidas de Vía', (critMap.get('Salidas de Vía') || 0) + inc.vehiculoFueraVia);
-      if (inc.fatalidades > 0) critMap.set('Fatalidades', (critMap.get('Fatalidades') || 0) + inc.fatalidades);
-      sessionIncidents = inc.colisiones + inc.vehiculoFueraVia + inc.fatalidades;
-    }
+    const incidents = getHybridEvaluationIncidents(ev, modes);
+    if (!incidents.complete || incidents.total === null) incidentDataIncomplete = true;
+    incidents.details.forEach((item) => {
+      if (item.count > 0) critMap.set(item.name, (critMap.get(item.name) || 0) + item.count);
+    });
 
     if (typeof ev.destrezaPuntos === 'number' && typeof ev.destrezaMax === 'number' && ev.destrezaMax > 0) {
       destrezaSum += (ev.destrezaPuntos / ev.destrezaMax) * 100;
@@ -133,14 +120,16 @@ export function buildDriverAiMetricsContext(input: DriverAiInsightRequest) {
       fecha: getEvalDateLabel(ev, idx),
       anio: getEvaluationYear(ev),
       calificacion: Number(score.toFixed(2)),
-      incidentes: sessionIncidents
+      incidentes: incidents.complete ? incidents.total : null,
+      incidenciasConocidas: incidents.total,
+      datosIncidenciasCompletos: incidents.complete
     };
   });
 
   const criticalBreakdown = Array.from(critMap.entries())
     .map(([nombre, total]) => ({ nombre, total }))
     .sort((a, b) => b.total - a.total);
-  const totalCriticalEvents = criticalBreakdown.reduce((sum, item) => sum + item.total, 0);
+  const totalCriticalEvents = incidentDataIncomplete ? null : criticalBreakdown.reduce((sum, item) => sum + item.total, 0);
 
   const topMistakes = Array.from(mistakesMap.entries())
     .map(([nombre, d]) => ({ nombre, repeticiones: d.repeticiones, eje: d.eje || undefined }))
@@ -178,6 +167,7 @@ export function buildDriverAiMetricsContext(input: DriverAiInsightRequest) {
       practicaSimuladorPct: pracCount > 0 ? Number((pracSum / pracCount).toFixed(1)) : null
     },
     totalCriticalEvents,
+    incidentDataIncomplete,
     criticalBreakdown,
     topMistakes,
     ejercicios,
@@ -192,6 +182,8 @@ export function buildDriverAiPrompt(metrics: ReturnType<typeof buildDriverAiMetr
     'REGLAS ESTRICTAS:',
     '- Usa un español claro, cercano y motivador, SIN jerga estadística (nada de desviación estándar, mediana, sigma ni siglas V2).',
     '- Destaca si mejoró o retrocedió respecto a sesiones previas cuando totalSesiones >= 2.',
+    '- Si los datos de incidencias son incompletos o null, no afirmes que no hubo incidentes ni inventes totales o tendencias.',
+    '- "Atropello de peatón y vuelcos" puede incluir fatalidades históricas sin subtipo; no atribuyas esos registros a un subtipo específico.',
     '- En focosDeAtencion y planDeAccion enfócate en 2 o 3 hábitos concretos para las próximas capacitaciones y para aplicar en ruta (ahorro de diésel, cuidado de frenos, distancia de seguridad y carril). Todas las acciones deben agruparse bajo el plazo "Próximas capacitaciones"; no uses ciclos separados.',
     '- REGLA SOBRE "Efectos del alcohol" (esConcientizacionIntencional: true): es un ejercicio de CONCIENTIZACIÓN planeado intencionalmente para salir mal y evidenciar riesgos de conducir alcoholizado. Es completamente natural tener calificación baja y accidentes ahí; NO lo pongas como error del operador ni recomiendes reforzar ese ejercicio.',
     '- Responde ÚNICAMENTE con un objeto JSON válido con esta estructura exacta (sin markdown ni texto extra):',
@@ -227,7 +219,7 @@ export function buildLocalDriverFallbackStructured(
   const nivel: CompanyAiStructuredReport['estadoGeneral']['nivel'] =
     refScore >= 8.0 && metrics.totalCriticalEvents === 0
       ? 'sobresaliente'
-      : refScore >= 8.0 || (refScore >= 7.0 && metrics.totalCriticalEvents <= 1)
+      : refScore >= 8.0 || (refScore >= 7.0 && metrics.totalCriticalEvents !== null && metrics.totalCriticalEvents <= 1)
         ? 'bueno'
         : refScore >= 6.0
           ? 'atencion'
@@ -268,7 +260,7 @@ export function buildLocalDriverFallbackStructured(
   if (metrics.totalCriticalEvents === 0) {
     loQueVaBien.push({
       titulo: 'Sin incidentes graves',
-      detalle: 'Completó las maniobras evaluadas sin choques ni salidas de camino.'
+      detalle: 'No se registraron incidencias según el criterio del cliente.'
     });
   } else if (metrics.tendencia === 'mejora') {
     loQueVaBien.push({
@@ -284,9 +276,9 @@ export function buildLocalDriverFallbackStructured(
   }
 
   const focosDeAtencion: CompanyAiStructuredReport['focosDeAtencion'] = [];
-  if (metrics.totalCriticalEvents > 0 && topCrit) {
+  if (topCrit) {
     focosDeAtencion.push({
-      titulo: `${metrics.totalCriticalEvents} incidente(s) crítico(s): ${topCrit.nombre}`,
+      titulo: `Incidencia registrada: ${topCrit.nombre}`,
       porqueImporta: `Es el punto más urgente a corregir para prevenir percances reales en carretera.`,
       nivel: 'alto'
     });
@@ -349,8 +341,8 @@ export function buildLocalDriverFallbackStructured(
         meta: `≥ ${targetScore.toFixed(1)} siguiente ciclo`
       },
       {
-        indicador: 'Incidentes críticos',
-        actual: `${metrics.totalCriticalEvents}`,
+        indicador: 'Incidencias',
+        actual: metrics.totalCriticalEvents === null ? 'Datos incompletos' : `${metrics.totalCriticalEvents}`,
         meta: '0 incidentes'
       },
       {
@@ -370,7 +362,7 @@ function buildDriverCacheKey(
   input: DriverAiInsightRequest,
   metrics: ReturnType<typeof buildDriverAiMetricsContext>
 ): string {
-  return `driver|${metrics.empresa}|${metrics.operador}|${input.scopeLabel || 'history'}|${metrics.totalSesiones}|${metrics.ultimaCalificacion}|${metrics.totalCriticalEvents}`;
+  return `driver-hybrid-v2|${metrics.empresa}|${metrics.operador}|${input.scopeLabel || 'history'}|${metrics.totalSesiones}|${metrics.ultimaCalificacion}|${JSON.stringify(metrics.historialSesiones)}|${JSON.stringify(metrics.criticalBreakdown)}`;
 }
 
 export function getCachedDriverAiInsight(input: DriverAiInsightRequest): CompanyAiInsightResult | null {

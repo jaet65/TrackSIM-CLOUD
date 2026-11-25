@@ -2,6 +2,7 @@ import React from 'react';
 import { Line } from 'react-chartjs-2';
 
 interface ActiveAccidentTrend {
+  available: boolean;
   isPositive: boolean;
   isNegative: boolean;
   percent: number | string;
@@ -122,8 +123,9 @@ export const CompanyAnnualChartsSection: React.FC<CompanyAnnualChartsSectionProp
             </h3>
             <p style={{ margin: '0.2rem 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
               {accidentViewMode === 'counts'
-                ? 'Historial y desglose anual de siniestros: total, colisiones, salidas de vía y fatalidades.'
-                : 'Promedio de incidentes por operador evaluado a lo largo de los años.'}
+                ? 'Total anual según el criterio de incidencias de cada cliente.'
+                : 'Promedio de incidencias por operador evaluado a lo largo de los años.'}
+              {' '}Los años con datos incompletos no se muestran.
             </p>
           </div>
 
@@ -205,15 +207,17 @@ export const CompanyAnnualChartsSection: React.FC<CompanyAnnualChartsSectionProp
                   }`
               }}
             >
-              <span>{activeAccidentTrend.isPositive ? '📉' : activeAccidentTrend.isNegative ? '📈' : '➡️'}</span>
+              <span>{!activeAccidentTrend.available ? '—' : activeAccidentTrend.isPositive ? '📉' : activeAccidentTrend.isNegative ? '📈' : '➡️'}</span>
               <span>
-                {activeAccidentTrend.isPositive
+                {!activeAccidentTrend.available
+                  ? 'Comparación no disponible'
+                  : activeAccidentTrend.isPositive
                   ? `Tendencia Favorable (${activeAccidentTrend.percent}%)`
                   : activeAccidentTrend.isNegative
                     ? `Tendencia en Aumento (+${activeAccidentTrend.percent}%)`
                     : 'Tendencia Estable'}
               </span>
-              {Number(activeAccidentTrend.diff) !== 0 && (
+              {activeAccidentTrend.available && Number(activeAccidentTrend.diff) !== 0 && (
                 <span style={{ fontSize: '0.78rem', opacity: 0.85, fontWeight: 600 }}>
                   ({Number(activeAccidentTrend.diff) > 0 ? `+${activeAccidentTrend.diff}` : activeAccidentTrend.diff} {activeAccidentTrend.unit})
                 </span>
