@@ -47,7 +47,10 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
   useEscapeKey(isOpen, onClose);
   const [aiInsight, setAiInsight] = React.useState<CompanyAiInsightResult | null>(null);
   const [isLoadingAi, setIsLoadingAi] = React.useState(false);
+  const [printError, setPrintError] = React.useState('');
   const aiRequestIdRef = React.useRef(0);
+  const sheetRef = React.useRef<HTMLDivElement>(null);
+  const printFrameRef = React.useRef<HTMLIFrameElement | null>(null);
 
   React.useEffect(() => {
     aiRequestIdRef.current += 1;
@@ -95,13 +98,10 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
   };
 
   React.useEffect(() => {
-    if (isOpen) {
-      document.body.classList.add('single-page-report-active');
-    } else {
-      document.body.classList.remove('single-page-report-active');
-    }
+    if (!isOpen) return;
     return () => {
-      document.body.classList.remove('single-page-report-active');
+      printFrameRef.current?.remove();
+      printFrameRef.current = null;
     };
   }, [isOpen]);
 
@@ -249,25 +249,112 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
   // Top 5 conductores del ranking (Honor)
   const topRanked = topConductores.slice(0, 5);
 
-  const handlePrint = () => {
-    const prevTitle = document.title;
+  const handlePrint = async () => {
+    const sheet = sheetRef.current;
+    if (!sheet) {
+      setPrintError('La vista previa aún no está lista para imprimir. Inténtalo de nuevo.');
+      return;
+    }
+    setPrintError('');
+    printFrameRef.current?.remove();
+    const frame = document.createElement('iframe');
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.cssText = 'position:fixed;left:-10000px;top:0;border:0;';
+    frame.style.width = `${sheet.getBoundingClientRect().width}px`;
+    frame.style.height = `${sheet.getBoundingClientRect().height}px`;
+    document.body.appendChild(frame);
+    printFrameRef.current = frame;
+    const frameDocument = frame.contentDocument;
+    const frameWindow = frame.contentWindow;
+    if (!frameDocument || !frameWindow) {
+      frame.remove();
+      printFrameRef.current = null;
+      setPrintError('No se pudo preparar la impresión. Inténtalo de nuevo.');
+      return;
+    }
+    frameDocument.open();
+    frameDocument.write('<!doctype html><html><head></head><body></body></html>');
+    frameDocument.close();
+
     const safeCompany = (comp.nombre || 'Flota').trim().replace(/\s+/g, '_');
     const safeYear = selectedYear && selectedYear !== 'all' ? selectedYear : 'Historico';
-    document.title = `Single-Page_${safeCompany}_${safeYear}`;
-
-    void logAudit({
-      categoria: 'datos',
-      accion: 'imprimir',
-      empresas: [comp.nombre],
-      detalle: `Reporte Single-Page PDF de ${comp.nombre} (${periodText})`
+    frameDocument.title = `Single-Page_${safeCompany}_${safeYear}`;
+    frameDocument.documentElement.setAttribute('data-theme', document.documentElement.getAttribute('data-theme') || '');
+    const base = frameDocument.createElement('base');
+    base.href = document.baseURI;
+    frameDocument.head.appendChild(base);
+    const stylesheetLoads = Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')).map((stylesheet) => {
+      const copy = stylesheet.cloneNode(true) as HTMLLinkElement;
+      copy.href = stylesheet.href;
+      const loaded = new Promise<void>((resolve, reject) => {
+        copy.onload = () => resolve();
+        copy.onerror = () => {
+          if (copy.sheet) {
+            console.warn(`Algunos recursos de la hoja de estilos no se cargaron: ${copy.href}`);
+            resolve();
+          } else {
+            reject(new Error(`No se pudo cargar la hoja de estilos ${copy.href}`));
+          }
+        };
+      });
+      frameDocument.head.appendChild(copy);
+      return loaded;
     });
+    document.querySelectorAll('style').forEach((style) => frameDocument.head.appendChild(style.cloneNode(true)));
+    const style = frameDocument.createElement('style');
+    const rootFontSize = window.getComputedStyle(document.documentElement).fontSize;
+    const sheetStyle = window.getComputedStyle(sheet);
+    const lineHeight = sheetStyle.lineHeight === 'normal'
+      ? 'normal'
+      : String(parseFloat(sheetStyle.lineHeight) / parseFloat(sheetStyle.fontSize));
+    style.textContent = `
+      html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; font-size: ${rootFontSize} !important; line-height: ${lineHeight} !important; }
+      .single-page-sheet { width: ${sheet.getBoundingClientRect().width}px !important; max-width: none !important; }
+      @page { size: letter portrait; margin: 12mm 10mm; }
+      @media print {
+        html, body { min-height: 0 !important; overflow: visible !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        .single-page-print-area { position: relative; overflow: hidden; width: var(--print-width); height: var(--print-height); }
+        .single-page-sheet { position: absolute; top: 0; left: 0; transform: scale(var(--print-scale)); transform-origin: top left; }
+      }`;
+    frameDocument.head.appendChild(style);
+    const printArea = frameDocument.createElement('div');
+    printArea.className = 'single-page-print-area';
+    const printSheet = sheet.cloneNode(true) as HTMLDivElement;
+    printArea.appendChild(printSheet);
+    frameDocument.body.appendChild(printArea);
 
     try {
-      window.print();
-    } finally {
-      setTimeout(() => {
-        document.title = prevTitle;
-      }, 1000);
+      await Promise.all(stylesheetLoads);
+      await Promise.all(Array.from(printSheet.querySelectorAll('img')).map((image) => image.decode()));
+      await frameDocument.fonts.ready;
+      if (printFrameRef.current !== frame) return;
+      const width = Math.max(printSheet.scrollWidth, printSheet.getBoundingClientRect().width);
+      const height = Math.max(printSheet.scrollHeight, printSheet.getBoundingClientRect().height);
+      const printableWidth = (215.9 - 20) * 96 / 25.4;
+      const printableHeight = (279.4 - 24) * 96 / 25.4;
+      const scale = Math.min(1, printableWidth / width, printableHeight / height) * 0.995;
+      printArea.style.setProperty('--print-scale', String(scale));
+      printArea.style.setProperty('--print-width', `${width * scale}px`);
+      printArea.style.setProperty('--print-height', `${height * scale}px`);
+      frameWindow.addEventListener('afterprint', () => {
+        frame.remove();
+        if (printFrameRef.current === frame) printFrameRef.current = null;
+      }, { once: true });
+      void logAudit({
+        categoria: 'datos',
+        accion: 'imprimir',
+        empresas: [comp.nombre],
+        detalle: `Reporte Single-Page PDF de ${comp.nombre} (${periodText})`
+      });
+      frameWindow.focus();
+      frameWindow.print();
+    } catch (error) {
+      console.error('Error al preparar la impresión del reporte Single-Page:', error);
+      frame.remove();
+      if (printFrameRef.current === frame) {
+        printFrameRef.current = null;
+        setPrintError('No se pudo preparar la impresión del reporte. Inténtalo de nuevo.');
+      }
     }
   };
 
@@ -354,7 +441,7 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
             <button
               type="button"
               className="btn btn-primary btn-sm"
-              onClick={handlePrint}
+              onClick={() => void handlePrint()}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -384,26 +471,28 @@ export const CompanySinglePageReportModal: React.FC<CompanySinglePageReportModal
               Cerrar
             </button>
           </div>
+          {printError && <div role="alert" style={{ padding: '0.5rem 1.25rem', color: '#b91c1c', background: '#fef2f2' }}>{printError}</div>}
         </div>
 
         {/* Hoja Single-Page en formato carta A4/Letter optimizado */}
         <div
           className="single-page-scroll-wrapper"
           style={{
-            overflowY: 'auto',
+            overflow: 'auto',
             padding: '1.5rem',
             background: '#ffffff',
-            display: 'flex',
-            justifyContent: 'center'
+            display: 'block'
           }}
         >
           <div
             id="single-page-report-sheet"
             className="single-page-sheet"
+            ref={sheetRef}
             style={{
-              width: '100%',
+              width: '840px',
               maxWidth: '840px',
               minHeight: '1060px',
+              margin: '0 auto',
               background: '#ffffff',
               color: '#0f172a',
               boxSizing: 'border-box',
